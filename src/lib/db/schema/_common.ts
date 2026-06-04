@@ -100,3 +100,28 @@ export const STOCK_MOVEMENT_TYPES = [
   'loss',
 ] as const;
 export type StockMovementType = (typeof STOCK_MOVEMENT_TYPES)[number];
+
+// Cash movement types — Sprint 4 ROADMAP Cash context (C-OPS-01).
+// Movimientos MANUALES de caja (no ventas — esos van a sales/sale_payments).
+// - withdraw: comerciante retira efectivo de caja (gastos del día, transferir al banco)
+// - deposit: comerciante aporta efectivo a caja (caja chica, dinero suelto)
+// - provider_payment: pago en efectivo a proveedor desde caja
+//
+// F1+ trigger (agregar nuevos types): salary_advance / tip_distribution / etc.
+// requiere ADR pequeño + cambio CHECK constraint DB + advisor doc cierre.
+export const CASH_MOVEMENT_TYPES = [
+  'withdraw',
+  'deposit',
+  'provider_payment',
+] as const;
+export type CashMovementType = (typeof CASH_MOVEMENT_TYPES)[number];
+
+/**
+ * Umbral de descuadre (en ARS, scale 4) para escalar severidad de incidente:
+ * - Descuadre absoluto > DESCUADRE_HIGH_THRESHOLD_ARS → S2 (OPERATIONAL-SEVERITY)
+ * - Descuadre absoluto ≤ DESCUADRE_HIGH_THRESHOLD_ARS → S3
+ *
+ * F1+ trigger: si comerciante pide threshold custom (raro), implementar
+ * feature flag por tenant. Por ahora hardcoded para Pandora team alerting consistente.
+ */
+export const DESCUADRE_HIGH_THRESHOLD_ARS = '5000.0000';

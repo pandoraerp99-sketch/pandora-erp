@@ -14,3 +14,5 @@ export * from './jobs_queue.js';
 export * from './processed_webhook_events.js';
 export * from './metrics.js';
 export * from './stock_movements.js';
+export * from './cash_sessions.js';
+export * from './cash_movements.js';
