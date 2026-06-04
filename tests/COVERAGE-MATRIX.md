@@ -1,0 +1,146 @@
+# Tests T-OBS-* + T-SEC-* — Coverage Matrix F0
+
+**Fecha actualizacion:** 2026-06-02 (post Auditoria Alpha)
+**Estado:** Sprint 1 esencial F0 (7/7) + Sprint 2 platform contexts (5/6 + 1 deferido).
+**Referencia:** CLAUDE.md §18.3 Mandatory tests F0.
+
+> Este doc lista TODOS los tests T-OBS-* + T-SEC-* del catalogo canonico
+> CLAUDE.md §18.3 y mapea cobertura actual vs gaps. Items diferidos NO son
+> deuda silenciosa — cada uno tiene **trigger explicito** de cierre.
+
+## Filosofia de cobertura
+
+- **Cubierto:** test existe + verde + asserta el invariante real (no smoke).
+- **Parcial:** test existe pero solo cubre una parte (resto requiere infra).
+- **Diferido:** test NO existe porque la infra que valida NO existe todavia.
+  Cada diferido tiene **Sprint de cierre + razon objetiva**.
+
+NO se inventan tests stub para llegar a "100% cobertura" — eso seria
+test theatre, exactamente lo que CLAUDE.md §18 anti-pattern N-29 prohibe.
+
+---
+
+## T-SEC-* — Security tests
+
+| ID | Test | Estado | Archivo | Notas |
+|---|---|---|---|---|
+| **T-SEC-01** | CSP header presente | ✅ **Cubierto** | tests/unit/csp.test.ts (36 tests) | buildCspHeader + buildSecurityHeaders + nonce 128-bit + Edge-compatible |
+| **T-SEC-02** | HMAC validation webhook | ✅ **Cubierto** | tests/unit/hmac.test.ts (40 tests) | computeHmacSha256 RFC 4231 + safeSignatureCompare timing-safe + validateMercadoPagoWebhook 4-pasos |
+| **T-SEC-03** | Replay protection webhook (timestamp out of window) | ✅ **Cubierto** | tests/unit/hmac.test.ts + tests/unit/webhook-dedup.test.ts | validateWebhookFreshness ±5min + ORDEN validacion freshness-ANTES-de-HMAC verificado implicito en test "ts fuera de ventana con HMAC valido → reason=timestamp_out_of_window NO hmac_mismatch" |
+| **T-SEC-04** | Dedup webhook (event_id repetido) | ✅ **Cubierto puro** + 🟡 **Diferido con DB** | tests/unit/webhook-dedup.test.ts (27 tests helpers puros) | hashWebhookPayload SHA-256 + safeSignatureCompare timing-safe + freshness window. INSERT ON CONFLICT con DB real → diferido `tests/integration/` cuando Supabase test instance este conectada |
+| **T-SEC-05** | Rate limit hits | ✅ **Cubierto** | tests/unit/rate-limit.test.ts (30 tests) | InMemoryRateLimitStore + checkRateLimit + 4 policies F0 + checkLoginRateLimit composicion IP+email + whitespace bypass defense |
+| **T-SEC-06** | TLS 1.2+ obligatorio en cliente AFIP | 🟡 **Diferido Sprint 6** | — | AFIP SOAP client NO existe F0 platform. Cierre: Sprint 6 fiscal cuando se implemente WSAA + WSFEv1 client (`src/lib/fiscal/afip/client.ts`). Test esperado: `tlsClient.options.minVersion === 'TLSv1.2'` + `rejectUnauthorized: true` + Sprint 6 incluye test gate. |
+| **T-SEC-07** | Secret no logueado (lista canonica) | ✅ **Cubierto** (Sprint 2 #2) | tests/unit/logger.test.ts (10 tests SECRET_PATHS catalogo + 10 redact end-to-end) | Pino redact con SECRET_PATHS (62 entries: snake_case + camelCase Supabase/MP/jose + env vars SECRETS_ENCRYPTION_KEY_V* + AFIP PascalCase Token/Sign). Plus scrub.ts para audit_log payload (24 tests scrub.test.ts) — scope distinto: Pino redact en logs, scrub en jsonb persistido 10 anios inmutable. |
+
+**T-SEC cubierto F0: 6 de 7 (86%) + T-SEC-04 con parcial DB-real.** Solo T-SEC-06 diferido (Sprint 6 AFIP client).
+
+---
+
+## T-OBS-* — Observability tests
+
+| ID | Test | Estado | Archivo | Notas |
+|---|---|---|---|---|
+| **T-OBS-01** | End-to-end correlation_id propagation | ✅ **Cubierto** (Sprint 2 #1 + #3) | tests/unit/tracing.test.ts (42 tests) + browser check empirico proxy | withTracingContext + withCronTracing + withWorkerTracing + getCurrentTenantId/CorrelationId/RequestId + async isolation (paralelo NO comparten + heredancia await + cleanup post-throw). Plus browser check Sprint 2 #3: 4 ramas Edge proxy (sin cid → genera + flag; cid valido → respeta; XSS garbage → UUID limpio; path exempt → no flag). |
+| **T-OBS-02** | Worker continuity (correlation_id heredado, request_id nuevo) | ✅ **Cubierto helpers** + 🟡 worker runtime deferido | tests/unit/tracing.test.ts (`withWorkerTracing — INVARIANTE: HEREDA correlation_id, GENERA request_id nuevo` 3 tests) | Helper `withWorkerTracing` testeado contra invariante. Worker en si (`afip.reconcile_pending` consumer) deferido Sprint 6+ trigger objetivo (ver [[sprint-2-6-worker-deferred-2026-06-02]]). |
+| **T-OBS-03** | Logger auto-inject desde AsyncLocalStorage | ✅ **Cubierto REAL** (Sprint 2 #2) | tests/unit/logger.test.ts (6 tests `wrapPino + tracing context — T-OBS-03 closure end-to-end`) | wrapPino exportado + tests con destination stream custom + Pino instance custom → verifica que `logger.info` dentro de withTracingContext emite JSON con correlation_id/request_id/tenant_id/actor del context. Incluye test SPREAD ORDER INVARIANTE (context gana sobre payload) — sin esto, payload override silencioso del context. |
+| **T-OBS-04** | Metrics whitelist enforcement (throw si tag no autorizado) | ✅ **Cubierto** (Sprint 2 #5) | tests/unit/metrics.test.ts (13 tests `prepareMetricIncrement — whitelist enforcement + tag_key + tag_value bounded`) | METRIC_WHITELIST 12 metricas F0 + 4 errors tipados (MetricNotInWhitelistError, MetricTagNotAllowedError, MetricTagValueNotAllowedError, MetricTenantRequiredError). Plus tests integracion tracing context + wrapper fail-open (DB error NO rethrowa, whitelist/tag errors SI rethrowan). **cardinalityWarn declarado pero NO se enforce F0** — doc inline + F1+ trigger cron mensual. |
+| **T-OBS-05** | Audit log inmutability (trigger throw en UPDATE/DELETE) | 🟡 **Diferido DB-real** | — | Trigger plpgsql `audit_log_immutable()` esta implementado en `drizzle/migrations/post_initial/0002_immutable_triggers.sql` (RAISE EXCEPTION en UPDATE/DELETE/TRUNCATE). Pero el test del trigger en runtime requiere Supabase test instance. Schema + writer + scrub estan completos (Sprint 2 #4). **Cierre: integration test cuando Supabase test instance este conectada** (esperado Sprint 2-3 cuando se levante CI con DB real). |
+
+**T-OBS cubierto F0: 4 de 5 (80%) + 1 con parcial DB-real.** Solo T-OBS-05 diferido (trigger SQL requiere DB).
+
+---
+
+## Resumen post-Sprint 2
+
+| Item | Estado | Tests cubiertos |
+|---|---|---|
+| **Sprint 1** | ||
+| #1 jobs_queue | ✅ Completo | 31 tests |
+| #2 processed_webhook_events | ✅ Completo | 27 tests |
+| #3 CSP middleware | ✅ Completo | 36 tests |
+| #4 HMAC validation | ✅ Completo | 40 tests |
+| #5 rate_limit in-memory | ✅ Completo | 30 tests |
+| #6 vault encrypt/decrypt | ✅ Completo | 29 tests |
+| #7 Coverage matrix + cierre | ✅ Completo | (este doc) |
+| **Sprint 2 platform contexts** | ||
+| #1 Tracing context | ✅ Completo | 42 tests |
+| #2 Pino logger | ✅ Completo | 33 tests |
+| #3 Proxy/middleware Edge | ✅ Completo | 5 tests + browser check 4 ramas |
+| #4 audit_log writer + scrub | ✅ Completo | 28 + 24 (scrub) tests |
+| #5 metrics_counter | ✅ Completo | 30 tests |
+| #6 Worker afip.reconcile_pending | 🟡 **Deferido con trigger** | (ver memoria deferred) |
+
+**Total tests suite: 421/421 verdes** (Sprint 1: 262 + Sprint 2: 162 - duplicacion pequena por ajustes = 421 actual).
+
+---
+
+## Composiciones cross-item ya validadas (acumulativo)
+
+Composiciones REALES verificadas sin gaps detectables:
+
+1. **CSP nonce → page render** — Sprint 1 #3 + Sprint 2 #3 — proxy.ts inyecta nonce via `x-csp-nonce` header. Browser check empirico HTTP 200 + nonce real.
+2. **HMAC + freshness orden correcto** — Sprint 1 #4. Test "ts fuera de ventana CON HMAC valido → reason=timestamp_out_of_window" demuestra freshness corre ANTES de HMAC.
+3. **HMAC + dedup webhook = replay protection END-TO-END** — Sprint 1 #4 + #2. Composicion documentada JSDoc, testeable end-to-end solo con DB real (deferida).
+4. **Rate limit compuesto IP+email login** — Sprint 1 #5. Previene 2 attack vectors distintos.
+5. **Vault wire format strict validation** — Sprint 1 #6. `isStrictBase64` previene garbage-passing-as-tampering.
+6. **Tracing context heredance Edge→Node** — Sprint 2 #1 + #3. proxy.ts (Edge) genera/valida IDs + setea headers + server-action-tracing.ts (Node) lee headers + monta AsyncLocalStorage. Browser check curl verificado.
+7. **Logger auto-inject del context** — Sprint 2 #1 + #2. wrapPino lee tracing context y enriquece TODA log line. SPREAD ORDER INVARIANTE testeado (context > payload).
+8. **Audit_log con scrub secrets payload** — Sprint 2 #2 + #4. SECRET_PATHS expandido (62 entries) usado por Pino redact Y por scrub recursivo en audit_log. Audit_log es 10 anios inmutable → defensa en el writer, no trust-the-caller.
+9. **Metrics whitelist + tracing context** — Sprint 2 #1 + #5. prepareMetricIncrement lee `getCurrentTenantId()` cuando scope=tenant. Fail-open en wrapper (errores DB no bloquean operacion).
+10. **Multi-tenant guard en audit-writer** — Sprint 2 #4. `override_tenant_id` UUID format validation + actor_type=system|support check. Previene cross-tenant audits + INSERT con tenant_id invalido.
+
+---
+
+## Gaps F1+ con trigger objetivo
+
+Diferidos NO son "tests que no escribimos" — son **infra que no construimos**.
+Triggers explicitos para cada uno:
+
+| Gap | Sprint cierre | Trigger objetivo |
+|---|---|---|
+| Worker dedicado `afip.reconcile_pending` con SKIP LOCKED runtime | Sprint 6+ | Sprint 6 fiscal incluye primera emision WSFEv1 (jobs reconcile aparecen) O primer cliente reporta CAE timeout sostenido |
+| Tests integration con DB real (audit trigger inmutable, RLS, INSERT ON CONFLICT atomic, partition routing) | Sprint 2-3 | Cuando Supabase test instance este conectada en CI |
+| TLS 1.2+ AFIP client | Sprint 6 | Cuando se construya WSAA + WSFEv1 client real |
+| Cron mensual cardinalityWarn alert (metrics) | F1+ | Tabla metrics_counter > 1M rows O alguna metrica > su cardinalityWarn × 2 |
+| Hash chain en audit_log (tamper-proof real) | F1+ | Disposicion AAIP/auditor requerimiento legal especifico |
+| Sentry instrumentacion completa | F1+ | Volumen real F1+ requiere observabilidad rica |
+| Multi-tab BroadcastChannel POS | F1+ | Comerciante real reporta conflicto multi-tab |
+| Upstash Redis rate limit distribuido | F1+ | > 100 req/s sostenidos O > 30 tenants |
+| Key versioning V2/V3 vault wire format | F1+ | Primera rotacion real de SECRETS_ENCRYPTION_KEY |
+| OpenTelemetry / Datadog migration | F1+ | > 5M increments/dia O > 30 tenants O necesidad distributed tracing |
+
+---
+
+## Lecciones core acumuladas (Sprint 1 + Sprint 2)
+
+1. **Self-review tiene blind spots que advisor cubre.** En 5+ Sprints consecutivos el advisor encontro issues que self-review NO detecto (dead code paths silenciosos, signature lies, semantic collapse, spread order bugs, trust boundary gaps).
+
+2. **typecheck + tests verdes NO equivale a "funciona en runtime".** Aplicar **browser check empirico** en proxy/Edge/auth/fiscal layers. Sprint 1 #3 CSP detecto 2 bugs que typecheck no vio.
+
+3. **Defense bypass via whitespace/encoding es bug clase recurrente.** trim(), isStrictBase64(), case-sensitivity, regex strict — siempre helpers puros + tests dedicados.
+
+4. **NO inventar tests stub para llegar a "100% cobertura".** Sprint 1 #7 y Sprint 2 docs honestos > test theatre N-29.
+
+5. **Multi-tenant guard asymetrico calcifica.** Aplicar guard SIEMPRE en cada nueva primitiva platform (Sprint 1 #2 webhook-dedup + Sprint 2 #4 audit-writer).
+
+6. **Operator runbook JSDoc para error codes ambiguos.** `tampering_detected` en vault no distingue 3 modos a nivel cripto → JSDoc operator runbook antes de asumir ataque.
+
+7. **Re-research ARCA antes de Sprint fiscal.** Sprint 6 y 7 van a tocar AFIP — disciplina anchor externo recurrente.
+
+8. **Trust boundaries en AMBOS lados** (Edge proxy + Node server-action-tracing + audit-writer override_tenant_id) — todos usando el MISMO helper `resolveInboundIds` + `isValidUuid`.
+
+9. **Audit_log 10 anios inmutable ≠ Pino logs rotables** — defensa scrub DEBE estar en el writer, NO en el caller. Trust-the-caller NO escala (Sprint 2 #2 expansion SECRET_PATHS + Sprint 2 #4 scrub.ts demostraron).
+
+10. **Spread order es bug semantico clase a vigilar** — siempre que hay merge de fuentes (context vs payload), explicitar invariante "X gana" en JSDoc + test del invariante.
+
+11. **Wrapper-vs-helper test discipline.** Cuando se extrae pure helper testeable + wrapper que orquesta → AMBOS necesitan test. Wrapper para invariante critico (fail-open vs rethrow, context guard, etc.).
+
+12. **cardinalityWarn / similar = claim sin enforcement.** Field configurado + nada lo lee = mentira que parece feature. Doc honest OR remover OR implementar enforcement. Tres opciones, pick una.
+
+13. **Migration SQL paralelo al schema Drizzle es contrato.** drizzle-kit NO crea funciones plpgsql / triggers / RLS. Cada schema con behavior custom plpgsql tiene migration `post_initial/000N_*.sql`.
+
+14. **Fail-open vs fail-closed por concern** — fiscal fail-CLOSED, multi-tenant fail-CLOSED, audit_log validation fail-CLOSED, metrics fail-OPEN, logger fail-OPEN. Doc en cada wrapper.
+
+---
+
+**Sprint 1 + Sprint 2 F0 CERRADOS** — listo para Auditoria Beta + Sprint 3.

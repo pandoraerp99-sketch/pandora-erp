@@ -1,0 +1,52 @@
+# Pandora ERP — line endings policy
+# Force LF on all text files for consistency across OS.
+# Created 2026-05-30 to prevent CRLF leak from Windows authoring.
+
+* text=auto eol=lf
+
+# Text files — explicit LF
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.js        text eol=lf
+*.jsx       text eol=lf
+*.mjs       text eol=lf
+*.cjs       text eol=lf
+*.json      text eol=lf
+*.jsonc     text eol=lf
+*.css       text eol=lf
+*.scss      text eol=lf
+*.html      text eol=lf
+*.md        text eol=lf
+*.mdx       text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.sql       text eol=lf
+*.sh        text eol=lf
+*.env       text eol=lf
+*.toml      text eol=lf
+*.xml       text eol=lf
+.gitignore  text eol=lf
+.gitattributes text eol=lf
+
+# Binary files — never touch
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.svg       binary
+*.webp      binary
+*.avif      binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.eot       binary
+*.pdf       binary
+*.zip       binary
+*.gz        binary
+*.tar       binary
+*.jar       binary
+*.so        binary
+*.dll       binary
+*.exe       binary
+*.node      binary
