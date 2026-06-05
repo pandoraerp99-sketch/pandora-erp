@@ -24,6 +24,7 @@ import {
   tenantId,
   updatedAt,
 } from './_common.js';
+import { cash_sessions } from './cash_sessions.js';
 import { products } from './products.js';
 import { users } from './users.js';
 
@@ -54,6 +55,17 @@ export const sales = pgTable(
     payment_method: text('payment_method'),
     payment_breakdown: text('payment_breakdown'),
 
+    /**
+     * Cash session activa al momento del finalize (solo si la venta tuvo
+     * payments en efectivo y había session abierta en el sale_point).
+     * Nullable. ON DELETE SET NULL para no romper sales si se borrara una
+     * session por error operativo (NO se debería borrar — ver trigger
+     * cash_sessions_immutable_after_close). Sprint 5 integración Cash.
+     */
+    cash_session_id: uuid('cash_session_id').references(() => cash_sessions.id, {
+      onDelete: 'set null',
+    }),
+
     customer_doc_type: text('customer_doc_type').default('none'),
     customer_doc_number: text('customer_doc_number'),
     customer_name_snapshot: text('customer_name_snapshot'),
@@ -73,6 +85,13 @@ export const sales = pgTable(
       table.tenant_id,
       table.fiscal_status
     ),
+    /**
+     * Index partial: solo sales con cash_session_id NOT NULL. Usado por el
+     * cash session close para computar expected_amount.
+     */
+    cashSessionIdx: index('sales_cash_session_idx')
+      .on(table.cash_session_id)
+      .where(sql`${table.cash_session_id} IS NOT NULL`),
     commercialStatusCheck: check(
       'sales_commercial_status_check',
       sql`${table.commercial_status} IN (${sql.raw(COMMERCIAL_STATUSES.map((s) => `'${s}'`).join(','))})`
