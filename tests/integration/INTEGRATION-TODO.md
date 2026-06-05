@@ -87,86 +87,23 @@ podría UPDATE o DELETE manualmente y romper auditabilidad.
 
 **Próximo trigger para resolver:** Sprint 6 fiscal (necesita probar
 emisión WSFEv1 contra DB real con numeración SELECT FOR UPDATE + Padrón
-A5 cache).
 
----
+## Sprint 4 ROADMAP Cash — ✅ COMPLETADO 2026-06-04
 
-## Sprint 4 ROADMAP Cash — DIFERIDOS a próxima sesión con Docker
+**45 integration tests Cash verde en 8 archivos.** Total proyecto: **90 integration tests verde** (45 baseline previos + 45 Cash). Sumado a 627 unit tests = **717 tests verde total**.
 
-**Estado código:** Sprint 4 implementado completo (schema + migration + sessions + movements + queries + barrel) con **72 unit tests verdes**. Total proyecto: **627/627 unit verde** (+72 cash respecto baseline 552).
+| Archivo | Tests | Verifica |
+|---|---|---|
+| `T-CASH-01-unique-partial.test.ts` | 1 (6 flows) | UNIQUE partial lineal: open/colisión/cerrar/reabrir/distinct-sp/distinct-tenant |
+| `T-CONC-02-cash-open-concurrent.test.ts` | 1 | 2 promises paralelas openCashSession mismo (tenant, sp) — 1 fulfilled + 1 ActiveSessionAlreadyOpenError + atomicidad tx |
+| `T-CASH-02-descuadre-alto.test.ts` | 1 | descuadre=-6000 → warning + sign negative + severity high + reason persistido + métrica 1 |
+| `T-CASH-03-cierre-limpio.test.ts` | 1 | descuadre=0 → info + sign zero + severity none + reason NULL + métrica 1 + NO double-emit |
+| `T-CASH-04-movement-reason-defense.test.ts` | 3 | Defense layered: service throws MovementValidationError + DB CHECK 23514 cash_movements_reason_not_empty + happy path |
+| `T-CASH-05-triggers-immutable.test.ts` | 8 | Triggers conditional cash_sessions post-close + unconditional cash_movements (UPDATE/DELETE/TRUNCATE + INSERT inverso OK) |
+| `T-CASH-07-check-constraints.test.ts` | 11 | 6 CHECKs cash_sessions (sale_point, initial, closed_consistency, discrepancy_reason) + 2 CHECKs cash_movements (type, amount) |
+| `T-CASH-08-cross-tenant-and-queries.test.ts` | 9 | Cross-tenant fences (5: getCashSessionById/Summary/closeCashSession/getActiveCashSession/listCashSessions) + integration coverage queries (4: getCashSessionSummary con movements+totals + listCashSessions active_only+paginación) |
+| `T-CASH-09-schema-smoke.test.ts` | 10 | pg_catalog smoke: 14+8 columnas + 6+3 CHECKs + 4+3 indexes + 2+3 triggers + 3+2 FKs |
 
-**Bloqueante para correr integration:** Docker Desktop tuvo procesos zombies que requieren reinicio Windows. Diferido a la próxima sesión cuando Docker arranque limpio (Sprint 5 Sales también necesita Docker → aprovechar misma ventana).
+**Advisor pass pre-commit detectó T-CASH-08 skipeado mal justificado** — `computeMovementTotals` unit tests son sobre pure helper, NO sustituyen integration cross-tenant. CLAUDE.md §18.4 + §7.9 lo exigen. Fix aplicado antes del commit con T-CASH-08 cubriendo doble objetivo (cross-tenant + queries integration).
 
-### T-CASH-01 — UNIQUE partial concurrent (CRÍTICO — el motivo de existir del schema)
-
-```
-1. Setup: 2 tenants distintos + 2 users
-2. Tenant A abre session (sale_point=1, initial=1000) → OK
-3. Tenant A intenta abrir SEGUNDA session mismo (sale_point=1)
-   → throw ActiveSessionAlreadyOpenError (ERRCODE 23505 → tipado en service)
-4. Tenant A cierra primera + abre nueva → OK (closed_at != NULL no entra al partial index)
-5. Tenant A abre session sale_point=2 → OK (distinct sale_point)
-6. Tenant B abre session sale_point=1 → OK (distinct tenant)
-```
-
-### T-CONC-02 — Apertura concurrente (validación core de la UNIQUE partial)
-
-```
-1. 2 promises paralelas openCashSession({sale_point: 1, ...}) mismo tenant
-2. Promise.allSettled
-3. Assert: exactamente 1 resolved + 1 rejected con ActiveSessionAlreadyOpenError
-4. Assert: solo 1 row en cash_sessions con (tenant, sale_point=1, closed_at IS NULL)
-```
-
-### T-CASH-02 — Cierre con descuadre > umbral $5000 → audit warning + métrica
-
-```
-1. Setup: session abierta con initial=10000
-2. closeCashSession(counted=4000, expected=10000, reason="caja olvidada abierta noche")
-3. Assert: cash_sessions.descuadre = '-6000.0000'
-4. Assert: cash_sessions.discrepancy_reason = "caja olvidada abierta noche"
-5. Assert: audit_log tiene event 'cash_session.closed_with_difference' severity 'warning'
-6. Assert: payload incluye severity_label='high' (descuadre abs > $5000)
-7. Assert: metrics_counter incrementado con metric='cash_session.diff.amount' tag sign='negative'
-```
-
-### T-CASH-03 — Cierre limpio descuadre=0 → audit info + métrica zero
-
-```
-1. closeCashSession(counted=expected=10000) sin reason
-2. Assert: cash_sessions.descuadre = '0.0000', discrepancy_reason = NULL
-3. Assert: audit_log event 'cash_session.closed' severity 'info'
-4. Assert: metrics tag sign='zero'
-```
-
-### T-CASH-04 — Movimiento manual sin reason → throw + CHECK constraint defense
-
-```
-1. Test service-level: registerCashMovement con reason='' → throw MovementValidationError
-2. Test DB-level (bypass service): SQL raw INSERT con reason='' → throw check_violation
-   verifica defense layered DB capa 1
-```
-
-### Bonus tests Cash (no listados en ROADMAP pero valen):
-
-- **T-CASH-05** Trigger immutable cash_sessions post-close:
-  - Session abierta + cerrar OK
-  - Intento UPDATE descuadre directo → throw check_violation
-  - Intento DELETE session cerrada → throw idem
-  - UPDATE de session ABIERTA (transición close) → OK
-
-- **T-CASH-06** Trigger immutable cash_movements (mismo patrón T-INV-05):
-  - INSERT OK, UPDATE/DELETE/TRUNCATE throw check_violation
-  - INSERT inverso (withdraw → deposit) sigue funcionando
-
-- **T-CASH-07** CHECK constraints SQL bypass-service:
-  - sale_point=0, initial_amount=-1, closed_consistency, discrepancy_reason_required
-  - cash_movements type fuera enum, amount<=0, reason empty
-
-- **T-CASH-08** getCashSessionSummary con movimientos agregados + cross-tenant
-
-- **T-CASH-09** Schema verification smoke test (tables + CHECK constraints + UNIQUE partial + triggers + FKs)
-
-**Estimación implementación:** 5 archivos test, ~3-4 horas total con Docker activo.
-
-**Prioridad:** alta. T-CASH-01 + T-CONC-02 son el motivo de existir del schema cash_sessions. Sin verificación empírica, "1 session abierta por tenant + sale_point" es un claim no probado, mismo patrón Spike A1 reveló.
+**Lecciones core acumuladas:** ver `memory/sprint-4-cash-cierre-completo-2026-06-04.md`.
