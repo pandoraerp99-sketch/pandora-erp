@@ -33,6 +33,11 @@ import {
 import { products, type UnitType } from '../../db/schema/products.js';
 import { sale_items, sales, type Sale, type SaleItem } from '../../db/schema/sales.js';
 import {
+  recordStockMovement,
+  OversellError,
+  ProductNotFoundForMovementError,
+} from '../../inventory/index.js';
+import {
   calculateSaleTotals,
   validateFiscalInvariant,
   type SaleItemInput,
@@ -466,50 +471,54 @@ export async function finalizeSale(rawInput: unknown): Promise<SaleWithItems> {
     assertCommercialTransition('cobrando', 'cobrada');
   }
 
+  const stockMovementIds: string[] = [];
+
   await db.transaction(async (tx) => {
     for (const item of items) {
-      // Decremento atomico de stock con parametric binding.
-      // El WHERE clause con gte(stock_current, quantity) garantiza que
-      // si NO hay stock suficiente, la fila no se updatea y returning() devuelve [].
-      // Esto evita race conditions entre 2 cajeros vendiendo el ultimo item.
-      const decrementResult = await tx
-        .update(products)
-        .set({
-          stock_current: sql`${products.stock_current} - CAST(${item.quantity} AS numeric)`,
-          updated_at: new Date(),
-        })
-        .where(
-          and(
-            eq(products.tenant_id, tenantId),
-            eq(products.id, item.product_id),
-            eq(products.stock_tracking_enabled, true),
-            gte(products.stock_current, item.quantity)
-          )
-        )
-        .returning({ id: products.id, stock_current: products.stock_current });
-
-      const productHasTracking = await tx
-        .select({
-          stock_tracking_enabled: products.stock_tracking_enabled,
-          stock_current: products.stock_current,
-        })
-        .from(products)
-        .where(
-          and(eq(products.tenant_id, tenantId), eq(products.id, item.product_id))
-        )
-        .limit(1);
-
-      const productTracking = productHasTracking[0];
-
-      if (productTracking?.stock_tracking_enabled && decrementResult.length === 0) {
-        throw new FiscalIntegrityError(
-          `Stock insuficiente para ${item.product_name_snapshot}`,
+      // Sprint 5 Bloque 2 refactor (2026-06-04): usar recordStockMovement
+      // con skip_audit:true en vez de UPDATE products directo. Razones:
+      //   1. Inserta row en stock_movements (source of truth para Sprint 6
+      //      fiscal — sin esto el modelo fiscal queda sin trazabilidad).
+      //   2. Reusa SELECT FOR UPDATE de Sprint 3 (probado en T-INV-04
+      //      oversell-concurrent — el guard atomic que ya funciona).
+      //   3. Respeta BOUNDED-CONTEXTS: Sales depende de Inventory public API
+      //      (recordStockMovement), no toca tabla products directo.
+      //   4. Vincula sale.id ↔ stock_movement vía related_sale_id para que
+      //      el auditor pueda reconstruir flujo de stock por venta.
+      // Sales emite UN audit `sale.completed` con stock_movement_ids[] en
+      // payload (regla J1 EVENT-TAXONOMY catálogo cerrado — movements NO
+      // emiten audit propio cuando vienen orquestados desde Sales).
+      try {
+        const result = await recordStockMovement(
           {
             product_id: item.product_id,
-            requested: item.quantity,
-            available: productTracking.stock_current,
-          }
+            type: 'sale',
+            qty: item.quantity,
+            related_sale_id: input.sale_id,
+            skip_audit: true,
+          },
+          tx
         );
+        // bigint en JS — String() para que sea JSON-serializable en payload.
+        stockMovementIds.push(String(result.movement.id));
+      } catch (e) {
+        // Mapeamos errores tipados de Inventory a errores del Sales context
+        // para preservar el contrato del service (callers ya esperan
+        // FiscalIntegrityError / NotFoundError, no OversellError directo).
+        if (e instanceof OversellError) {
+          throw new FiscalIntegrityError(
+            `Stock insuficiente para ${item.product_name_snapshot}`,
+            {
+              product_id: item.product_id,
+              requested: item.quantity,
+              available: e.available,
+            }
+          );
+        }
+        if (e instanceof ProductNotFoundForMovementError) {
+          throw new NotFoundError('Producto', item.product_id);
+        }
+        throw e;
       }
     }
 
@@ -568,6 +577,12 @@ export async function finalizeSale(rawInput: unknown): Promise<SaleWithItems> {
           customer_tax_condition_snapshot: sale.customer_tax_condition_snapshot,
           requires_fiscal: input.require_fiscal_invoice,
           initial_fiscal_status: initialFiscal,
+          // Sprint 5 Bloque 2: IDs de stock_movements creados durante este
+          // finalize. Permite al auditor cruzar `sale.completed` con
+          // `stock_movements` para reconstruir el flujo de stock. Mantiene
+          // J1 EVENT-TAXONOMY (Sales emite UN evento agregado, NO uno por
+          // movement). Movements son bigint → String() para JSON serializable.
+          stock_movement_ids: stockMovementIds,
         },
         pii_level: sale.customer_doc_number ? 'pii_low' : 'internal',
         severity: 'info',
