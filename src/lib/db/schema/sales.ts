@@ -7,6 +7,7 @@ import {
   boolean,
   check,
   index,
+  integer,
   numeric,
   pgTable,
   text,
@@ -39,6 +40,15 @@ export const sales = pgTable(
     cashier_user_id: uuid('cashier_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+
+    /**
+     * Sale point (caja) — número de caja física donde se hizo la venta.
+     * F0 default 1 para retail TDF (1 caja por comercio típicamente).
+     * Sprint 5 Bloque 3 (Sales↔Cash linkage): finalizeSale lookup
+     * cash_session activa por (tenant_id, sale_point) usando este campo.
+     * Migration 0009.
+     */
+    sale_point: integer('sale_point').notNull().default(1),
 
     commercial_status: text('commercial_status').notNull().default('draft'),
     fiscal_status: text('fiscal_status').notNull().default('not_required'),
@@ -92,6 +102,16 @@ export const sales = pgTable(
     cashSessionIdx: index('sales_cash_session_idx')
       .on(table.cash_session_id)
       .where(sql`${table.cash_session_id} IS NOT NULL`),
+    /**
+     * Index (tenant_id, sale_point, created_at) — queries típicas filtran
+     * por caja. Mismo patrón que tenantIdx pero con sale_point intermedio.
+     * Sprint 5 Bloque 3 (migration 0009).
+     */
+    saleTenantPointIdx: index('sales_tenant_sale_point_idx').on(
+      table.tenant_id,
+      table.sale_point,
+      table.created_at
+    ),
     commercialStatusCheck: check(
       'sales_commercial_status_check',
       sql`${table.commercial_status} IN (${sql.raw(COMMERCIAL_STATUSES.map((s) => `'${s}'`).join(','))})`
@@ -107,6 +127,14 @@ export const sales = pgTable(
     customerDocCheck: check(
       'sales_customer_doc_type_check',
       sql`${table.customer_doc_type} IN (${sql.raw(CUSTOMER_DOC_TYPES.map((d) => `'${d}'`).join(','))})`
+    ),
+    /**
+     * sale_point > 0 — mismo guard que cash_sessions_sale_point_positive
+     * (Sprint 4). Defense-in-depth contra updates erróneos a 0/negativo.
+     */
+    salePointPositiveCheck: check(
+      'sales_sale_point_positive',
+      sql`${table.sale_point} > 0`
     ),
   })
 );

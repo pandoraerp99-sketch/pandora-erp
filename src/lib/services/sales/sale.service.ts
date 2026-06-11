@@ -119,9 +119,29 @@ async function getSaleItemsInternal(
     .orderBy(sale_items.created_at);
 }
 
-export async function createDraftSale(cashierUserId: string): Promise<Sale> {
+/**
+ * Crea un draft de venta para `cashierUserId` en la caja `salePoint`.
+ *
+ * @param cashierUserId — usuario operador de la venta
+ * @param salePoint — caja donde se hace la venta (default 1, retail TDF típico).
+ *   F1+ trigger: cuando comerciante tenga 2+ cajas y POS UI requiera selección
+ *   per-cajero al login. F0 acepta opcional para flexibilidad pero default 1.
+ */
+export async function createDraftSale(
+  cashierUserId: string,
+  salePoint: number = 1
+): Promise<Sale> {
   const tenantId = requireTenantId();
   const correlationId = getCurrentCorrelationId() ?? generateCorrelationId();
+
+  // Validación defense-in-depth: el CHECK constraint sales_sale_point_positive
+  // también rechaza pero acá fallamos antes con error claro.
+  if (!Number.isInteger(salePoint) || salePoint <= 0) {
+    throw new ValidationError(
+      `salePoint debe ser entero positivo (recibido ${salePoint})`,
+      { sale_point: 'INVALID' }
+    );
+  }
 
   const [created] = await db
     .insert(sales)
@@ -129,6 +149,7 @@ export async function createDraftSale(cashierUserId: string): Promise<Sale> {
       tenant_id: tenantId,
       correlation_id: correlationId,
       cashier_user_id: cashierUserId,
+      sale_point: salePoint,
       commercial_status: 'draft',
       fiscal_status: 'not_required',
     })
@@ -141,7 +162,7 @@ export async function createDraftSale(cashierUserId: string): Promise<Sale> {
   // sale.draft.* lifecycle NO va a audit_log (EVENT-TAXONOMY §5 "Lo que NO va").
   // El evento auditable es sale.completed al finalizar — incluye toda la info.
   logger.debug(
-    { sale_id: created.id, cashier_user_id: cashierUserId },
+    { sale_id: created.id, cashier_user_id: cashierUserId, sale_point: salePoint },
     'sale.draft.created'
   );
   return created;
