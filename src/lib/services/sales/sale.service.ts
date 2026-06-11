@@ -37,6 +37,7 @@ import { cash_sessions } from '../../db/schema/cash_sessions.js';
 import {
   recordStockMovement,
   OversellError,
+  ProductInactiveError,
   ProductNotFoundForMovementError,
 } from '../../inventory/index.js';
 import {
@@ -436,7 +437,13 @@ export async function setSaleCustomer(rawInput: unknown): Promise<Sale> {
   const sale = await getSaleByIdInternal(tenantId, input.sale_id);
   if (!sale) throw new NotFoundError('Venta', input.sale_id);
 
-  if (sale.commercial_status === 'terminada' || sale.commercial_status === 'cancelada') {
+  // Sprint 5 Bloque 4 (advisor 2026-06-04): customer_snapshot inmutable
+  // post-finalize. El guard original bloqueaba terminada/cancelada pero
+  // NO cobrada — bug: después de finalizeSale, sale.commercial_status='cobrada'
+  // y sale.customer_*_snapshot YA está congelado en el audit sale.completed +
+  // en el ticket impreso. Modificarlo tarde violaría la inmutabilidad fiscal.
+  // Solo permitimos setCustomer durante draft / in_progress / cobrando.
+  if (!['draft', 'in_progress', 'cobrando'].includes(sale.commercial_status)) {
     throw new StateTransitionError(
       'sale.set_customer',
       sale.commercial_status,
@@ -580,6 +587,22 @@ export async function finalizeSale(rawInput: unknown): Promise<SaleWithItems> {
         }
         if (e instanceof ProductNotFoundForMovementError) {
           throw new NotFoundError('Producto', item.product_id);
+        }
+        // Sprint 5 Bloque 4 (advisor 2026-06-04): race window — el producto
+        // puede haberse desactivado entre addItemToSale (que filtra
+        // is_active=true) y finalizeSale. recordStockMovement detecta la
+        // desactivación en su SELECT FOR UPDATE y throws ProductInactiveError.
+        // Mapeo a FiscalIntegrityError para preservar contrato del Sales
+        // context (mismo patrón que OversellError).
+        if (e instanceof ProductInactiveError) {
+          throw new FiscalIntegrityError(
+            `Producto "${item.product_name_snapshot}" fue desactivado entre el alta del item y el cobro. ` +
+              `Reactivá el producto o quitalo de la venta para finalizarla.`,
+            {
+              product_id: item.product_id,
+              product_name: item.product_name_snapshot,
+            }
+          );
         }
         throw e;
       }
