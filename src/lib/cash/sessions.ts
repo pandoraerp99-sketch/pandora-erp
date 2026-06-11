@@ -36,6 +36,8 @@ import {
   type CashSession,
   type NewCashSession,
 } from '../db/schema/cash_sessions.js';
+import { cash_movements } from '../db/schema/cash_movements.js';
+import { sale_payments } from '../db/schema/sale_payments.js';
 import { DESCUADRE_HIGH_THRESHOLD_ARS } from '../db/schema/_common.js';
 import { requireTracingContext } from '../tracing/context.js';
 import type { TracingContext } from '../tracing/context.js';
@@ -108,8 +110,23 @@ export interface CloseSessionInput {
   session_id: string;
   /** Cuánto contó físicamente el cajero al cerrar. */
   counted_amount: string | number;
-  /** Cuánto debería haber según la cuenta (F0: el cajero la hace). */
-  expected_amount: string | number;
+  /**
+   * Cuánto debería haber según la cuenta.
+   *
+   * **Sprint 5 Bloque 3 (2026-06-09): opcional**. Si no se pasa, el service
+   * computa automáticamente desde:
+   *
+   *   initial_amount
+   *   + Σ sale_payments.amount WHERE cash_session_id=X AND method='efectivo'
+   *   + Σ cash_movements.amount WHERE type='deposit'
+   *   - Σ cash_movements.amount WHERE type='withdraw'
+   *   - Σ cash_movements.amount WHERE type='provider_payment'
+   *
+   * El caller puede pasar override para forzar un valor manual (ej: cuando
+   * el cajero reconoce diferencias contables que el sistema no ve, o para
+   * casos legacy donde el flow Sales no se está usando).
+   */
+  expected_amount?: string | number;
   /** Motivo del descuadre. OBLIGATORIO si counted != expected. */
   discrepancy_reason?: string;
 }
@@ -321,6 +338,17 @@ export function prepareCloseSessionUpdate(
   }
 
   const final_amount = normalizeCashAmount(input.counted_amount, 'counted_amount');
+  // Sprint 5 Bloque 3 (2026-06-09): expected_amount es opcional en
+  // CloseSessionInput. El wrapper `closeCashSession` lo resuelve antes de
+  // llamar a este pure helper (auto-compute desde sale_payments +
+  // cash_movements si el caller no lo pasa). Si llega undefined acá es
+  // bug del caller — guard explícito.
+  if (input.expected_amount === undefined) {
+    throw new CashValidationError(
+      'invalid_expected_amount',
+      'prepareCloseSessionUpdate: expected_amount debe estar resuelto antes de invocar este helper (responsabilidad del wrapper closeCashSession).'
+    );
+  }
   const expected_amount = normalizeCashAmount(input.expected_amount, 'expected_amount');
   const descuadre = computeDescuadre(final_amount, expected_amount);
   const descuadre_sign = classifyDescuadreSign(descuadre);
@@ -491,9 +519,23 @@ export async function closeCashSession(
       throw new SessionNotFoundError(input.session_id);
     }
 
+    // Sprint 5 Bloque 3 (2026-06-09): si caller no pasa expected_amount,
+    // auto-compute desde sale_payments (efectivo) + cash_movements del session.
+    // Esto integra el flow Sales↔Cash: el cajero solo cuenta físicamente
+    // (counted_amount), el sistema computa lo esperado.
+    const resolvedExpectedAmount =
+      input.expected_amount !== undefined
+        ? input.expected_amount
+        : await computeExpectedAmountFromActivity(
+            tx,
+            session.id,
+            session.tenant_id,
+            session.initial_amount
+          );
+
     const { update, descuadre_sign, severity_label } = prepareCloseSessionUpdate(
       session,
-      input,
+      { ...input, expected_amount: resolvedExpectedAmount },
       ctx
     );
 
@@ -627,6 +669,82 @@ export async function getCashSessionById(
 }
 
 // ──── Helper interno ───────────────────────────────────────────
+
+/**
+ * Sprint 5 Bloque 3 — auto-compute de `expected_amount` desde la actividad
+ * de la session (sale_payments efectivo + cash_movements).
+ *
+ * Fórmula:
+ *   expected = initial
+ *            + Σ sale_payments.amount WHERE cash_session_id=X AND method='efectivo'
+ *            + Σ cash_movements.amount WHERE cash_session_id=X AND type='deposit'
+ *            - Σ cash_movements.amount WHERE cash_session_id=X AND type='withdraw'
+ *            - Σ cash_movements.amount WHERE cash_session_id=X AND type='provider_payment'
+ *
+ * Escala entera 10000 (mismo patrón computeDescuadre + computeMovementTotals)
+ * para evitar float drift acumulado.
+ *
+ * **F0:** queries simples SUM por scope (session). Performance OK para retail
+ * (decenas-centenas de payments/movements por session). F1+ trigger: rollup
+ * incremental si una session acumula > 1000 rows.
+ */
+async function computeExpectedAmountFromActivity(
+  tx: DbOrTransaction,
+  session_id: string,
+  tenant_id: string,
+  initial_amount: string
+): Promise<string> {
+  const SCALE = 10000;
+  const initialInt = Math.round(parseFloat(initial_amount) * SCALE);
+  if (!Number.isFinite(initialInt)) {
+    throw new CashValidationError(
+      'invalid_expected_amount',
+      `computeExpectedAmountFromActivity: initial_amount no parseable "${initial_amount}"`
+    );
+  }
+
+  // SUM sale_payments con method=efectivo (otros methods no afectan caja).
+  // tenant_id filter es defense-in-depth (cash_session_id ya es por scope).
+  const cashSaleRows = await tx
+    .select({
+      total: sql<string>`COALESCE(SUM(${sale_payments.amount}), 0)`,
+    })
+    .from(sale_payments)
+    .where(
+      and(
+        eq(sale_payments.tenant_id, tenant_id),
+        eq(sale_payments.cash_session_id, session_id),
+        eq(sale_payments.method, 'efectivo')
+      )
+    );
+  const cashSalesInt = Math.round(parseFloat(cashSaleRows[0]?.total ?? '0') * SCALE);
+
+  // SUM cash_movements agrupado por type. 1 query con GROUP BY (3 rows max).
+  const movementRows = await tx
+    .select({
+      type: cash_movements.type,
+      total: sql<string>`COALESCE(SUM(${cash_movements.amount}), 0)`,
+    })
+    .from(cash_movements)
+    .where(eq(cash_movements.cash_session_id, session_id))
+    .groupBy(cash_movements.type);
+
+  let depositsInt = 0;
+  let withdrawsInt = 0;
+  let providerPaymentsInt = 0;
+  for (const row of movementRows) {
+    const amountInt = Math.round(parseFloat(row.total) * SCALE);
+    if (!Number.isFinite(amountInt)) continue;
+    if (row.type === 'deposit') depositsInt = amountInt;
+    else if (row.type === 'withdraw') withdrawsInt = amountInt;
+    else if (row.type === 'provider_payment') providerPaymentsInt = amountInt;
+    // type fuera del enum: ignorado (CHECK constraint debería prevenirlo).
+  }
+
+  const expectedInt =
+    initialInt + cashSalesInt + depositsInt - withdrawsInt - providerPaymentsInt;
+  return (expectedInt / SCALE).toFixed(4);
+}
 
 /**
  * Extrae el código Postgres del error envuelto por Drizzle.
