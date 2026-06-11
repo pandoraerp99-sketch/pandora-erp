@@ -151,10 +151,12 @@ describe('T-SALES-01 — finalizeSale + stock_movements integration', () => {
     );
 
     // ── finalize ──
+    // Sprint 5 Bloque 3: payments array reemplaza payment_method.
+    // qty=3 * unit_price=100 * (1+0.21 IVA) = 363.0000
     const result = await withCtx(tenantId, userId, () =>
       finalizeSale({
         sale_id: sale.id,
-        payment_method: 'efectivo',
+        payments: [{ method: 'efectivo', amount: '363.0000' }],
         require_fiscal_invoice: false,
       })
     );
@@ -243,11 +245,12 @@ describe('T-SALES-01 — finalizeSale + stock_movements integration', () => {
 
     // Lanzar ambos finalize en paralelo. Promise.allSettled — sabemos que uno
     // va a rechazar por stock insuficiente.
+    // Sprint 5 Bloque 3: payments array. qty=1 * 100 * 1.21 = 121.0000
     const finalize = (saleId: string) =>
       withCtx(tenantId, userId, () =>
         finalizeSale({
           sale_id: saleId,
-          payment_method: 'efectivo',
+          payments: [{ method: 'efectivo', amount: '121.0000' }],
           require_fiscal_invoice: false,
         })
       );
@@ -338,12 +341,13 @@ describe('T-SALES-01 — finalizeSale + stock_movements integration', () => {
       );
 
       // Tenant B intenta finalizar — debe rechazar (NotFoundError)
+      // Sprint 5 Bloque 3: payments array. qty=1 * 100 * 1.21 = 121.0000
       let caught: unknown;
       try {
         await withCtx(tenantBId, userBId, () =>
           finalizeSale({
             sale_id: sale.id,
-            payment_method: 'efectivo',
+            payments: [{ method: 'efectivo', amount: '121.0000' }],
             require_fiscal_invoice: false,
           })
         );

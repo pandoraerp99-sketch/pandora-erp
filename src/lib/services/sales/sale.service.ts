@@ -23,7 +23,7 @@
  *     Son lifecycle interno operativo, no auditable. La info final del cliente
  *     y los items quedan en el payload de sale.completed.
  */
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import type { ZodType } from 'zod';
 import { db } from '../../db/client.js';
 import {
@@ -32,6 +32,8 @@ import {
 } from '../../db/schema/_common.js';
 import { products, type UnitType } from '../../db/schema/products.js';
 import { sale_items, sales, type Sale, type SaleItem } from '../../db/schema/sales.js';
+import { sale_payments } from '../../db/schema/sale_payments.js';
+import { cash_sessions } from '../../db/schema/cash_sessions.js';
 import {
   recordStockMovement,
   OversellError,
@@ -69,6 +71,8 @@ import {
   type AddItemInput,
   type CancelSaleInput,
   type FinalizeSaleInput,
+  type LegacyPaymentMethod,
+  type PaymentItem,
   type RemoveItemInput,
   type SetCustomerInput,
   type UpdateItemQuantityInput,
@@ -117,6 +121,44 @@ async function getSaleItemsInternal(
     .from(sale_items)
     .where(and(eq(sale_items.tenant_id, tenantId), eq(sale_items.sale_id, saleId)))
     .orderBy(sale_items.created_at);
+}
+
+/**
+ * Sprint 5 Bloque 3 — denormalización de payments para `sales.payment_method`.
+ *
+ * - 1 method único en payments → ese method (efectivo|tarjeta|mp_qr)
+ * - 2+ methods distintos → 'mixto'
+ *
+ * El detalle granular vive en sale_payments (1 row por payment). Este campo
+ * existe para queries simples (dashboard "ventas por método de pago") sin
+ * JOIN obligatorio.
+ */
+function computeDenormalizedPaymentMethod(
+  payments: ReadonlyArray<Pick<PaymentItem, 'method'>>
+): LegacyPaymentMethod {
+  const uniqueMethods = new Set(payments.map((p) => p.method));
+  if (uniqueMethods.size === 1) {
+    // El único es 'efectivo' | 'tarjeta' | 'mp_qr' — todos son miembros de
+    // PAYMENT_METHODS también (PAYMENT_METHODS = SALE_PAYMENT_METHODS + 'mixto').
+    return payments[0]!.method;
+  }
+  return 'mixto';
+}
+
+/**
+ * Sprint 5 Bloque 3 — payment_breakdown denormalizado JSON-compact.
+ *
+ * Sirve para reportes rápidos sin JOIN a sale_payments. Cap a 500 chars
+ * (constraint column). Para multi-pago típico (1-3 items) cabe sin truncar;
+ * si supera 500 chars, trunca con '...' suffix — el JSON queda inválido
+ * pero el dato granular fiel sigue en sale_payments.
+ */
+function buildPaymentBreakdown(
+  payments: ReadonlyArray<Pick<PaymentItem, 'method' | 'amount'>>
+): string {
+  const compact = payments.map((p) => ({ m: p.method, a: p.amount }));
+  const json = JSON.stringify(compact);
+  return json.length > 500 ? json.slice(0, 497) + '...' : json;
 }
 
 /**
@@ -543,6 +585,60 @@ export async function finalizeSale(rawInput: unknown): Promise<SaleWithItems> {
       }
     }
 
+    // ─── Sprint 5 Bloque 3 — Sales↔Cash linkage ─────────────────────
+    // Si hay payment efectivo Y existe cash_session activa para
+    // (tenant, sale.sale_point), linkeamos cash_session_id. Si no hay
+    // session activa, la venta finaliza igual con cash_session_id=null.
+    // F1+ trigger: requerir cash_session abierta para aceptar efectivo
+    // (más estricto contable, decisión owner cuando comerciante real
+    // empiece a operar disciplina de caja diaria).
+    let linkedCashSessionId: string | null = null;
+    const hasCashPayment = input.payments.some((p) => p.method === 'efectivo');
+    if (hasCashPayment) {
+      const activeRows = await tx
+        .select({ id: cash_sessions.id })
+        .from(cash_sessions)
+        .where(
+          and(
+            eq(cash_sessions.tenant_id, tenantId),
+            eq(cash_sessions.sale_point, sale.sale_point),
+            isNull(cash_sessions.closed_at)
+          )
+        )
+        .limit(1);
+      if (activeRows[0]) {
+        linkedCashSessionId = activeRows[0].id;
+      }
+    }
+
+    // ─── INSERT sale_payments (1 row por payment) ───────────────────
+    // Granular per-method. Solo rows con method='efectivo' linkean
+    // cash_session_id (tarjeta + mp_qr van por otros canales).
+    const insertedPayments = await tx
+      .insert(sale_payments)
+      .values(
+        input.payments.map((p) => ({
+          tenant_id: tenantId,
+          sale_id: input.sale_id,
+          method: p.method,
+          amount: p.amount,
+          cash_session_id:
+            p.method === 'efectivo' ? linkedCashSessionId : null,
+          mp_payment_external_id: p.mp_payment_external_id ?? null,
+        }))
+      )
+      .returning({
+        id: sale_payments.id,
+        method: sale_payments.method,
+        amount: sale_payments.amount,
+      });
+
+    // ─── Denormalización para sales.payment_* (queries simples) ─────
+    const denormalizedPaymentMethod = computeDenormalizedPaymentMethod(
+      input.payments
+    );
+    const denormalizedPaymentBreakdown = buildPaymentBreakdown(input.payments);
+
     await tx
       .update(sales)
       .set({
@@ -552,8 +648,9 @@ export async function finalizeSale(rawInput: unknown): Promise<SaleWithItems> {
         tax_amount: totals.tax_amount,
         exempt_amount: totals.exempt_amount,
         total: totals.total,
-        payment_method: input.payment_method,
-        payment_breakdown: input.payment_breakdown,
+        payment_method: denormalizedPaymentMethod,
+        payment_breakdown: denormalizedPaymentBreakdown,
+        cash_session_id: linkedCashSessionId,
         finalized_at: new Date(),
         updated_at: new Date(),
       })
@@ -590,8 +687,19 @@ export async function finalizeSale(rawInput: unknown): Promise<SaleWithItems> {
           tax_policy_version: totals.tax_policy_version,
           rounding_mode: totals.rounding_mode,
           rounding_stage: totals.rounding_stage,
-          payment_method: input.payment_method,
-          payment_breakdown: input.payment_breakdown,
+          payment_method: denormalizedPaymentMethod,
+          payment_breakdown: denormalizedPaymentBreakdown,
+          // Sprint 5 Bloque 3: payments granulares en payload del audit.
+          // Permite al auditor reconstruir el flujo de pagos sin JOIN a
+          // sale_payments. Movements + payments + items son los 3 arrays
+          // canónicos en sale.completed payload.
+          payments: input.payments.map((p) => ({
+            method: p.method,
+            amount: p.amount,
+            mp_payment_external_id: p.mp_payment_external_id ?? null,
+          })),
+          sale_payment_ids: insertedPayments.map((sp) => sp.id),
+          cash_session_id: linkedCashSessionId,
           customer_doc_type: sale.customer_doc_type,
           customer_doc_number: sale.customer_doc_number,
           customer_name_snapshot: sale.customer_name_snapshot,
@@ -616,7 +724,10 @@ export async function finalizeSale(rawInput: unknown): Promise<SaleWithItems> {
     {
       sale_id: input.sale_id,
       total: totals.total,
-      payment_method: input.payment_method,
+      // Sprint 5 Bloque 3: log con cantidad de payments + methods únicos.
+      // Detalle granular en el audit sale.completed; logs son operativos.
+      payment_count: input.payments.length,
+      payment_methods: Array.from(new Set(input.payments.map((p) => p.method))),
       requires_fiscal: input.require_fiscal_invoice,
     },
     'sale.completed'
