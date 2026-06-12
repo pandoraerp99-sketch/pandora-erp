@@ -18,3 +18,5 @@ export * from './cash_sessions.js';
 export * from './cash_movements.js';
 export * from './sale_payments.js';
 export * from './mp_payments.js';
+export * from './padron_a5_cache.js';
+export * from './wsaa_tokens.js';
