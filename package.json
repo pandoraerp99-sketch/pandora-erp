@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:cross-tenant": "vitest run tests/cross-tenant",
+    "test:cross-tenant": "vitest run --config vitest.integration.config.ts tests/cross-tenant",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",

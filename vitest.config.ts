@@ -6,7 +6,7 @@ export default defineConfig({
     globals: false,
     environment: 'node',
     setupFiles: ['./tests/setup.ts'],
-    exclude: ['node_modules/**', 'tests/integration/**'],
+    exclude: ['node_modules/**', 'tests/integration/**', 'tests/cross-tenant/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

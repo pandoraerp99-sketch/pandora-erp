@@ -23,7 +23,7 @@ export default defineConfig({
     globals: false,
     environment: 'node',
     setupFiles: ['./tests/integration/setup.ts'],
-    include: ['tests/integration/**/*.test.ts'],
+    include: ['tests/integration/**/*.test.ts', 'tests/cross-tenant/**/*.test.ts'],
     exclude: ['tests/unit/**', 'node_modules/**'],
     testTimeout: 15_000,
     hookTimeout: 30_000,
