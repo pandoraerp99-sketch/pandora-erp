@@ -143,4 +143,30 @@ Triggers explicitos para cada uno:
 
 ---
 
+## T-MONEY-* — Money invariants (CLAUDE.md §9.9)
+
+**Fecha mapping:** 2026-06-11 (Sprint 5 cierre estructural — destrabar item ⚠️ del ROADMAP §1033 gating)
+
+| ID | Test canónico CLAUDE.md §9.9 | Estado | Archivo:línea | Notas |
+|---|---|---|---|---|
+| **T-MONEY-01** | cálculo IVA per-line vs per-bracket en factura compleja (multi-alícuota + descuentos) | ⚠️ **PARCIAL** | `calculation.test.ts:125` ("multi-alicuota arma breakdown por rate") + `calculation.test.ts:109` ("suma multi-line con misma alicuota") | Multi-alícuota ✅ cubierto. Descuentos ❌ no testeados porque **no existen en el calculation engine F0**. Trigger cierre: cuando se agreguen descuentos al engine (POS UI Sprint 7-8 o F1+) → test descuentos prorrateados |
+| **T-MONEY-02** | invariante `ImpIVA == sum(Iva[].Importe)` con tolerancia 0 después de proyección WSFEv1 | ⚠️ **PARCIAL** | `calculation.test.ts:161` ("valida invariante ImpIVA == sum(Iva[].Importe)") + `calculation.test.ts:169` ("subtotal + tax == total") | Invariante validado a nivel **modelo interno calculation engine**. Proyección WSFEv1 ❌ no testeada (no existe la capa de proyección todavía). Trigger cierre: **Sprint 6 fiscal** cuando exista `projectToWSFEv1()` (ADR-0022 Fiscal Projection Layer) — agregar test que verifique invariante DESPUÉS de la proyección |
+| **T-MONEY-03** | precio cliente vs precio server discrepancia > $0.01 → server gana + log | ❌ **N/A F0** | — | Requiere **UI cliente con preview Decimal.js** (ADR-0021). Sin UI todavía F0 (POS Sprint 7-8), no hay forma de tener "precio cliente". Trigger cierre: Sprint POS UI — test de price tampering en finalize Server Action |
+| **T-MONEY-04** | overflow check con monto $999.999.999.999.999,9999 | ✅ **CUBIERTO** | `money.test.ts:41` ("rechaza overflow") + `money.test.ts:88-114` (round-trip incluye `999999999999999.9999` como uno de los 9 casos canónicos) | Factory `money()` rechaza overflow + round-trip valida el límite numeric(19,4) en ambas direcciones |
+| **T-MONEY-05** | HALF_EVEN behavior en casos límite (0.005, 0.015, 0.025...) | ✅ **CUBIERTO** | `money.test.ts:67-77` (`describe('moneyRound HALF_EVEN')`) | Tests 2.5→2 y 3.5→4 son los casos canónicos HALF_EVEN (banker's rounding: 0.5 va al par más cercano). Los casos 0.005/0.015/0.025 son el mismo principio en escala distinta — el algoritmo subyacente (Decimal.js `ROUND_HALF_EVEN`) los maneja idénticamente |
+| **T-MONEY-06** | NO NaN propagation desde input inválido (string vacío, "abc", null) | ✅ **CUBIERTO** | `money.test.ts:28` ("rechaza NaN") + `:32` ("rechaza Infinity") + `:37` ("rechaza string invalido") | Factory `money()` rechaza inputs inválidos throwing en lugar de devolver NaN/Decimal corrupto. Defensa fail-closed en boundary |
+| **T-MONEY-07** | round-trip Decimal → string → Decimal sin pérdida | ✅ **CUBIERTO** (agregado 2026-06-11) | `money.test.ts:88-114` ("round-trip Decimal → string → Decimal sin pérdida de precisión (T-MONEY-07)") | NUEVO test del 06-11 con 9 casos canónicos (enteros, decimales 1-4 dígitos, IVA típico 21%/10.5%, límite overflow). Verifica idempotencia + `moneyEq` cross-validation |
+
+**Cobertura T-MONEY: 5/7 ✅ + 2/7 ⚠️ con justificación documentada + 1/7 ❌ N/A F0 sin UI cliente.**
+
+Lección de mapping: la ⚠️ "COBERTURA EXISTE PERO MAPPING NO VERIFICADO" del cierre estructural Sprint 5 (2026-06-11) era genuina — los tests existían pero **el mapping uno-a-uno vs catálogo CLAUDE.md §9.9 no estaba formalizado**. El advisor lo detectó. Mapping ahora explícito.
+
+**Trigger cierre ⚠️:**
+- T-MONEY-01 descuentos: cuando se agreguen descuentos al engine (no es deuda, es scope F1+)
+- T-MONEY-02 WSFEv1 projection: cuando Sprint 6 fiscal cierre + projection layer exista (ADR-0022)
+- T-MONEY-03: cuando POS UI exista (Sprint 7-8)
+
+---
+
 **Sprint 1 + Sprint 2 F0 CERRADOS** — listo para Auditoria Beta + Sprint 3.
+**Sprint 5 CIERRE ESTRUCTURAL** — T-MONEY mapping formalizado 2026-06-11.

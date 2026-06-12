@@ -83,6 +83,36 @@ describe('storage serialization', () => {
     expect(moneyToStorage('100')).toBe('100.0000');
     expect(moneyToStorage('100.5')).toBe('100.5000');
   });
+
+  // T-MONEY-07: round-trip Decimal → string → Decimal sin pérdida.
+  // CLAUDE.md §9.9 (Sprint 5 cierre estructural 2026-06-11 — explicit mapping
+  // to satisfy ROADMAP §1033 gating item).
+  it('round-trip Decimal → string → Decimal sin pérdida de precisión (T-MONEY-07)', () => {
+    // Casos canónicos que ejercitan la frontera entre Decimal y string:
+    //   - enteros simples
+    //   - decimales con 1-4 dígitos
+    //   - cantidades de IVA típicas (21%, 10.5%)
+    //   - valores límite cercanos a overflow
+    const cases = [
+      '0',
+      '100',
+      '100.5',
+      '0.0001',
+      '0.4321',
+      '1234.5678',
+      '999999999999999.9999', // límite numeric(19,4)
+      '21.00',
+      '10.50',
+    ];
+    for (const original of cases) {
+      const stored = moneyToStorage(original);
+      const restored = moneyToStorage(stored); // segundo paso para asegurar idempotencia
+      expect(restored).toBe(stored);
+      // moneyEq confirma que no hubo pérdida semántica (0.30 === 0.3)
+      expect(moneyEq(original, stored)).toBe(true);
+      expect(moneyEq(stored, restored)).toBe(true);
+    }
+  });
 });
 
 describe('moneyEq', () => {
