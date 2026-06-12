@@ -179,12 +179,22 @@ Lección de mapping: la ⚠️ "COBERTURA EXISTE PERO MAPPING NO VERIFICADO" del
 | **T-MT-01** | cross-tenant SELECT bloqueado por RLS | ✅ **CUBIERTO** | `tests/cross-tenant/T-MT-01-select-rls.test.ts` (5 tests) | T1.1+T1.2 user solo ve sales de su tenant. T1.3 SELECT por ID ajeno → 0 rows silent. T1.4 cross-check privileged confirma todos existen. T1.5 COUNT(*) respeta RLS (no bypass por agregación). |
 | **T-MT-02** | cross-tenant UPDATE bloqueado por RLS + service | ✅ **CUBIERTO (DB layer)** | `tests/cross-tenant/T-MT-02-update-rls.test.ts` (4 tests) | T2.1 UPDATE de row ajeno → 0 rows silent. T2.2 UPDATE row propio → 1 row OK. T2.3 INSERT con tenant_id ajeno → throw RLS WITH CHECK. T2.4 UPDATE WHERE tenant_id=B → 0 rows. Service layer (validation.ts) ya tenía cobertura indirecta via integration tests. |
 | **T-MT-03** | contador multi-empresa solo ve sus `company_ids` | ⏳ **PENDING** | — | Próxima sesión. Helper soporta `company_ids` array (smoke T1.4 + T1.6 lo validan). Test real: setup contador con array [A,B], verificar SELECT ve sales A+B pero NO C. |
-| **T-MT-04** | secreto de tenant A no accesible desde tenant B | ⏳ **PENDING** | — | Próxima sesión. Targets viables: `wsaa_tokens` (token+sign secrets) — verificar que user A no puede SELECT token de B. RLS aplicado en migration 0013 (mini-audit pre-Sprint 6). |
+| **T-MT-04** | secreto de tenant A no accesible desde tenant B | ⏳ **PENDING (MUST-DO próxima sesión — cierra deuda 0013 advisor catch)** | — | Targets obligatorios: `wsaa_tokens` (token+sign secrets PLAINTEXT cache-not-vault §11.8) Y `padron_a5_cache` (CUIT lookup hot path). RLS aplicado en migration 0013 (mini-audit advisor catch 2026-06-12). **El test T-MT-04 ES lo que cierra esa migration "applied-without-error" a "behaviorally-verified"** — mismo nivel de honestidad que el advisor exigió por la mañana cuando deferí el RLS en un comentario. Sin T-MT-04 dirigido a estas tablas, 0013 sigue en estado "asumido correcto porque aplicó", que es exactamente el patrón que esta audit existe para cazar. |
 | **T-MT-05** | numeración fiscal concurrente entre tenants sin colisión | ⏳ **PENDING** | — | Próxima sesión. `invoice_sequences` SELECT FOR UPDATE de tenant A no bloquea SELECT FOR UPDATE de tenant B → emisión paralela OK. RLS isolation + lock per-tenant. |
 | **T-MT-06** | realtime broadcast de tenant A NO llega a cliente de tenant B | 🟡 **N/A F0** | — | Supabase Realtime broadcasts NO implementados todavía. Trigger cierre: cuando Sprint 8+ implemente realtime publish via channels — agregar test que verifica canal por tenant + filtro client-side por `correlation_id`. |
 | **T-MT-07** | job de tenant A no procesa datos de tenant B (poison test) | ⏳ **PENDING** | — | Próxima sesión. `jobs_queue.tenant_id` existe + SKIP LOCKED ya testeado en Sprint 1. Test real: worker con tenant_id=A skipea jobs de B y los deja en cola. |
 
 **Cobertura T-MT actual: 2/7 ✅ + 4/7 ⏳ pendientes próximas sesiones + 1/7 🟡 N/A F0 (Realtime sin infra).**
+
+**⚠️ Aclaración crítica sobre lo que "T-MT-XX ✅ CUBIERTO" significa (advisor refinement 2026-06-12):**
+
+Estos tests prueban que las **policies RLS están correctamente escritas en la DB** (con role=authenticated, RLS aplica como se espera). **NO prueban que el runtime de la app bloquee cross-tenant via RLS** — el `db` client del repo conecta como role privileged que BYPASSA RLS por completo. RLS funciona en runtime sólo si la conexión es como `authenticated` (lo que hace el helper de test, o lo que haría una futura ruta Supabase-JWT per-request).
+
+CLAUDE.md §7.9 ("RLS + service") es defensa en profundidad de DOS capas:
+- **Capa 1 RLS Postgres**: tests T-MT-01/02 con `withRlsContext()` (este archivo, sección T-MT)
+- **Capa 2 service-side validation**: `src/lib/multi_tenant/validation.ts` — cubierta por integration tests (T-INV-08 cross-tenant, T-CASH-08 cross-tenant, etc.) que corren con `db` privileged y verifican que `validateTenantAccess()` tira `CrossTenantAccessError` cuando el `tenant_id` del recurso no matchea el del context.
+
+En runtime productivo F0, **la protección efectiva es capa 2** (porque el `db` client es privileged). RLS es backstop dormant — sólo bite si en el futuro se introduce una ruta Supabase-JWT per-request o si capa 2 tiene bug. Documentar esto evita que un reader del COVERAGE-MATRIX concluya "RLS me cubre runtime" — no, capa 2 lo cubre. Mismo bar de honestidad que el relabel "per-tenant coexistence (NOT RLS isolation)" en T-PADRON-01.4 + T-WSAA-01.6.
 
 **Lección de mapping (advisor catch 2026-06-12):**
 
