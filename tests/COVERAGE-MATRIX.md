@@ -179,12 +179,12 @@ Lección de mapping: la ⚠️ "COBERTURA EXISTE PERO MAPPING NO VERIFICADO" del
 | **T-MT-01** | cross-tenant SELECT bloqueado por RLS | ✅ **CUBIERTO** | `tests/cross-tenant/T-MT-01-select-rls.test.ts` (5 tests) | T1.1+T1.2 user solo ve sales de su tenant. T1.3 SELECT por ID ajeno → 0 rows silent. T1.4 cross-check privileged confirma todos existen. T1.5 COUNT(*) respeta RLS (no bypass por agregación). |
 | **T-MT-02** | cross-tenant UPDATE bloqueado por RLS + service | ✅ **CUBIERTO (DB layer)** | `tests/cross-tenant/T-MT-02-update-rls.test.ts` (4 tests) | T2.1 UPDATE de row ajeno → 0 rows silent. T2.2 UPDATE row propio → 1 row OK. T2.3 INSERT con tenant_id ajeno → throw RLS WITH CHECK. T2.4 UPDATE WHERE tenant_id=B → 0 rows. Service layer (validation.ts) ya tenía cobertura indirecta via integration tests. |
 | **T-MT-03** | contador multi-empresa solo ve sus `company_ids` | ⏳ **PENDING** | — | Próxima sesión. Helper soporta `company_ids` array (smoke T1.4 + T1.6 lo validan). Test real: setup contador con array [A,B], verificar SELECT ve sales A+B pero NO C. |
-| **T-MT-04** | secreto de tenant A no accesible desde tenant B | ⏳ **PENDING (MUST-DO próxima sesión — cierra deuda 0013 advisor catch)** | — | Targets obligatorios: `wsaa_tokens` (token+sign secrets PLAINTEXT cache-not-vault §11.8) Y `padron_a5_cache` (CUIT lookup hot path). RLS aplicado en migration 0013 (mini-audit advisor catch 2026-06-12). **El test T-MT-04 ES lo que cierra esa migration "applied-without-error" a "behaviorally-verified"** — mismo nivel de honestidad que el advisor exigió por la mañana cuando deferí el RLS en un comentario. Sin T-MT-04 dirigido a estas tablas, 0013 sigue en estado "asumido correcto porque aplicó", que es exactamente el patrón que esta audit existe para cazar. |
+| **T-MT-04** | secreto de tenant A no accesible desde tenant B | ✅ **CUBIERTO** | `tests/cross-tenant/T-MT-04-secrets-isolation.test.ts` (7 tests) | Cierra deuda migration 0013 (advisor catch 2026-06-12). T4.1+T4.2 SELECT desde A solo ve `padron_a5_cache` + `wsaa_tokens` de A (NO secrets plaintext de B). T4.3+T4.5 UPDATE foreign row → 0 rows (secrets B intactos). T4.4+T4.6 INSERT con `tenant_id=B` desde A → throw RLS WITH CHECK. T4.7 CUIT compartido — UNIQUE permite coexistencia + RLS aisla. Migration 0013 ahora pasa de "applied-without-error" a "behaviorally-verified". |
 | **T-MT-05** | numeración fiscal concurrente entre tenants sin colisión | ⏳ **PENDING** | — | Próxima sesión. `invoice_sequences` SELECT FOR UPDATE de tenant A no bloquea SELECT FOR UPDATE de tenant B → emisión paralela OK. RLS isolation + lock per-tenant. |
 | **T-MT-06** | realtime broadcast de tenant A NO llega a cliente de tenant B | 🟡 **N/A F0** | — | Supabase Realtime broadcasts NO implementados todavía. Trigger cierre: cuando Sprint 8+ implemente realtime publish via channels — agregar test que verifica canal por tenant + filtro client-side por `correlation_id`. |
 | **T-MT-07** | job de tenant A no procesa datos de tenant B (poison test) | ⏳ **PENDING** | — | Próxima sesión. `jobs_queue.tenant_id` existe + SKIP LOCKED ya testeado en Sprint 1. Test real: worker con tenant_id=A skipea jobs de B y los deja en cola. |
 
-**Cobertura T-MT actual: 2/7 ✅ + 4/7 ⏳ pendientes próximas sesiones + 1/7 🟡 N/A F0 (Realtime sin infra).**
+**Cobertura T-MT actual: 3/7 ✅ + 3/7 ⏳ pendientes próximas sesiones + 1/7 🟡 N/A F0 (Realtime sin infra).**
 
 **⚠️ Aclaración crítica sobre lo que "T-MT-XX ✅ CUBIERTO" significa (advisor refinement 2026-06-12):**
 
@@ -201,7 +201,7 @@ En runtime productivo F0, **la protección efectiva es capa 2** (porque el `db` 
 Los tests integration etiquetados "cross-tenant" hasta hoy (T-INV-08, T-CASH-08, T-PADRON-01.4, T-WSAA-01.6) corrían con el `db` client privileged → **NO testeaban RLS isolation real**, sino UNIQUE constraints scoped per-tenant + service layer behavior. Útiles, pero NO satisfacen CLAUDE.md §7.9. El gap sistémico vivió silente desde Sprint 0 hasta hoy. Honesty fix aplicado: etiquetas describe/it de T-PADRON-01.4 + T-WSAA-01.6 renombradas a "per-tenant coexistence (NOT RLS isolation)". Tests REALES en `tests/cross-tenant/` con `withRlsContext()`.
 
 **Trigger cierre ⏳:**
-- T-MT-03 + T-MT-04 + T-MT-05 + T-MT-07: próximas 1-2 sesiones (~1.5-2h restante)
+- T-MT-03 + T-MT-05 + T-MT-07: próximas 1-2 sesiones (~1-1.5h restante)
 - T-MT-06: cuando Sprint 8+ implemente Realtime broadcasts
 
 ---
