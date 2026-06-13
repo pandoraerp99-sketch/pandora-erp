@@ -182,9 +182,9 @@ Lección de mapping: la ⚠️ "COBERTURA EXISTE PERO MAPPING NO VERIFICADO" del
 | **T-MT-04** | secreto de tenant A no accesible desde tenant B | ✅ **CUBIERTO** | `tests/cross-tenant/T-MT-04-secrets-isolation.test.ts` (7 tests) | Cierra deuda migration 0013 (advisor catch 2026-06-12). T4.1+T4.2 SELECT desde A solo ve `padron_a5_cache` + `wsaa_tokens` de A (NO secrets plaintext de B). T4.3+T4.5 UPDATE foreign row → 0 rows (secrets B intactos). T4.4+T4.6 INSERT con `tenant_id=B` desde A → throw RLS WITH CHECK. T4.7 CUIT compartido — UNIQUE permite coexistencia + RLS aisla. Migration 0013 ahora pasa de "applied-without-error" a "behaviorally-verified". |
 | **T-MT-05** | numeración fiscal concurrente entre tenants sin colisión | ✅ **CUBIERTO** | `tests/cross-tenant/T-MT-05-invoice-sequences-concurrent.test.ts` (3 tests) | T5.1+T5.2 dos `SELECT FOR UPDATE` paralelas coordinadas con Deferreds completan en <600ms (si los locks cross-tenant se bloquearan, habría timeout 10s) + ambos `next_number` avanzaron a 2 independiente. T5.3 RLS oculta sequence ajena (FOR UPDATE de B desde A → 0 rows silent). T5.4 cross-check privileged. Verifica ADR-0006 (lock por-row, no por-tabla) + ADR-0002 RLS sobre `invoice_sequences`. Intra-tenant T-CONC-01 (lock serialization mismo tenant) queda para Sprint 6 con numbering service real. |
 | **T-MT-06** | realtime broadcast de tenant A NO llega a cliente de tenant B | 🟡 **N/A F0** | — | Supabase Realtime broadcasts NO implementados todavía. Trigger cierre: cuando Sprint 8+ implemente realtime publish via channels — agregar test que verifica canal por tenant + filtro client-side por `correlation_id`. |
-| **T-MT-07** | job de tenant A no procesa datos de tenant B (poison test) | ⏳ **PENDING** | — | Próxima sesión. `jobs_queue.tenant_id` existe + SKIP LOCKED ya testeado en Sprint 1. Test real: worker con tenant_id=A skipea jobs de B y los deja en cola. |
+| **T-MT-07** | job de tenant A no procesa datos de tenant B (poison test) | ✅ **CUBIERTO** | `tests/cross-tenant/T-MT-07-jobs-queue-cross-tenant.test.ts` (4 tests) | T7.1 `enqueueJob` con `override_tenant_id` desde `actor_type='user'` → throw `CrossTenantAccessError` + verificación post-hecho NO se creó job en B (ataque vía enqueue bloqueado). T7.2 `actor_type='cron'` SÍ puede `override_tenant_id` (sistema cross-tenant by design). T7.3 `detectGenericPoison` detecta `tenant_id` vacío como `'missing_tenant_id'` (CLAUDE.md §13.5 trigger). T7.4 buzón multi-tenant: 2 jobs encolados (A y B) → `fetchNextJobWithLock` los devuelve con su `tenant_id` + payload intactos + 3er fetch cola vacía. **Defensa NO es RLS** sino service-side + poison (justificado en cabecera: `jobs_queue` corre privileged). |
 
-**Cobertura T-MT actual: 5/7 ✅ + 1/7 ⏳ pendiente próxima sesión + 1/7 🟡 N/A F0 (Realtime sin infra).**
+**Cobertura T-MT actual: 6/7 ✅ + 1/7 🟡 N/A F0 (Realtime sin infra).** Suite canónica CLAUDE.md §7.9 completa para F0.
 
 **⚠️ Aclaración crítica sobre lo que "T-MT-XX ✅ CUBIERTO" significa (advisor refinement 2026-06-12):**
 
@@ -201,8 +201,7 @@ En runtime productivo F0, **la protección efectiva es capa 2** (porque el `db` 
 Los tests integration etiquetados "cross-tenant" hasta hoy (T-INV-08, T-CASH-08, T-PADRON-01.4, T-WSAA-01.6) corrían con el `db` client privileged → **NO testeaban RLS isolation real**, sino UNIQUE constraints scoped per-tenant + service layer behavior. Útiles, pero NO satisfacen CLAUDE.md §7.9. El gap sistémico vivió silente desde Sprint 0 hasta hoy. Honesty fix aplicado: etiquetas describe/it de T-PADRON-01.4 + T-WSAA-01.6 renombradas a "per-tenant coexistence (NOT RLS isolation)". Tests REALES en `tests/cross-tenant/` con `withRlsContext()`.
 
 **Trigger cierre ⏳:**
-- T-MT-07: próxima sesión (~20-30min restante)
-- T-MT-06: cuando Sprint 8+ implemente Realtime broadcasts
+- T-MT-06: cuando Sprint 8+ implemente Realtime broadcasts (único pendiente del bloque canónico, F1+)
 
 ---
 
