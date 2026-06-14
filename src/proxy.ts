@@ -32,6 +32,11 @@ const PUBLIC_PATHS = [
   '/reset-password',
   '/api/health',
   '/api/webhooks',
+  // PREVIEW-ONLY (Sprint POS-A.1) — /pos es el preview visual del POS
+  // sin auth. Cuando Sprint POS-B+ wire-up POS funcional real con
+  // services + sesion + multi-tenant, remover esta linea y mover /pos
+  // a path autenticado normal.
+  '/pos',
 ];
 
 const TRACING_EXEMPT_PATHS = [
