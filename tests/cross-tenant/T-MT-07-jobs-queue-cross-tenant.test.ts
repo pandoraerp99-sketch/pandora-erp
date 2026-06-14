@@ -158,7 +158,7 @@ describe('T-MT-07 — jobs_queue cross-tenant defense + poison detection sobre t
     // bug de migration o un INSERT raw mal hecho podría introducir tenant_id=''.
     // detectGenericPoison es la última línea de defensa.
     const corruptJob = {
-      id: 1n,
+      id: BigInt(1),
       job_type: 'email.send_invoice',
       tenant_id: '', // <-- corrupto
       correlation_id: crypto.randomUUID(),
