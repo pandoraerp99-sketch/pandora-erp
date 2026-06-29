@@ -94,6 +94,49 @@ export class AuditEventNotInCatalogError extends DomainError {
   }
 }
 
+/**
+ * Lanzado cuando una idempotency_key ya fue clamada y la operación todavía
+ * está 'pending' (otro request en curso, reserve-first). El cliente debe
+ * reintentar en unos segundos — NO re-ejecutar con una key nueva (eso
+ * duplicaría el side effect si el primer request termina OK).
+ *
+ * 409 Conflict — estado transitorio, reintentable.
+ */
+export class IdempotencyInProgressError extends DomainError {
+  constructor(
+    public readonly operation: string,
+    public readonly idempotency_key: string
+  ) {
+    super(
+      'IDEMPOTENCY_IN_PROGRESS',
+      'La operación ya está en curso. Reintentá en unos segundos.',
+      409,
+      { operation, idempotency_key }
+    );
+  }
+}
+
+/**
+ * Lanzado cuando llega la MISMA idempotency_key con un request_hash distinto
+ * — bug del cliente (reusó una key para una operación diferente). Es un error
+ * de programación del cliente, NO reintentable con la misma key.
+ *
+ * 422 Unprocessable — el request es inconsistente con la key.
+ */
+export class IdempotencyKeyReuseError extends DomainError {
+  constructor(
+    public readonly operation: string,
+    public readonly idempotency_key: string
+  ) {
+    super(
+      'IDEMPOTENCY_KEY_REUSE',
+      'La idempotency key fue reutilizada con un request distinto.',
+      422,
+      { operation, idempotency_key }
+    );
+  }
+}
+
 export function isDomainError(error: unknown): error is DomainError {
   return error instanceof DomainError;
 }
