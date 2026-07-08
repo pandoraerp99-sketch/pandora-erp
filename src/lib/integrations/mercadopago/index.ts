@@ -44,3 +44,18 @@ export {
   type MpFetch,
   type MpHttpResponse,
 } from './mp-api-client.js';
+
+export {
+  reconcileMpPayment,
+  type ReconcileMpDeps,
+  type ReconcileMpOutcome,
+} from './reconcile.service.js';
+
+export {
+  handleMpWebhook,
+  type MpWebhookInput,
+  type MpWebhookDeps,
+  type MpWebhookResult,
+} from './webhook-handler.js';
+
+export { resolveMpWebhookSecret } from './mp-secret.js';

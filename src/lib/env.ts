@@ -45,6 +45,9 @@ const envSchema = z.object({
   DEMO_TOTAL_LIFECYCLE_DAYS: z.coerce.number().int().positive().default(82),
 
   SYSTEM_TENANT_ID: z.string().uuid().default('00000000-0000-0000-0000-000000000000'),
+
+  // MercadoPago webhook signing secret (F0 piloto single-tenant; F1 → vault per-tenant).
+  MP_WEBHOOK_SECRET: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
