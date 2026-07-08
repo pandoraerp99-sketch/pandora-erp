@@ -16,3 +16,12 @@ import { env } from '../../env.js';
 export async function resolveMpWebhookSecret(companyId: string): Promise<string | null> {
   return env.MP_WEBHOOK_SECRET ?? null;
 }
+
+/**
+ * Access token de MP del tenant para re-consultar la API (GET /v1/payments/{id}).
+ * F0: env.MP_ACCESS_TOKEN. F1: per-tenant desde vault (mismo companyId del path).
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- companyId se usa en F1 (vault per-tenant)
+export async function resolveMpAccessToken(companyId: string): Promise<string | null> {
+  return env.MP_ACCESS_TOKEN ?? null;
+}

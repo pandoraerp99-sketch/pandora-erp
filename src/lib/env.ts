@@ -48,6 +48,10 @@ const envSchema = z.object({
 
   // MercadoPago webhook signing secret (F0 piloto single-tenant; F1 → vault per-tenant).
   MP_WEBHOOK_SECRET: z.string().min(1).optional(),
+  // MercadoPago access token para re-consultar pagos (F0 piloto; F1 → vault per-tenant).
+  MP_ACCESS_TOKEN: z.string().min(1).optional(),
+  // Secret que Vercel Cron manda como `Authorization: Bearer` a las rutas de cron.
+  CRON_SECRET: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -58,4 +58,13 @@ export {
   type MpWebhookResult,
 } from './webhook-handler.js';
 
-export { resolveMpWebhookSecret } from './mp-secret.js';
+export {
+  runMpReconcileBatch,
+  type MpWorkerDeps,
+  type MpBatchResult,
+} from './reconcile.worker.js';
+
+export {
+  resolveMpWebhookSecret,
+  resolveMpAccessToken,
+} from './mp-secret.js';
