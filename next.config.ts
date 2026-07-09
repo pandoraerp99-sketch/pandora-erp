@@ -1,6 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // ── /panel = el mockup dashboard.html copiado LITERAL a public/ ──
+  // Slice Panel (feedback owner 2026-07-09: copiar el mockup tal cual, sin
+  // reinterpretar). El rewrite sirve public/panel.html en /panel. El proxy
+  // (src/proxy.ts) exime /panel del CSP/auth para no romper los estilos/scripts
+  // inline + fuentes del mockup. TODO F1: portar a componentes React nativos.
+  async rewrites() {
+    return [{ source: "/panel", destination: "/panel.html" }];
+  },
+
   // ── Resolución de imports `.js` → `.ts` (extensionAlias) ──
   // El codebase usa imports relativos con extensión `.js` (estilo NodeNext/ESM,
   // requerido por vitest + tsc) mientras moduleResolution es "bundler". Webpack

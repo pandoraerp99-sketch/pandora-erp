@@ -1,0 +1,1046 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pandora · Panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================
+   Pandora · Panel — adaptado del app.jsx (mismo sistema glass)
+   ============================================================ */
+:root{
+  --ink:#0d1424; --ink-1:#1f2a44; --ink-2:#4a5570; --ink-3:#7681a0; --ink-4:#a8b0c5;
+  --purple:#6b5fff; --purple-2:#9088ff; --blue:#5b8cff; --green:#34c77d; --orange:#f7984a; --pink:#ee6a8e; --red:#ef5d6a; --yellow:#f4c948; --teal:#0e8f9e;
+  --glass-bg:rgba(255,255,255,0.58); --glass-bg-2:rgba(255,255,255,0.72);
+  --glass-bd:1px solid rgba(255,255,255,0.85);
+  --glass-hi:inset 0 1px 0 rgba(255,255,255,0.9);
+  --glass-sh:0 8px 32px rgba(54,70,120,0.10), 0 2px 8px rgba(54,70,120,0.06);
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*,*::before,*::after{ box-sizing:border-box; margin:0; padding:0; }
+button,input{ font:inherit; color:inherit; border:none; outline:none; background:none; cursor:pointer; }
+html,body{ height:100%; }
+body{ font-family:'Inter',ui-sans-serif,system-ui,sans-serif; -webkit-font-smoothing:antialiased; letter-spacing:-0.011em; color:var(--ink); height:100dvh; overflow:hidden; position:relative; }
+.bg{ position:fixed; inset:0; z-index:-10; }
+.bg .base{ position:absolute; inset:0; background:linear-gradient(175deg,#b5c6e8 0%,#c8d4ea 28%,#ddd0e0 62%,#eed6d0 100%); }
+.bg .glow{ position:absolute; inset:0; background:
+  radial-gradient(ellipse 70% 60% at 10% 95%, rgba(238,200,220,0.55) 0%, transparent 60%),
+  radial-gradient(ellipse 60% 50% at 88% 82%, rgba(240,210,175,0.40) 0%, transparent 60%),
+  radial-gradient(ellipse 55% 42% at 55% 22%, rgba(255,255,255,0.60) 0%, transparent 52%),
+  radial-gradient(ellipse 58% 48% at 10% 22%, rgba(195,215,248,0.65) 0%, transparent 62%); }
+::-webkit-scrollbar{ width:7px; height:7px; }
+::-webkit-scrollbar-track{ background:transparent; }
+::-webkit-scrollbar-thumb{ background:rgba(13,20,36,0.14); border-radius:5px; border:2px solid transparent; background-clip:padding-box; }
+
+.glass{ background:var(--glass-bg); backdrop-filter:blur(28px) saturate(140%); -webkit-backdrop-filter:blur(28px) saturate(140%); border:var(--glass-bd); border-radius:20px; box-shadow:var(--glass-hi), var(--glass-sh); }
+.glass-strong{ background:var(--glass-bg-2); backdrop-filter:blur(32px) saturate(150%); -webkit-backdrop-filter:blur(32px) saturate(150%); border:var(--glass-bd); border-radius:20px; box-shadow:var(--glass-hi), var(--glass-sh); }
+.tnum{ font-variant-numeric:tabular-nums; }
+.mono{ font-family:var(--mono); }
+
+/* ════ SHELL ════ */
+.shell{ height:100dvh; padding:10px; display:grid; grid-template-columns:210px 1fr; gap:8px; }
+
+/* ════ SIDEBAR (idéntica al POS / dashboard) ════ */
+.sidebar{ display:flex; flex-direction:column; border-radius:20px; padding:22px 14px 18px; overflow:hidden; }
+.logo-row{ display:flex; align-items:center; gap:10px; padding:0 8px 22px; }
+.logo-mark{ width:26px; height:26px; flex-shrink:0; } .logo-mark svg{ width:100%; height:100%; display:block; }
+.logo-text{ font-size:19px; font-weight:700; letter-spacing:-0.025em; background:linear-gradient(135deg,#2a3454 0%,#4a5878 100%); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+.nav-item{ display:flex; align-items:center; gap:11px; padding:10px 11px; border-radius:12px; color:var(--ink-2); font-size:13.5px; font-weight:500; cursor:pointer; transition:all 200ms cubic-bezier(.4,0,.2,1); }
+.nav-item:hover{ color:var(--ink); background:rgba(255,255,255,0.4); }
+.nav-item.active{ background:rgba(255,255,255,0.92); color:var(--ink); box-shadow:0 1px 2px rgba(54,70,120,0.06), 0 4px 12px rgba(54,70,120,0.08); }
+.nav-item.active .nav-icon-box{ background:var(--purple); color:#fff; box-shadow:0 4px 10px rgba(107,95,255,0.4); }
+.nav-icon-box{ width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:7px; color:var(--ink-2); transition:all 200ms; flex-shrink:0; }
+.side-foot{ margin-top:auto; padding-top:12px; display:flex; flex-direction:column; gap:9px; }
+.afip{ padding:10px 11px; border-radius:13px; background:rgba(52,199,125,0.08); border:1px solid rgba(52,199,125,0.20); }
+.afip-top{ display:flex; align-items:center; gap:7px; }
+.afip-dot{ width:7px; height:7px; border-radius:50%; background:var(--green); flex:0 0 auto; animation:pg 2.4s ease-in-out infinite; }
+.afip-name{ font-size:11.5px; font-weight:700; color:#177a4a; }
+.afip-live{ margin-left:auto; font-size:8.5px; font-weight:800; letter-spacing:0.06em; color:var(--green); }
+.afip-sub{ font-size:10px; color:#5a9b78; padding-left:14px; margin-top:2px; }
+@keyframes pg{ 0%,100%{box-shadow:0 0 0 2px rgba(52,199,125,0.22)} 50%{box-shadow:0 0 0 5px rgba(52,199,125,0)} }
+.cashier{ display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:13px; background:rgba(255,255,255,0.66); border:1px solid rgba(255,255,255,0.9); box-shadow:var(--glass-hi); }
+.cashier-av{ width:32px; height:32px; flex:0 0 auto; border-radius:50%; background:linear-gradient(135deg,var(--purple),var(--blue)); display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px; font-weight:700; }
+.avatar-ring{ padding:2px; border-radius:50%; flex:0 0 auto; display:flex; background:conic-gradient(from 0deg,#6b5fff,#5b8cff,#34c77d,#f7984a,#ee6a8e,#6b5fff); animation:spinRing 6s linear infinite; }
+.avatar-ring > .cashier-av{ animation:spinRing 6s linear infinite reverse; border:2px solid rgba(255,255,255,0.9); }
+@keyframes spinRing{ to{ transform:rotate(360deg); } }
+.cashier-name{ font-size:12px; font-weight:600; line-height:1.2; }
+.cashier-role{ font-size:10px; color:var(--ink-3); }
+.cashier-live{ width:7px; height:7px; border-radius:50%; background:var(--green); margin-left:auto; flex:0 0 auto; animation:pg 2.4s ease-in-out infinite; }
+
+/* ════ MAIN ════ */
+.main{ min-width:0; min-height:0; overflow-y:auto; padding:4px 6px 18px 2px; }
+.topbar{ display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+.search{ position:relative; flex:1; max-width:380px; display:flex; align-items:center; height:42px; border-radius:14px; padding:0 14px 0 40px; }
+.search svg{ position:absolute; left:13px; width:16px; height:16px; color:var(--ink-3); }
+.search input{ width:100%; font-size:13px; } .search input::placeholder{ color:var(--ink-3); }
+.seg{ display:inline-flex; padding:5px; gap:2px; border-radius:999px; }
+.seg button{ padding:7px 16px; border-radius:999px; font-size:12.5px; font-weight:500; color:var(--ink-2); transition:all 200ms; }
+.seg button.on{ background:var(--ink); color:#fff; box-shadow:0 4px 12px rgba(13,20,36,0.25); }
+.top-tools{ display:flex; align-items:center; gap:8px; margin-left:auto; }
+.iconbtn{ width:40px; height:40px; display:flex; align-items:center; justify-content:center; border-radius:12px; color:var(--ink-1); position:relative; }
+.iconbtn svg{ width:18px; height:18px; }
+.iconbtn .ndot{ position:absolute; top:7px; right:7px; min-width:15px; height:15px; border-radius:999px; background:var(--pink); color:#fff; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center; border:2px solid rgba(255,255,255,0.9); }
+.user-chip{ display:flex; align-items:center; gap:9px; padding:5px 13px 5px 5px; border-radius:999px; }
+.user-name{ font-size:12.5px; font-weight:600; line-height:1.25; } .user-role{ font-size:10.5px; color:var(--ink-3); }
+
+.content{ display:flex; gap:16px; }
+.col-main{ flex:1; min-width:0; display:flex; flex-direction:column; gap:16px; }
+.col-side{ width:324px; flex-shrink:0; display:flex; flex-direction:column; gap:16px; }
+
+.card{ border-radius:20px; padding:22px; }
+.chart-box{ position:relative; }
+.chart-tip{ position:absolute; background:var(--ink); color:#fff; padding:5px 9px; border-radius:9px; font-family:var(--mono); font-size:11px; font-weight:600; box-shadow:0 8px 20px rgba(13,20,36,0.28); transform:translate(-50%,-115%); white-space:nowrap; }
+.chart-tip::after{ content:''; position:absolute; left:50%; bottom:-4px; transform:translateX(-50%) rotate(45deg); width:8px; height:8px; background:var(--ink); }
+.card-title{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.card-title h3{ font-size:14px; font-weight:600; color:var(--ink); display:flex; align-items:center; gap:8px; white-space:nowrap; }
+.card-title .ic{ width:24px; height:24px; border-radius:7px; display:flex; align-items:center; justify-content:center; }
+.more-btn{ color:var(--ink-3); padding:4px; border-radius:6px; display:flex; } .more-btn svg{ width:16px; height:16px; }
+.label-sm{ color:var(--ink-3); font-size:12px; font-weight:500; }
+.upper-mini{ font-size:10.5px; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.08em; font-family:var(--mono); font-weight:500; }
+.delta{ display:inline-flex; align-items:center; gap:3px; padding:3px 8px; border-radius:999px; font-size:11.5px; font-weight:600; line-height:1; }
+.delta svg{ width:11px; height:11px; }
+.delta.up{ background:rgba(52,199,125,0.14); color:#1a8e5a; }
+.delta.down{ background:rgba(239,93,106,0.14); color:#c93545; }
+.bignum{ font-size:33px; font-weight:700; letter-spacing:-0.03em; }
+
+/* hero */
+.hero{ position:relative; overflow:hidden; padding:30px 32px 32px; min-height:272px; }
+.hero-hi{ font-size:15px; font-weight:500; color:var(--ink-2); display:flex; align-items:center; gap:8px; }
+.hero-h1{ margin:6px 0 0; font-size:54px; line-height:1.02; font-weight:700; letter-spacing:-0.04em; max-width:560px; }
+.wave{ display:inline-block; animation:wave 2.4s ease-in-out 1s 2; transform-origin:70% 70%; }
+@keyframes wave{ 0%,60%,100%{transform:rotate(0)} 10%{transform:rotate(14deg)} 20%{transform:rotate(-8deg)} 30%{transform:rotate(14deg)} 40%{transform:rotate(-4deg)} 50%{transform:rotate(10deg)} }
+.hero-live{ margin-top:20px; display:flex; align-items:center; gap:14px; padding:14px 18px; background:rgba(255,255,255,0.55); border-radius:16px; border:1px solid rgba(255,255,255,0.85); max-width:430px; backdrop-filter:blur(20px); }
+.live-dot{ width:8px; height:8px; border-radius:999px; background:var(--green); position:relative; flex:0 0 auto; }
+.live-dot::after{ content:''; position:absolute; inset:-4px; border-radius:999px; background:var(--green); opacity:0.4; animation:liveRing 1.8s cubic-bezier(.2,.7,.2,1) infinite; }
+@keyframes liveRing{ 0%{transform:scale(0.8);opacity:0.6} 100%{transform:scale(2.2);opacity:0} }
+/* hero art (chips flotantes) */
+.hero-art{ position:absolute; top:22px; right:26px; bottom:22px; width:340px; pointer-events:none; }
+.hero-art .halo{ position:absolute; top:-10px; right:10px; width:300px; height:300px; border-radius:50%; background:radial-gradient(circle, rgba(255,210,180,0.5) 0%, rgba(255,180,200,0.22) 40%, transparent 70%); filter:blur(20px); }
+.float-card{ position:absolute; background:rgba(255,255,255,0.85); backdrop-filter:blur(20px) saturate(160%); border:1px solid rgba(255,255,255,0.9); border-radius:14px; box-shadow:0 12px 32px rgba(54,70,120,0.14), 0 4px 12px rgba(54,70,120,0.08); will-change:transform; }
+.f1{ animation:fl1 6s ease-in-out infinite; } .f2{ animation:fl2 7s ease-in-out infinite -1.5s; } .f3{ animation:fl3 8s ease-in-out infinite -3s; }
+@keyframes fl1{ 0%,100%{transform:translateY(0) rotate(3deg)} 50%{transform:translateY(-10px) rotate(2deg)} }
+@keyframes fl2{ 0%,100%{transform:translateY(0) rotate(-2deg)} 50%{transform:translateY(-9px) rotate(-1deg)} }
+@keyframes fl3{ 0%,100%{transform:translateY(0) rotate(-2deg)} 50%{transform:translateY(-8px) rotate(-1deg)} }
+
+.grid3{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+.grid2{ display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:16px; }
+.grid2cal{ display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:16px; align-items:start; }
+
+/* charts */
+.spark{ width:100%; height:74px; margin-top:14px; display:block; }
+.bars{ display:flex; align-items:flex-end; gap:6px; height:74px; margin-top:14px; }
+.bars .b{ flex:1; border-radius:5px 5px 3px 3px; background:rgba(107,95,255,0.28); animation:grow 900ms cubic-bezier(.2,.7,.2,1) backwards; transform-origin:bottom; }
+.bars .b.hi{ background:var(--purple); box-shadow:0 4px 12px rgba(107,95,255,0.4); }
+@keyframes grow{ from{ transform:scaleY(0); } }
+.donut-wrap{ display:flex; align-items:center; gap:16px; }
+.donut{ width:128px; height:128px; border-radius:50%; flex:0 0 auto; position:relative; }
+.donut::after{ content:''; position:absolute; inset:20px; border-radius:50%; background:var(--glass-bg-2); backdrop-filter:blur(10px); }
+.donut .ctr{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:1; }
+.legend{ flex:1; display:flex; flex-direction:column; gap:9px; }
+.legend .row{ display:flex; align-items:center; gap:9px; font-size:12.5px; color:var(--ink-2); }
+.legend .dot{ width:10px; height:10px; border-radius:3px; flex:0 0 auto; }
+.legend .val{ margin-left:auto; font-family:var(--mono); font-weight:600; color:var(--ink); }
+
+/* listas */
+.tx-row{ display:grid; grid-template-columns:34px 1fr auto auto; align-items:center; gap:12px; padding:10px 0; border-top:1px solid rgba(13,20,36,0.05); font-size:13px; }
+.tx-row:first-child{ border-top:none; }
+.tx-ic{ width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; }
+.tx-ic svg{ width:16px; height:16px; }
+.tx-name{ font-weight:500; } .tx-sub{ font-size:11px; color:var(--ink-3); margin-top:1px; }
+.pay-pill{ font-size:10px; font-weight:700; padding:3px 8px; border-radius:7px; letter-spacing:0.02em; }
+.tx-amount{ font-family:var(--mono); font-weight:600; }
+
+/* widgets col derecha */
+.kv{ display:flex; align-items:center; justify-content:space-between; padding:8px 0; }
+.kv .k{ font-size:12.5px; color:var(--ink-2); } .kv .v{ font-family:var(--mono); font-weight:600; font-size:13px; }
+.divider{ height:1px; background:rgba(13,20,36,0.06); margin:6px 0; }
+.caja-state{ display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:700; padding:4px 9px; border-radius:999px; background:rgba(52,199,125,0.14); color:#1a8e5a; }
+.afipbar{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:4px; }
+.afipbar .cell{ text-align:center; padding:9px 4px; border-radius:11px; background:rgba(255,255,255,0.6); border:1px solid rgba(255,255,255,0.8); }
+.afipbar .n{ font-family:var(--mono); font-size:18px; font-weight:700; } .afipbar .t{ font-size:9.5px; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.05em; margin-top:1px; }
+.stock-row{ display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid rgba(13,20,36,0.05); font-size:12.5px; }
+.stock-row:first-child{ border-top:none; }
+.stock-thumb{ width:30px; height:30px; border-radius:8px; overflow:hidden; background:#fff; border:1px solid rgba(13,20,36,0.05); flex:0 0 auto; display:flex; align-items:center; justify-content:center; font-size:15px; }
+.stock-name{ flex:1; font-weight:500; }
+.stock-q{ font-family:var(--mono); font-weight:700; font-size:12px; padding:2px 8px; border-radius:7px; background:rgba(239,93,106,0.12); color:#c0384a; }
+.quick-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.quick{ display:flex; flex-direction:column; gap:9px; padding:15px 13px; border-radius:15px; text-align:left; background:rgba(255,255,255,0.7); border:1px solid rgba(255,255,255,0.9); box-shadow:var(--glass-hi); transition:all 180ms; }
+.quick:hover{ transform:translateY(-2px); box-shadow:var(--glass-hi), 0 8px 18px rgba(54,70,120,0.12); }
+.quick .qi{ width:38px; height:38px; border-radius:11px; display:flex; align-items:center; justify-content:center; } .quick .qi svg{ width:18px; height:18px; }
+.quick .ql{ font-size:13px; font-weight:600; }
+.cta{ width:100%; display:flex; align-items:center; justify-content:center; gap:9px; padding:14px; border-radius:14px; background:linear-gradient(140deg,var(--purple),var(--purple-2)); color:#fff; font-size:14.5px; font-weight:800; letter-spacing:-0.02em; box-shadow:0 7px 20px rgba(107,95,255,0.42); transition:all 170ms; }
+.cta:hover{ transform:translateY(-1px); box-shadow:0 10px 26px rgba(107,95,255,0.52); }
+.cta svg{ width:18px; height:18px; }
+@media (prefers-reduced-motion:reduce){ *{ animation:none !important; } }
+
+/* ════════════════ MODO OSCURO · cielo nocturno (Claude Design) ════════════════ */
+html[data-theme="dark"]{
+  --ink:#eef2ff; --ink-1:#cdd6f0; --ink-2:#9aa6cc; --ink-3:#7581a8; --ink-4:#525e85;
+  --purple:#8da2ff; --purple-2:#bcc8ff; --blue:#6fa8ff; --green:#3fd68b; --orange:#ffb87a; --pink:#f48fb5; --red:#ff8b96; --yellow:#f4c948; --teal:#5fc8ff;
+  --glass-bg:rgba(24,31,58,0.55); --glass-bg-2:rgba(29,37,66,0.66);
+  --glass-bd:1px solid rgba(255,255,255,0.12);
+  --glass-hi:inset 0 1px 0 rgba(255,255,255,0.07);
+  --glass-sh:0 8px 32px rgba(3,7,20,0.42), 0 2px 8px rgba(3,7,20,0.28);
+}
+html[data-theme="dark"] body{ color:var(--ink); }
+html[data-theme="dark"] .bg .base{ background:linear-gradient(180deg,#030615 0%,#05091e 35%,#08102b 72%,#0b1535 100%); }
+html[data-theme="dark"] .bg .glow{ background:
+  radial-gradient(ellipse 60% 50% at 14% 92%, rgba(244,115,168,0.16) 0%, transparent 60%),
+  radial-gradient(ellipse 55% 45% at 84% 12%, rgba(120,190,255,0.12) 0%, transparent 60%),
+  radial-gradient(ellipse 60% 45% at 78% 82%, rgba(96,150,255,0.13) 0%, transparent 60%),
+  radial-gradient(ellipse 50% 40% at 22% 32%, rgba(86,124,238,0.16) 0%, transparent 60%); }
+html[data-theme="dark"] .bg::after{ content:''; position:absolute; inset:0; pointer-events:none; background:
+  radial-gradient(2.2px 2.2px at 15% 12%, rgba(255,255,255,0.95) 40%, transparent 100%),
+  radial-gradient(2px 2px at 68% 7%, rgba(190,228,255,0.9) 40%, transparent 100%),
+  radial-gradient(2.2px 2.2px at 88% 26%, rgba(255,205,225,0.8) 40%, transparent 100%),
+  radial-gradient(1.4px 1.4px at 12% 14%, rgba(255,255,255,0.7) 50%, transparent 100%),
+  radial-gradient(1.6px 1.6px at 38% 22%, rgba(255,255,255,0.55) 50%, transparent 100%),
+  radial-gradient(1.5px 1.5px at 61% 16%, rgba(255,255,255,0.6) 50%, transparent 100%),
+  radial-gradient(1.4px 1.4px at 84% 19%, rgba(255,255,255,0.55) 50%, transparent 100%),
+  radial-gradient(1.2px 1.2px at 18% 34%, rgba(180,222,255,0.36) 50%, transparent 100%),
+  radial-gradient(1.3px 1.3px at 55% 38%, rgba(255,255,255,0.3) 50%, transparent 100%),
+  radial-gradient(1.2px 1.2px at 80% 42%, rgba(255,214,230,0.3) 50%, transparent 100%),
+  radial-gradient(1.2px 1.2px at 8% 52%, rgba(180,222,255,0.26) 50%, transparent 100%),
+  radial-gradient(1.3px 1.3px at 64% 58%, rgba(180,222,255,0.22) 50%, transparent 100%),
+  radial-gradient(1.2px 1.2px at 33% 68%, rgba(255,255,255,0.2) 50%, transparent 100%),
+  radial-gradient(1.2px 1.2px at 22% 84%, rgba(255,255,255,0.18) 50%, transparent 100%),
+  radial-gradient(1.3px 1.3px at 76% 90%, rgba(255,214,230,0.18) 50%, transparent 100%);
+  animation:twinkle 6.5s ease-in-out infinite; z-index:0; }
+@keyframes twinkle{ 0%,100%{opacity:0.82;} 50%{opacity:1;} }
+@media (prefers-reduced-motion:reduce){ html[data-theme="dark"] .bg::after{ animation:none; } }
+html[data-theme="dark"] ::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.16); }
+html[data-theme="dark"] .main::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.16); }
+
+/* sidebar + topbar */
+html[data-theme="dark"] .logo-text{ background:linear-gradient(135deg,#eef2ff 0%,#aebde8 100%); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+html[data-theme="dark"] .nav-item:hover{ background:rgba(255,255,255,0.07); }
+html[data-theme="dark"] .nav-item.active{ background:rgba(255,255,255,0.12); box-shadow:inset 0 1px 0 rgba(255,255,255,0.1), 0 4px 12px rgba(3,7,20,0.3); }
+html[data-theme="dark"] .afip{ background:rgba(52,199,125,0.1); border-color:rgba(52,199,125,0.22); }
+html[data-theme="dark"] .afip-name{ color:#55dd9b; }
+html[data-theme="dark"] .afip-sub{ color:#7fb79b; }
+html[data-theme="dark"] .cashier{ background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.1); box-shadow:inset 0 1px 0 rgba(255,255,255,0.07); }
+html[data-theme="dark"] .seg button.on{ background:rgba(238,242,255,0.94); color:#0d1424; }
+html[data-theme="dark"] .iconbtn .ndot{ border-color:rgba(11,17,42,0.9); }
+
+/* hero + floating cards */
+html[data-theme="dark"] .hero-hi{ color:var(--ink-2); }
+html[data-theme="dark"] .hero-live{ background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.1); }
+html[data-theme="dark"] .hero-art .halo{ background:radial-gradient(circle, rgba(141,162,255,0.4) 0%, rgba(120,190,255,0.18) 40%, transparent 70%); }
+html[data-theme="dark"] .float-card{ background:rgba(33,40,70,0.82); border-color:rgba(255,255,255,0.14); box-shadow:0 12px 32px rgba(3,7,20,0.5), 0 4px 12px rgba(3,7,20,0.35); }
+html[data-theme="dark"] .delta.up{ background:rgba(52,199,125,0.16); color:#55dd9b; }
+html[data-theme="dark"] .delta.down{ background:rgba(239,93,106,0.16); color:#ff8b96; }
+
+/* charts + tooltips */
+html[data-theme="dark"] .chart-tip{ background:#0b1430; }
+html[data-theme="dark"] .chart-tip::after{ background:#0b1430; }
+
+/* listas / tx / widgets col derecha */
+html[data-theme="dark"] .tx-row{ border-top-color:rgba(255,255,255,0.06); }
+html[data-theme="dark"] .divider{ background:rgba(255,255,255,0.08); }
+html[data-theme="dark"] .caja-state{ color:#55dd9b; }
+html[data-theme="dark"] .afipbar .cell{ background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.1); }
+html[data-theme="dark"] .stock-row{ border-top-color:rgba(255,255,255,0.06); }
+html[data-theme="dark"] .stock-thumb{ background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.1); }
+html[data-theme="dark"] .stock-q{ background:rgba(239,93,106,0.16); color:#ff8b96; }
+html[data-theme="dark"] .quick{ background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.1); }
+html[data-theme="dark"] .quick:hover{ box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 18px rgba(3,7,20,0.5); }
+
+/* calendario */
+html[data-theme="dark"] .cal-nav button{ background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.12); }
+html[data-theme="dark"] .cal-day{ border-color:rgba(255,255,255,0.08); }
+html[data-theme="dark"] .cal-day.today{ color:var(--ink); }
+html[data-theme="dark"] .cal-day.feriado.nac{ color:#9ec5ff; }
+html[data-theme="dark"] .cal-day.feriado.prov{ color:#6fd8e4; }
+html[data-theme="dark"] .cal-agenda{ border-top-color:rgba(255,255,255,0.07); }
+html[data-theme="dark"] .cal-detail{ border-top-color:rgba(255,255,255,0.07); }
+html[data-theme="dark"] .cal-detail-day{ color:var(--ink); }
+html[data-theme="dark"] .cd-ic.ret{ color:#e79ad0; }
+html[data-theme="dark"] .cd-ic.note{ color:#ffb87a; }
+
+/* pendientes / todos */
+html[data-theme="dark"] .todo-item:hover{ background:rgba(255,255,255,0.05); }
+html[data-theme="dark"] .todo-check{ border-color:rgba(255,255,255,0.24); }
+html[data-theme="dark"] .todo-add{ border-top-color:rgba(255,255,255,0.07); }
+html[data-theme="dark"] .todo-add .plus{ border-color:rgba(255,255,255,0.24); }
+html[data-theme="dark"] .todo-group.over{ color:#ff8b96; }
+html[data-theme="dark"] .todo-templates button{ background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.12); }
+html[data-theme="dark"] .todo-templates button:hover{ background:rgba(255,255,255,0.1); }
+html[data-theme="dark"] .todo-seg{ background:rgba(255,255,255,0.06); }
+html[data-theme="dark"] .todo-seg button.on{ background:rgba(238,242,255,0.94); color:#0d1424; box-shadow:0 1px 3px rgba(3,7,20,0.4); }
+html[data-theme="dark"] .streak{ color:#ffcf6b; background:rgba(244,201,72,0.18); }
+html[data-theme="dark"] .tf-btn{ background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.12); }
+html[data-theme="dark"] .tf-btn:hover{ background:rgba(255,255,255,0.1); }
+html[data-theme="dark"] .tf-menu{ background:rgba(20,26,46,0.9); border-color:rgba(255,255,255,0.12); box-shadow:0 12px 34px rgba(3,7,20,0.5); }
+html[data-theme="dark"] .tf-menu button:hover{ background:rgba(141,162,255,0.12); }
+
+/* quick-add */
+html[data-theme="dark"] .qa-form{ background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.1); box-shadow:0 4px 16px rgba(3,7,20,0.4); }
+html[data-theme="dark"] .qa-type{ background:rgba(255,255,255,0.06); }
+html[data-theme="dark"] .qa-input{ background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.14); color:var(--ink); }
+html[data-theme="dark"] .qa-when{ background:rgba(255,255,255,0.06); }
+html[data-theme="dark"] .qa-w.on{ background:rgba(238,242,255,0.94); color:#0d1424; }
+
+/* cuentas corrientes */
+html[data-theme="dark"] .cc-col2{ border-left-color:rgba(255,255,255,0.08); }
+html[data-theme="dark"] .cc-tot.cobrar{ color:#55dd9b; }
+html[data-theme="dark"] .cc-tot.pagar{ color:#ff8b96; }
+html[data-theme="dark"] .cc-row{ border-top-color:rgba(255,255,255,0.06); }
+html[data-theme="dark"] .ring-pct{ color:var(--ink); }
+
+/* botón toggle de tema */
+#themeBtn svg{ transition:transform 400ms cubic-bezier(.2,.7,.2,1); }
+#themeBtn:hover svg{ transform:rotate(20deg); }
+</style>
+</head>
+<body>
+  <div class="bg"><div class="base"></div><div class="glow"></div></div>
+
+  <div class="shell">
+    <!-- ════ SIDEBAR ════ -->
+    <aside class="sidebar glass-strong">
+      <div class="logo-row">
+        <span class="logo-mark"><svg viewBox="0 0 32 32"><defs><linearGradient id="lg1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#6b5fff"/><stop offset="100%" stop-color="#5b8cff"/></linearGradient></defs><g fill="url(#lg1)"><path d="M16 2 L18 14 L30 16 L18 18 L16 30 L14 18 L2 16 L14 14 Z"/></g></svg></span>
+        <span class="logo-text">Pandora</span>
+      </div>
+      <nav style="display:flex; flex-direction:column; gap:3px; flex:1; overflow-y:auto; min-height:0; padding-right:4px; margin-right:-4px;">
+        <div class="nav-item active"><div class="nav-icon-box"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="10" rx="2"/><rect x="13" y="3" width="8" height="6" rx="2"/><rect x="3" y="15" width="8" height="6" rx="2"/><rect x="13" y="11" width="8" height="10" rx="2"/></svg></div><span>Panel</span></div>
+        <div class="nav-item"><div class="nav-icon-box"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg></div><span>Venta</span></div>
+        <div class="nav-item"><div class="nav-icon-box"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01"/><path d="M18 12h.01"/></svg></div><span>Caja</span></div>
+        <div class="nav-item"><div class="nav-icon-box"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.58a2 2 0 0 1 0 2.83z"/><circle cx="7" cy="7" r="1.5"/></svg></div><span>Productos</span></div>
+        <div class="nav-item"><div class="nav-icon-box"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg></div><span>Clientes</span></div>
+        <div class="nav-item"><div class="nav-icon-box"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></div><span>Stock</span></div>
+        <div class="nav-item"><div class="nav-icon-box"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m15 9-6 6"/><path d="M9 9h.01"/><path d="M15 15h.01"/></svg></div><span>Ofertas</span></div>
+        <div class="nav-item"><div class="nav-icon-box"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h4"/></svg></div><span>Facturas</span></div>
+        <div class="nav-item"><div class="nav-icon-box"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15v-3"/><path d="M12 15V8"/><path d="M16 15v-5"/></svg></div><span>Reportes</span></div>
+        <div class="nav-item"><div class="nav-icon-box"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></div><span>Configuración</span></div>
+      </nav>
+      <div class="side-foot">
+        <div class="afip"><div class="afip-top"><span class="afip-dot"></span><span class="afip-name">AFIP conectado</span><span class="afip-live">LIVE</span></div><div class="afip-sub">WSFEv1 · 47 CAE hoy</div></div>
+        <div class="cashier"><span class="avatar-ring"><span class="cashier-av">AR</span></span><div><div class="cashier-name">Agus Rochelle</div><div class="cashier-role">Dueño</div></div><span class="cashier-live"></span></div>
+      </div>
+    </aside>
+
+    <!-- ════ MAIN ════ -->
+    <main class="main">
+      <div class="topbar">
+        <div class="search glass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input placeholder="Buscar producto, venta o cliente…" /></div>
+        <div class="seg glass"><button>Hoy</button><button class="on">Semana</button><button>Mes</button></div>
+        <div class="top-tools">
+          <button class="iconbtn glass" id="themeBtn" title="Cambiar tema claro/oscuro" aria-label="Cambiar tema"></button>
+          <button class="iconbtn glass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 7 3 9H3c0-2 3-2 3-9z"/><path d="M10 21a2 2 0 0 0 4 0"/></svg><span class="ndot">3</span></button>
+          <button class="iconbtn glass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg><span class="ndot">7</span></button>
+          <button class="iconbtn glass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.7 1.7 0 0 0-2.8 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.8-1.2 2 2 0 1 1-2.8-2.8A1.7 1.7 0 0 0 4.6 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.8 2 2 0 1 1 2.8-2.8A1.7 1.7 0 0 0 11 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.8 1.2 2 2 0 1 1 2.8 2.8A1.7 1.7 0 0 0 19.4 11a2 2 0 1 1 0 4z"/></svg></button>
+          <div class="user-chip glass"><span class="avatar-ring"><span class="cashier-av">AR</span></span><div><div class="user-name">Agus Rochelle</div><div class="user-role">Dueño</div></div></div>
+        </div>
+      </div>
+
+      <div class="content">
+        <!-- COLUMNA PRINCIPAL -->
+        <div class="col-main">
+          <!-- HERO -->
+          <div class="hero glass">
+            <div class="hero-art">
+              <div class="halo"></div>
+              <div class="float-card f1" style="top:2px; right:36px; padding:10px 14px 10px 10px; display:flex; align-items:center; gap:10px;">
+                <span style="width:30px;height:30px;border-radius:9px;background:rgba(52,199,125,0.15);color:#1a8e5a;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></span>
+                <div><div class="upper-mini" style="line-height:1;">CAE · Factura B</div><div style="font-size:13px;font-weight:700;margin-top:3px;">Coca + 4 ítems · $8.100</div></div>
+              </div>
+              <div class="float-card f2" style="top:64px; right:18px; width:228px; padding:15px 17px;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
+                  <div><div class="upper-mini" style="line-height:1;">Mejor hora · 18–19h</div><div style="font-size:20px;font-weight:700;margin-top:4px;letter-spacing:-0.02em;" class="tnum">$58.200</div></div>
+                  <span class="delta up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 14l6-6 6 6"/></svg>12%</span>
+                </div>
+                <div class="bars" style="height:48px;margin:0;">
+                  <div class="b" style="height:35%;animation-delay:.6s"></div><div class="b" style="height:52%;animation-delay:.66s"></div><div class="b" style="height:40%;animation-delay:.72s"></div><div class="b" style="height:68%;animation-delay:.78s"></div><div class="b" style="height:55%;animation-delay:.84s"></div><div class="b hi" style="height:88%;animation-delay:.9s"></div><div class="b" style="height:62%;animation-delay:.96s"></div>
+                </div>
+              </div>
+              <div class="float-card f3" style="bottom:0; right:62px; padding:9px 13px 9px 9px; display:flex; align-items:center; gap:9px;">
+                <span style="width:26px;height:26px;border-radius:8px;background:rgba(14,143,158,0.14);color:var(--teal);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5v14M7 5v14M11 5v14M15 5v14M19 5v14"/></svg></span>
+                <div style="font-size:12px;color:var(--ink-1);font-weight:500;">3 productos <strong style="color:var(--teal)">Ley 19.640</strong></div>
+              </div>
+            </div>
+            <div style="position:relative;z-index:2;max-width:540px;">
+              <div class="hero-hi"><span id="greet-txt">Buen día, Agus</span> <span class="wave">👋</span> <span style="color:var(--ink-3);font-weight:400;">· vas muy bien hoy</span></div>
+              <h1 class="hero-h1">Tu negocio,<br/>al día.</h1>
+              <div class="hero-live">
+                <span class="live-dot"></span>
+                <div style="flex:1;">
+                  <div class="upper-mini">Ventas de hoy</div>
+                  <div class="tnum" style="font-size:24px;font-weight:700;letter-spacing:-0.02em;margin-top:2px;">$342.850</div>
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-size:10px;color:var(--ink-3);">vs ayer</div>
+                  <div class="delta up" style="margin-top:3px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 14l6-6 6 6"/></svg>+12.4%</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- INSIGHT DEL DÍA (resumen automático, descriptivo) -->
+          <div class="card glass" style="display:flex;align-items:center;gap:13px;padding:14px 18px;margin-bottom:16px;">
+            <span style="width:34px;height:34px;border-radius:10px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;background:linear-gradient(150deg,rgba(244,201,72,0.25),rgba(247,152,74,0.16));color:#b9791a;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.5.4.8 1 .9 1.6l.1.7h6l.1-.7c.1-.6.4-1.2.9-1.6A7 7 0 0 0 12 2z"/></svg></span>
+            <div style="font-size:13.5px;color:var(--ink-1);line-height:1.45;"><b>Vas 12% arriba de tu viernes promedio.</b> <span style="color:var(--ink-2);">Coca-Cola y cigarrillos son los que más empujan las ventas de hoy.</span></div>
+          </div>
+
+          <!-- 3 MÉTRICAS -->
+          <div class="grid3">
+            <div class="card glass">
+              <div class="card-title"><h3>Facturación del mes</h3><button class="more-btn"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg></button></div>
+              <div style="display:flex;align-items:baseline;gap:9px;"><span class="bignum tnum">$4.230.500</span><span class="delta up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 14l6-6 6 6"/></svg>18%</span></div>
+              <div class="label-sm" style="margin-top:2px;">vs mes anterior</div>
+              <svg class="spark" viewBox="0 0 280 64" preserveAspectRatio="none"><defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(107,95,255,0.28)"/><stop offset="100%" stop-color="rgba(107,95,255,0)"/></linearGradient></defs><path d="M0 50 C30 46 50 40 80 38 C120 35 140 24 180 20 C220 16 250 10 280 6 L280 64 L0 64 Z" fill="url(#g1)"/><path d="M0 50 C30 46 50 40 80 38 C120 35 140 24 180 20 C220 16 250 10 280 6" fill="none" stroke="var(--purple)" stroke-width="2.5" stroke-linecap="round"/><circle cx="280" cy="6" r="4" fill="var(--purple)" stroke="#fff" stroke-width="2"/></svg>
+            </div>
+            <div class="card glass">
+              <div class="card-title"><h3>Tickets de hoy</h3><button class="more-btn"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg></button></div>
+              <div style="display:flex;align-items:baseline;gap:9px;"><span class="bignum tnum">47</span><span class="delta up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 14l6-6 6 6"/></svg>8%</span></div>
+              <div class="label-sm" style="margin-top:2px;">ventas cobradas</div>
+              <svg class="spark" viewBox="0 0 280 64" preserveAspectRatio="none"><defs><linearGradient id="g4" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(52,199,125,0.26)"/><stop offset="100%" stop-color="rgba(52,199,125,0)"/></linearGradient></defs><path d="M0 46 C40 44 70 34 100 36 C140 39 160 24 200 26 C240 28 262 16 280 12 L280 64 L0 64 Z" fill="url(#g4)"/><path d="M0 46 C40 44 70 34 100 36 C140 39 160 24 200 26 C240 28 262 16 280 12" fill="none" stroke="var(--green)" stroke-width="2.5" stroke-linecap="round"/><circle cx="280" cy="12" r="4" fill="var(--green)" stroke="#fff" stroke-width="2"/></svg>
+            </div>
+            <div class="card glass">
+              <div class="card-title"><h3>Ticket promedio</h3><button class="more-btn"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg></button></div>
+              <div style="display:flex;align-items:baseline;gap:9px;"><span class="bignum tnum">$7.295</span><span class="delta down"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 10l6 6 6-6"/></svg>3%</span></div>
+              <div class="label-sm" style="margin-top:2px;">por venta</div>
+              <svg class="spark" viewBox="0 0 280 64" preserveAspectRatio="none"><defs><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(91,140,255,0.26)"/><stop offset="100%" stop-color="rgba(91,140,255,0)"/></linearGradient></defs><path d="M0 44 C40 40 70 24 100 28 C140 33 160 16 200 22 C240 28 262 32 280 34 L280 64 L0 64 Z" fill="url(#g2)"/><path d="M0 44 C40 40 70 24 100 28 C140 33 160 16 200 22 C240 28 262 32 280 34" fill="none" stroke="var(--blue)" stroke-width="2.5" stroke-linecap="round"/><circle cx="280" cy="34" r="4" fill="var(--blue)" stroke="#fff" stroke-width="2"/></svg>
+            </div>
+          </div>
+
+          <!-- VENTAS SEMANA + MEDIOS DE PAGO -->
+          <div class="grid2">
+            <div class="card glass">
+              <div class="card-title"><h3>Ingresos vs Gastos</h3><button class="more-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg></button></div>
+              <div style="display:flex;gap:18px;font-size:12px;color:var(--ink-2);margin-bottom:4px;">
+                <span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;background:var(--blue);border-radius:999px;"></span>Ingresos <strong style="color:var(--ink);">$1.984.300</strong></span>
+                <span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;background:var(--orange);border-radius:999px;"></span>Gastos <strong style="color:var(--ink);">$920.500</strong></span>
+              </div>
+              <svg viewBox="0 0 520 138" style="width:100%;height:138px;margin-top:2px;" preserveAspectRatio="none">
+                <defs><linearGradient id="gi" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(91,140,255,0.20)"/><stop offset="100%" stop-color="rgba(91,140,255,0)"/></linearGradient></defs>
+                <path d="M0 92 C50 86 80 68 130 72 C190 78 220 44 280 54 C340 64 370 30 420 40 C470 47 500 24 520 20 L520 138 L0 138 Z" fill="url(#gi)"/>
+                <path d="M0 116 C60 112 90 106 140 108 C200 110 230 96 290 102 C350 108 380 99 430 101 C480 103 500 97 520 99" fill="none" stroke="var(--orange)" stroke-width="2.5" stroke-linecap="round"/>
+                <path d="M0 92 C50 86 80 68 130 72 C190 78 220 44 280 54 C340 64 370 30 420 40 C470 47 500 24 520 20" fill="none" stroke="var(--blue)" stroke-width="3" stroke-linecap="round"/>
+                <circle cx="420" cy="40" r="5" fill="var(--blue)" stroke="#fff" stroke-width="2.5"/>
+              </svg>
+              <div style="display:flex;justify-content:space-between;margin-top:10px;padding-top:12px;border-top:1px solid rgba(13,20,36,0.05);">
+                <div><div class="label-sm">Ingresos · este mes</div><div style="display:flex;align-items:baseline;gap:8px;margin-top:2px;"><span class="tnum" style="font-size:19px;font-weight:700;letter-spacing:-0.02em;">$4.230.500</span><span class="delta up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 14l6-6 6 6"/></svg>18%</span></div></div>
+                <div style="text-align:right;"><div class="label-sm">Gastos · este mes</div><div style="display:flex;align-items:baseline;gap:8px;margin-top:2px;justify-content:flex-end;"><span class="tnum" style="font-size:19px;font-weight:700;letter-spacing:-0.02em;">$2.180.000</span><span class="delta down"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 10l6 6 6-6"/></svg>4%</span></div></div>
+              </div>
+            </div>
+            <div class="card glass">
+              <div class="card-title"><h3>Medios de pago · hoy</h3><button class="more-btn"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg></button></div>
+              <div class="donut-wrap">
+                <div class="donut" style="background:conic-gradient(#34c77d 0% 45%, #6b5fff 45% 73%, #f7984a 73% 91%, #ef5d6a 91% 100%);">
+                  <div class="ctr"><div class="tnum" style="font-size:20px;font-weight:700;">47</div><div style="font-size:9.5px;color:var(--ink-3);">ventas</div></div>
+                </div>
+                <div class="legend">
+                  <div class="row"><span class="dot" style="background:#34c77d"></span>Efectivo<span class="val">45%</span></div>
+                  <div class="row"><span class="dot" style="background:#6b5fff"></span>Débito<span class="val">28%</span></div>
+                  <div class="row"><span class="dot" style="background:#f7984a"></span>Crédito<span class="val">18%</span></div>
+                  <div class="row"><span class="dot" style="background:#ef5d6a"></span>QR / Transf.<span class="val">9%</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CLIENTES ACTIVOS + PRODUCTOS MÁS VENDIDOS -->
+          <div class="grid2">
+            <div class="card glass">
+              <div class="card-title"><h3>Clientes activos</h3><button class="more-btn"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg></button></div>
+              <div style="display:flex;align-items:baseline;gap:9px;"><span class="bignum tnum">312</span><span class="delta up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 14l6-6 6 6"/></svg>8.3%</span></div>
+              <div class="label-sm" style="margin-top:2px;">compraron este mes</div>
+              <div class="bars">
+                <div class="b" style="height:48%;animation-delay:.1s"></div>
+                <div class="b" style="height:60%;animation-delay:.16s"></div>
+                <div class="b" style="height:52%;animation-delay:.22s"></div>
+                <div class="b" style="height:70%;animation-delay:.28s"></div>
+                <div class="b" style="height:64%;animation-delay:.34s"></div>
+                <div class="b" style="height:78%;animation-delay:.4s"></div>
+                <div class="b hi" style="height:92%;animation-delay:.46s"></div>
+              </div>
+            </div>
+            <div class="card glass">
+              <div class="card-title"><h3>Más vendidos · hoy</h3><a class="label-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-weight:500;">Ver todos <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 5l7 7-7 7"/></svg></a></div>
+              <div style="display:flex;align-items:center;gap:11px;padding:8px 0 9px;"><span style="width:24px;height:24px;border-radius:7px;background:rgba(107,95,255,0.12);color:var(--purple);font-size:11px;font-weight:700;font-family:var(--mono);display:flex;align-items:center;justify-content:center;flex:0 0 auto;">1</span><div style="flex:1;min-width:0;"><div style="font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Coca Cola 2.25L</div><div style="height:4px;border-radius:99px;background:rgba(13,20,36,0.06);margin-top:5px;overflow:hidden;"><div style="height:100%;width:100%;border-radius:99px;background:var(--purple);"></div></div></div><span class="tnum" style="font-family:var(--mono);font-weight:600;font-size:12px;color:var(--ink-2);flex:0 0 auto;">48 u</span></div>
+              <div style="display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(13,20,36,0.05);"><span style="width:24px;height:24px;border-radius:7px;background:rgba(13,20,36,0.05);color:var(--ink-2);font-size:11px;font-weight:700;font-family:var(--mono);display:flex;align-items:center;justify-content:center;flex:0 0 auto;">2</span><div style="flex:1;min-width:0;"><div style="font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Marlboro Box 20</div><div style="height:4px;border-radius:99px;background:rgba(13,20,36,0.06);margin-top:5px;overflow:hidden;"><div style="height:100%;width:81%;border-radius:99px;background:var(--purple);opacity:.85;"></div></div></div><span class="tnum" style="font-family:var(--mono);font-weight:600;font-size:12px;color:var(--ink-2);flex:0 0 auto;">39 u</span></div>
+              <div style="display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(13,20,36,0.05);"><span style="width:24px;height:24px;border-radius:7px;background:rgba(13,20,36,0.05);color:var(--ink-2);font-size:11px;font-weight:700;font-family:var(--mono);display:flex;align-items:center;justify-content:center;flex:0 0 auto;">3</span><div style="flex:1;min-width:0;"><div style="font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Pan Lactal Bimbo</div><div style="height:4px;border-radius:99px;background:rgba(13,20,36,0.06);margin-top:5px;overflow:hidden;"><div style="height:100%;width:65%;border-radius:99px;background:var(--purple);opacity:.7;"></div></div></div><span class="tnum" style="font-family:var(--mono);font-weight:600;font-size:12px;color:var(--ink-2);flex:0 0 auto;">31 u</span></div>
+              <div style="display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(13,20,36,0.05);"><span style="width:24px;height:24px;border-radius:7px;background:rgba(13,20,36,0.05);color:var(--ink-2);font-size:11px;font-weight:700;font-family:var(--mono);display:flex;align-items:center;justify-content:center;flex:0 0 auto;">4</span><div style="flex:1;min-width:0;"><div style="font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Yerba Taragüí 1kg</div><div style="height:4px;border-radius:99px;background:rgba(13,20,36,0.06);margin-top:5px;overflow:hidden;"><div style="height:100%;width:54%;border-radius:99px;background:var(--purple);opacity:.6;"></div></div></div><span class="tnum" style="font-family:var(--mono);font-weight:600;font-size:12px;color:var(--ink-2);flex:0 0 auto;">26 u</span></div>
+            </div>
+          </div>
+
+          <!-- ÚLTIMAS VENTAS -->
+          <div class="card glass">
+            <div class="card-title"><h3>Últimas ventas</h3><a class="label-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-weight:500;">Ver todas <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 5l7 7-7 7"/></svg></a></div>
+            <div class="tx-row"><div class="tx-ic" style="background:linear-gradient(135deg,#34c77d,#5b8cff)">B</div><div><div class="tx-name">Consumidor final</div><div class="tx-sub">14:32 · Factura B · CAE 7501…</div></div><span class="pay-pill" style="background:rgba(52,199,125,0.14);color:#1a8e5a;">EFECTIVO</span><span class="tx-amount">$8.100</span></div>
+            <div class="tx-row"><div class="tx-ic" style="background:linear-gradient(135deg,#6b5fff,#9088ff)">MV</div><div><div class="tx-name">Marcos Villalba</div><div class="tx-sub">14:21 · Factura A · CAE 7500…</div></div><span class="pay-pill" style="background:rgba(91,140,255,0.16);color:#3b6fd4;">DÉBITO</span><span class="tx-amount">$23.716</span></div>
+            <div class="tx-row"><div class="tx-ic" style="background:linear-gradient(135deg,#5b8cff,#8eb0ff)">B</div><div><div class="tx-name">Consumidor final</div><div class="tx-sub">14:08 · Factura B · CAE 7499…</div></div><span class="pay-pill" style="background:rgba(107,95,255,0.14);color:var(--purple);">CRÉDITO</span><span class="tx-amount">$4.350</span></div>
+            <div class="tx-row"><div class="tx-ic" style="background:linear-gradient(135deg,#0e8f9e,#34c77d)">B</div><div><div class="tx-name">Consumidor final</div><div class="tx-sub">13:55 · Factura B · CAE 7498…</div></div><span class="pay-pill" style="background:rgba(14,143,158,0.14);color:var(--teal);">QR</span><span class="tx-amount">$1.890</span></div>
+            <div class="tx-row"><div class="tx-ic" style="background:linear-gradient(135deg,#f7984a,#ee6a8e)">LR</div><div><div class="tx-name">Lucía Ramírez</div><div class="tx-sub">13:40 · Factura B · CAE 7497…</div></div><span class="pay-pill" style="background:rgba(52,199,125,0.14);color:#1a8e5a;">EFECTIVO</span><span class="tx-amount">$12.480</span></div>
+          </div>
+
+          <!-- ════ CALENDARIO + PENDIENTES + CUENTAS CORRIENTES (append, no toca lo de arriba) ════ -->
+          <style>
+            .cal-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:13px; }
+            .cal-nav{ display:flex; gap:6px; }
+            .cal-nav button{ width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--ink-2);background:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.85);font-size:14px;line-height:1; }
+            .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:5px; }
+            .cal-dow{ font-size:9px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-3); text-align:center; font-family:var(--mono); font-weight:600; padding-bottom:3px; }
+            .cal-day{ aspect-ratio:1; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:11.5px; font-weight:500; color:var(--ink-1); position:relative; border:1px solid rgba(255,255,255,0.45); }
+            .cal-day.empty{ background:transparent!important; border:none; }
+            .cal-day.today{ box-shadow:0 0 0 2px var(--purple); color:var(--ink); font-weight:700; }
+            .cal-day .ev{ position:absolute; bottom:5px; left:50%; transform:translateX(-50%); display:flex; gap:2px; }
+            .cal-day .ev i{ width:4.5px; height:4.5px; border-radius:50%; }
+            .ev .pay{ background:var(--red); } .ev .col{ background:var(--green); } .ev .tax{ background:var(--orange); }
+            .cal-legend{ display:flex; gap:15px; margin-top:13px; flex-wrap:wrap; }
+            .cal-legend span{ font-size:10.5px; color:var(--ink-3); display:inline-flex; align-items:center; gap:5px; }
+            .cal-legend i{ width:7px; height:7px; border-radius:50%; }
+            .cal-agenda{ margin-top:14px; padding-top:13px; border-top:1px solid rgba(13,20,36,0.06); display:flex; flex-direction:column; gap:11px; }
+            .ag-row{ display:flex; align-items:center; gap:11px; }
+            .ag-date{ font-family:var(--mono); font-size:11px; font-weight:700; color:var(--ink-2); width:40px; flex:0 0 auto; }
+            .ag-ic{ width:28px;height:28px;border-radius:9px;flex:0 0 auto;display:flex;align-items:center;justify-content:center; }
+            .ag-ic svg{ width:15px; height:15px; }
+            .ag-tx{ flex:1; min-width:0; } .ag-n{ font-size:12.5px; font-weight:500; color:var(--ink-1); } .ag-s{ font-size:10.5px; color:var(--ink-3); margin-top:1px; }
+            .ag-amt{ font-family:var(--mono); font-size:12.5px; font-weight:700; }
+            .todo-list{ display:flex; flex-direction:column; gap:1px; flex:1; min-height:0; overflow-y:auto; padding-right:5px; }
+            .todo-item{ display:flex; align-items:flex-start; gap:11px; padding:9px 7px; border-radius:10px; cursor:pointer; transition:background 150ms; }
+            .todo-item:hover{ background:rgba(255,255,255,0.5); }
+            .todo-check{ width:19px; height:19px; border-radius:6px; border:2px solid rgba(13,20,36,0.18); flex:0 0 auto; margin-top:1px; display:flex; align-items:center; justify-content:center; transition:all 150ms; }
+            .todo-check svg{ width:12px; height:12px; color:#fff; opacity:0; transition:opacity 150ms; }
+            .todo-item.done .todo-check{ background:var(--green); border-color:var(--green); }
+            .todo-item.done .todo-check svg{ opacity:1; }
+            .todo-tx{ flex:1; min-width:0; }
+            .todo-n{ font-size:13px; font-weight:500; color:var(--ink-1); transition:color 150ms; }
+            .todo-item.done .todo-n{ color:var(--ink-3); text-decoration:line-through; }
+            .todo-s{ font-size:10.5px; color:var(--ink-3); margin-top:2px; }
+            .todo-tag{ font-size:9.5px; font-weight:700; padding:2px 8px; border-radius:6px; flex:0 0 auto; margin-top:1px; white-space:nowrap; }
+            .todo-add{ display:flex; align-items:center; gap:11px; padding:11px 7px 2px; margin-top:7px; border-top:1px solid rgba(13,20,36,0.06); }
+            .todo-add .plus{ width:19px;height:19px;border-radius:6px;border:2px dashed rgba(13,20,36,0.22);flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:var(--ink-3);font-size:13px;line-height:1; }
+            .todo-add input{ flex:1; font-size:12.5px; color:var(--ink-1); background:none; border:none; outline:none; }
+            .todo-add input::placeholder{ color:var(--ink-3); }
+            .cc-grid{ display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+            .cc-col2{ border-left:1px solid rgba(13,20,36,0.07); padding-left:22px; }
+            .cc-col-h{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:10px; }
+            .cc-lbl{ font-size:10.5px; text-transform:uppercase; letter-spacing:0.06em; font-family:var(--mono); color:var(--ink-3); font-weight:600; display:inline-flex; align-items:center; gap:6px; }
+            .cc-lbl i{ width:7px; height:7px; border-radius:50%; }
+            .cc-tot{ font-family:var(--mono); font-size:21px; font-weight:700; letter-spacing:-0.02em; }
+            .cc-tot.cobrar{ color:#1a8e5a; } .cc-tot.pagar{ color:#c93545; }
+            .cc-row{ display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid rgba(13,20,36,0.05); }
+            .cc-av{ width:30px;height:30px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10.5px;font-weight:700; }
+            .cc-tx{ flex:1; min-width:0; } .cc-n{ font-size:12.5px; font-weight:500; color:var(--ink-1); } .cc-s{ font-size:10.5px; color:var(--ink-3); margin-top:1px; }
+            .cc-m{ font-family:var(--mono); font-size:12.5px; font-weight:700; color:var(--ink-1); flex:0 0 auto; }
+            .ring-wrap{ position:relative; width:78px; height:78px; flex:0 0 auto; }
+            .ring-ctr{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+            .ring-pct{ font-size:17px; font-weight:700; color:var(--ink); font-family:var(--mono); letter-spacing:-0.02em; }
+            .streak{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; color:#b9791a; background:rgba(244,201,72,0.20); padding:4px 10px; border-radius:999px; }
+            .todo-templates{ display:flex; gap:8px; margin:2px 0 4px; }
+            .todo-templates button{ font-size:11px; font-weight:600; color:var(--ink-2); background:rgba(255,255,255,0.55); border:1px solid rgba(255,255,255,0.85); padding:6px 11px; border-radius:9px; display:inline-flex; align-items:center; gap:5px; cursor:pointer; transition:background 150ms; }
+            .todo-templates button:hover{ background:rgba(255,255,255,0.85); }
+            .todo-group{ font-size:10px; text-transform:uppercase; letter-spacing:0.07em; font-family:var(--mono); font-weight:600; color:var(--ink-3); margin:12px 6px 2px; display:flex; align-items:center; gap:6px; }
+            .todo-group.over{ color:#c93545; }
+            .todo-recur{ font-size:10px; color:var(--ink-3); display:inline-flex; align-items:center; gap:4px; }
+            .todo-item.done .todo-check svg{ animation:checkpop 360ms cubic-bezier(.34,1.56,.64,1); }
+            @keyframes checkpop{ 0%{transform:scale(0)} 55%{transform:scale(1.35)} 100%{transform:scale(1)} }
+            .cal-day.feriado{ font-weight:700; }
+            .cal-day.feriado.nac{ background:rgba(91,155,213,0.20)!important; box-shadow:inset 0 0 0 1.5px #5b9bd5; color:#1f4f96; }
+            .cal-day.feriado.prov{ background:rgba(14,143,158,0.16)!important; box-shadow:inset 0 0 0 1.5px #2bb3c0; color:#0c6f7c; }
+            .todo-seg{ display:inline-flex; background:rgba(13,20,36,0.05); border-radius:9px; padding:2px; gap:2px; }
+            .todo-seg button{ font-size:11px; font-weight:600; color:var(--ink-3); background:transparent; border:none; padding:4px 11px; border-radius:7px; cursor:pointer; transition:all 150ms; }
+            .todo-seg button.on{ background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(13,20,36,0.10); }
+            .todo-list[data-tf="all"][data-view="dia"] [data-sc="mes"], .todo-list[data-tf="all"][data-view="dia"] [data-sc="año"]{ display:none; }
+            .todo-list[data-tf="all"][data-view="mes"] [data-sc="año"]{ display:none; }
+            .todo-list:not([data-tf="all"]) .todo-group{ display:none; }
+            .todo-list[data-tf="urg"] .todo-item:not([data-urg]){ display:none; }
+            .todo-list[data-tf="caja"] .todo-item:not([data-type~="caja"]){ display:none; }
+            .todo-list[data-tf="stock"] .todo-item:not([data-type~="stock"]){ display:none; }
+            .todo-list[data-tf="prov"] .todo-item:not([data-type~="prov"]){ display:none; }
+            .todo-list[data-tf="pago"] .todo-item:not([data-type~="pago"]){ display:none; }
+            .todo-list[data-tf="fiscal"] .todo-item:not([data-type~="fiscal"]){ display:none; }
+            .todo-list[data-tf="contador"] .todo-item:not([data-type~="contador"]){ display:none; }
+            .todo-list[data-tf="pedido"] .todo-item:not([data-type~="pedido"]){ display:none; }
+            .todo-filter{ position:relative; }
+            .tf-btn{ display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:600; color:var(--ink-2); background:rgba(255,255,255,0.6); border:1px solid rgba(255,255,255,0.85); padding:5px 9px; border-radius:9px; cursor:pointer; transition:background 150ms; }
+            .tf-btn:hover{ background:rgba(255,255,255,0.9); }
+            .tf-chev{ transition:transform 180ms; opacity:0.6; }
+            .todo-filter.open .tf-chev{ transform:rotate(180deg); }
+            .tf-menu{ position:absolute; top:calc(100% + 6px); right:0; z-index:30; min-width:172px; background:rgba(255,255,255,0.82); backdrop-filter:blur(20px) saturate(140%); -webkit-backdrop-filter:blur(20px) saturate(140%); border:1px solid rgba(255,255,255,0.9); border-radius:13px; box-shadow:0 12px 34px rgba(13,20,36,0.16); padding:6px; display:none; flex-direction:column; gap:1px; }
+            .todo-filter.open .tf-menu{ display:flex; }
+            .tf-menu button{ display:flex; align-items:center; gap:9px; font-size:12.5px; font-weight:500; color:var(--ink-1); background:transparent; border:none; padding:8px 10px; border-radius:8px; cursor:pointer; text-align:left; transition:background 120ms; }
+            .tf-menu button:hover{ background:rgba(107,95,255,0.08); }
+            .tf-menu button.on{ background:rgba(107,95,255,0.12); color:var(--ink); font-weight:600; }
+            .tf-dot{ width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
+            .ev .ret{ background:#d65db1; } .ev .note{ background:#f7984a; } .ev .ret.over{ background:var(--red); }
+            .cal-day{ cursor:pointer; transition:background 120ms, box-shadow 120ms; }
+            .cal-day.sel{ background:var(--purple)!important; color:#fff!important; box-shadow:0 0 0 2px var(--purple); font-weight:700; }
+            .cal-day.sel .ev i{ box-shadow:0 0 0 1.5px rgba(255,255,255,0.55); }
+            .cal-sec-label{ font-size:10px; text-transform:uppercase; letter-spacing:0.07em; font-family:var(--mono); font-weight:600; color:var(--ink-3); margin-bottom:10px; }
+            .cal-detail{ margin-top:14px; padding-top:13px; border-top:1px solid rgba(13,20,36,0.06); }
+            .cal-detail-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:11px; }
+            .cal-detail-day{ font-size:13px; font-weight:700; color:var(--ink); text-transform:capitalize; }
+            .cal-addnote{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; color:var(--purple); background:rgba(107,95,255,0.1); border:none; padding:5px 10px; border-radius:8px; cursor:pointer; transition:background 150ms; }
+            .cal-addnote:hover{ background:rgba(107,95,255,0.18); }
+            .cal-addnote svg{ width:12px; height:12px; }
+            .cal-detail-body{ display:flex; flex-direction:column; gap:10px; }
+            .cd-row{ display:flex; align-items:center; gap:11px; }
+            .cd-ic{ width:30px; height:30px; border-radius:9px; flex:0 0 auto; display:flex; align-items:center; justify-content:center; }
+            .cd-ic svg{ width:15px; height:15px; }
+            .cd-ic.ret{ background:rgba(214,93,177,0.14); color:#b0388f; }
+            .cd-ic.ret.over{ background:rgba(239,93,106,0.15); color:#c93545; }
+            .cd-ic.note{ background:rgba(247,152,74,0.16); color:#b96c1a; }
+            .cd-tx{ flex:1; min-width:0; } .cd-n{ font-size:12.5px; font-weight:500; color:var(--ink-1); } .cd-s{ font-size:10.5px; color:var(--ink-3); margin-top:1px; }
+            .cd-amt{ font-family:var(--mono); font-size:12.5px; font-weight:700; flex:0 0 auto; }
+            .cd-empty{ font-size:12px; color:var(--ink-3); padding:4px 0; }
+            .pend-dayview{ display:none; }
+            .todo-list.dayspecific > .todo-group, .todo-list.dayspecific > .todo-item{ display:none; }
+            .todo-list.dayspecific .pend-dayview{ display:flex; flex-direction:column; gap:1px; }
+            .pdv-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+            .pdv-head span{ font-size:11px; text-transform:uppercase; letter-spacing:0.06em; font-family:var(--mono); font-weight:600; color:var(--ink-2); }
+            .pdv-back{ font-size:11px; font-weight:600; color:var(--purple); background:rgba(107,95,255,0.1); border:none; padding:4px 10px; border-radius:8px; cursor:pointer; transition:background 150ms; }
+            .pdv-back:hover{ background:rgba(107,95,255,0.18); }
+            .quickadd{ margin-top:12px; flex:0 0 auto; }
+            .qa-trigger{ width:100%; display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--purple); background:rgba(107,95,255,0.08); border:1px dashed rgba(107,95,255,0.4); padding:11px 14px; border-radius:12px; cursor:pointer; transition:background 150ms; }
+            .qa-trigger:hover{ background:rgba(107,95,255,0.15); }
+            .qa-trigger .plus{ font-size:17px; font-weight:400; line-height:1; }
+            .quickadd.open .qa-trigger{ display:none; }
+            .qa-form{ display:none; flex-direction:column; gap:10px; background:rgba(255,255,255,0.65); border:1px solid rgba(255,255,255,0.9); border-radius:12px; padding:12px; box-shadow:0 4px 16px rgba(13,20,36,0.06); }
+            .quickadd.open .qa-form{ display:flex; }
+            .qa-row{ display:flex; gap:6px; }
+            .qa-bottom{ align-items:center; justify-content:space-between; }
+            .qa-type{ font-size:11.5px; font-weight:600; color:var(--ink-2); background:rgba(13,20,36,0.05); border:none; padding:6px 13px; border-radius:8px; cursor:pointer; transition:all 120ms; }
+            .qa-type.on{ background:var(--purple); color:#fff; }
+            .qa-input{ width:100%; font-size:13.5px; color:var(--ink); background:#fff; border:1px solid rgba(13,20,36,0.12); border-radius:9px; padding:10px 12px; outline:none; font-family:inherit; box-sizing:border-box; }
+            .qa-input:focus{ border-color:var(--purple); }
+            .qa-when{ display:inline-flex; background:rgba(13,20,36,0.05); border-radius:9px; padding:2px; gap:2px; }
+            .qa-w{ font-size:11px; font-weight:600; color:var(--ink-3); background:transparent; border:none; padding:5px 10px; border-radius:7px; cursor:pointer; }
+            .qa-w.on{ background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(13,20,36,0.1); }
+            .qa-cancel{ font-size:12px; font-weight:600; color:var(--ink-3); background:transparent; border:none; padding:8px 10px; cursor:pointer; }
+            .qa-submit{ font-size:12.5px; font-weight:700; color:#fff; background:var(--purple); border:none; padding:8px 16px; border-radius:9px; cursor:pointer; }
+            .just-added{ animation:qaIn 400ms ease; }
+            @keyframes qaIn{ from{ opacity:0; transform:translateY(-6px); } to{ opacity:1; transform:none; } }
+          </style>
+
+          <div class="grid2cal">
+            <!-- CALENDARIO -->
+            <section class="card glass" id="calCard">
+              <div class="cal-head">
+                <div class="card-title" style="margin:0"><h3>Calendario · Junio 2026</h3></div>
+                <div class="cal-nav"><button>‹</button><button>›</button></div>
+              </div>
+              <div class="cal-grid">
+                <div class="cal-dow">Lun</div><div class="cal-dow">Mar</div><div class="cal-dow">Mié</div><div class="cal-dow">Jue</div><div class="cal-dow">Vie</div><div class="cal-dow">Sáb</div><div class="cal-dow">Dom</div>
+                <div class="cal-day" style="background:rgba(107,95,255,0.12)">1</div><div class="cal-day" style="background:rgba(107,95,255,0.14)">2</div><div class="cal-day" style="background:rgba(107,95,255,0.13)">3</div><div class="cal-day" style="background:rgba(107,95,255,0.15)">4</div><div class="cal-day" style="background:rgba(107,95,255,0.20)">5</div><div class="cal-day" style="background:rgba(107,95,255,0.30)">6</div><div class="cal-day" style="background:rgba(107,95,255,0.10)">7</div>
+                <div class="cal-day" style="background:rgba(107,95,255,0.13)">8</div><div class="cal-day" style="background:rgba(107,95,255,0.15)">9</div><div class="cal-day" style="background:rgba(107,95,255,0.14)">10</div><div class="cal-day" style="background:rgba(107,95,255,0.16)">11</div><div class="cal-day" style="background:rgba(107,95,255,0.21)">12</div><div class="cal-day" style="background:rgba(107,95,255,0.29)">13</div><div class="cal-day" style="background:rgba(107,95,255,0.11)">14</div>
+                <div class="cal-day" style="background:rgba(107,95,255,0.14)">15</div><div class="cal-day" style="background:rgba(107,95,255,0.13)">16</div><div class="cal-day" style="background:rgba(107,95,255,0.17)">17</div><div class="cal-day" style="background:rgba(107,95,255,0.15)">18</div><div class="cal-day" style="background:rgba(107,95,255,0.22)">19<span class="ev"><i class="col"></i></span></div><div class="cal-day feriado nac" title="Día de la Bandera · feriado nacional">20</div><div class="cal-day" style="background:rgba(107,95,255,0.10)">21</div>
+                <div class="cal-day" style="background:rgba(107,95,255,0.13)">22</div><div class="cal-day" style="background:rgba(107,95,255,0.16)">23</div><div class="cal-day" style="background:rgba(107,95,255,0.14)">24</div><div class="cal-day" style="background:rgba(107,95,255,0.18)">25</div><div class="cal-day today" style="background:rgba(107,95,255,0.24)">26</div><div class="cal-day" style="background:rgba(107,95,255,0.04)">27</div><div class="cal-day" style="background:rgba(107,95,255,0.04)">28</div>
+                <div class="cal-day" style="background:rgba(107,95,255,0.04)">29</div><div class="cal-day" style="background:rgba(107,95,255,0.04)">30<span class="ev"><i class="pay"></i></span></div><div class="cal-day empty"></div><div class="cal-day empty"></div><div class="cal-day empty"></div><div class="cal-day empty"></div><div class="cal-day empty"></div>
+              </div>
+              <div class="cal-legend">
+                <span><i style="background:var(--purple-2)"></i>Más ventas</span>
+                <span><i style="background:var(--green)"></i>Cobro</span>
+                <span><i style="background:var(--red)"></i>Pago</span>
+                <span><i style="box-shadow:inset 0 0 0 2px #5b9bd5;background:rgba(91,155,213,0.20)"></i>Feriado nac.</span>
+                <span><i style="box-shadow:inset 0 0 0 2px #2bb3c0;background:rgba(14,143,158,0.16)"></i>Feriado prov.</span>
+                <span><i style="background:#d65db1"></i>Retiro</span>
+                <span><i style="background:#f7984a"></i>Nota</span>
+                <span><i style="box-shadow:0 0 0 2px var(--purple);background:transparent"></i>Hoy</span>
+              </div>
+              <div class="cal-detail">
+                <div class="cal-detail-head">
+                  <span class="cal-detail-day" id="calDetailDate">Viernes 26 de junio</span>
+                  <button class="cal-addnote" id="calAddNote"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Nota</button>
+                </div>
+                <div class="cal-detail-body" id="calDetailBody"></div>
+              </div>
+              <div class="cal-agenda">
+                <div class="cal-sec-label">Próximos vencimientos</div>
+                <div class="ag-row"><span class="ag-date">30/06</span><span class="ag-ic" style="background:rgba(239,93,106,0.13);color:#c93545"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg></span><div class="ag-tx"><div class="ag-n">Sueldos · 2 empleados</div><div class="ag-s">Neto a pagar</div></div><span class="ag-amt" style="color:#c93545">$656.000</span></div>
+                <div class="ag-row"><span class="ag-date">09/07</span><span class="ag-ic" style="background:rgba(91,155,213,0.18);color:#2b6cb0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4M4 4h11l-1.6 3.5L15 11H4"/></svg></span><div class="ag-tx"><div class="ag-n">Día de la Independencia</div><div class="ag-s">Feriado nacional</div></div><span class="ag-amt" style="color:#2b6cb0;font-size:11px;">Feriado</span></div>
+                <div class="ag-row"><span class="ag-date">12/07</span><span class="ag-ic" style="background:rgba(247,152,74,0.14);color:#b96c1a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/></svg></span><div class="ag-tx"><div class="ag-n">Pagar Distribuidora Austral</div><div class="ag-s">Cuenta corriente proveedor</div></div><span class="ag-amt" style="color:#c93545">$148.300</span></div>
+                <div class="ag-row"><span class="ag-date">18/07</span><span class="ag-ic" style="background:rgba(91,140,255,0.13);color:#3b6fd4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg></span><div class="ag-tx"><div class="ag-n">Vence IVA · DDJJ F2002</div><div class="ag-s">ARCA</div></div><span class="ag-amt" style="color:var(--ink-1)">$849.000</span></div>
+              </div>
+            </section>
+
+            <!-- PENDIENTES -->
+            <section class="card glass" id="pendCard" style="display:flex;flex-direction:column;">
+              <div class="card-title">
+                <div style="display:flex;align-items:center;gap:8px;"><h3>Pendientes</h3><span class="streak" title="Completaste tus tareas 7 días seguidos"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 17a2.5 2.5 0 0 0 2.5-2.5c0-1.4-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.3 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>7 días</span></div>
+                <div class="todo-filter" id="todoFilter">
+                  <button class="tf-btn" id="tfBtn"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M7 12h10M11 18h2"/></svg><span id="tfLabel">Todas</span><svg class="tf-chev" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+                  <div class="tf-menu" id="tfMenu">
+                    <button data-t="all" class="on"><span class="tf-dot" style="background:var(--ink-3)"></span>Todas</button>
+                    <button data-t="urg"><span class="tf-dot" style="background:#ef5d6a"></span>Urgentes</button>
+                    <button data-t="pedido"><span class="tf-dot" style="background:#d65db1"></span>Pedidos</button>
+                    <button data-t="caja"><span class="tf-dot" style="background:#0e8f9e"></span>Caja</button>
+                    <button data-t="stock"><span class="tf-dot" style="background:#f7984a"></span>Stock</button>
+                    <button data-t="prov"><span class="tf-dot" style="background:#6b5fff"></span>Proveedores</button>
+                    <button data-t="pago"><span class="tf-dot" style="background:#ef5d6a"></span>Pagos</button>
+                    <button data-t="fiscal"><span class="tf-dot" style="background:#3b6fd4"></span>Fiscal</button>
+                    <button data-t="contador"><span class="tf-dot" style="background:#34c77d"></span>Contador</button>
+                  </div>
+                </div>
+              </div>
+              <div style="margin:4px 0 6px;"><div class="todo-seg" id="todoSeg"><button data-v="dia">Día</button><button class="on" data-v="mes">Mes</button><button data-v="año">Año</button></div></div>
+              <div class="todo-templates"><button><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Checklist apertura</button><button><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Checklist cierre</button></div>
+              <div class="todo-list" data-view="mes" data-tf="all">
+                <div class="pend-dayview" id="pendDayView"></div>
+                <div class="todo-group over" data-sc="dia"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>Atrasada</div>
+                <div class="todo-item" data-sc="dia" data-type="stock" data-urg=""><span class="todo-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg></span><div class="todo-tx"><div class="todo-n">Actualizar lista de precios</div><div class="todo-s">Bebidas · hace 2 días</div></div></div>
+                <div class="todo-group" data-sc="dia">Hoy</div>
+                <div class="todo-item" data-sc="dia" data-type="stock" data-urg=""><span class="todo-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg></span><div class="todo-tx"><div class="todo-n">Reponer 6 productos bajo mínimo</div><div class="todo-s">Detergente, Marlboro, Pan Lactal…</div></div><span class="todo-tag" style="background:rgba(247,152,74,0.15);color:#b96c1a">Stock</span></div>
+                <div class="todo-item" data-sc="dia" data-type="caja"><span class="todo-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg></span><div class="todo-tx"><div class="todo-n">Hacer arqueo de caja</div><div class="todo-s"><span class="todo-recur"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1 21 6l-3.9 3.9"/><path d="M3 12a9 9 0 0 1 15-6.7L21 6"/><path d="M7 21.9 3 18l3.9-3.9"/><path d="M21 12a9 9 0 0 1-15 6.7L3 18"/></svg>Recurrente · diario</span></div></div></div>
+                <div class="todo-item" data-sc="dia" data-type="caja"><span class="todo-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg></span><div class="todo-tx"><div class="todo-n">Cerrar caja del día</div><div class="todo-s">Cierre Z al terminar</div></div></div>
+                <div class="todo-group" data-sc="dia">Pedidos de clientes</div>
+                <div class="todo-item" data-sc="dia" data-type="pedido"><span class="todo-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg></span><div class="todo-tx"><div class="todo-n">Encargar 50 m de tafeta roja</div><div class="todo-s">Cliente García · seña $20.000</div></div><span class="todo-tag" style="background:rgba(214,93,177,0.15);color:#b0388f">Pedido</span></div>
+                <div class="todo-item" data-sc="dia" data-type="pedido"><span class="todo-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg></span><div class="todo-tx"><div class="todo-n">Encargar 3 cierres invisibles 60 cm</div><div class="todo-s">Cliente Mercería Belén</div></div><span class="todo-tag" style="background:rgba(214,93,177,0.15);color:#b0388f">Pedido</span></div>
+                <div class="todo-group" data-sc="mes">Esta semana</div>
+                <div class="todo-item" data-sc="mes" data-type="prov"><span class="todo-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg></span><div class="todo-tx"><div class="todo-n">Llamar al proveedor de yerba</div><div class="todo-s">Confirmar pedido</div></div></div>
+                <div class="todo-group" data-sc="mes">Este mes</div>
+                <div class="todo-item" data-sc="mes" data-type="pago fiscal" data-urg=""><span class="todo-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg></span><div class="todo-tx"><div class="todo-n">Pagar monotributo</div><div class="todo-s">Categoría F · mensual</div></div><span class="todo-tag" style="background:rgba(239,93,106,0.13);color:#c93545">Pago</span></div>
+                <div class="todo-item" data-sc="mes" data-type="contador fiscal"><span class="todo-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg></span><div class="todo-tx"><div class="todo-n">Mandar gastos del mes al contador</div><div class="todo-s">Para el cierre mensual</div></div></div>
+                <div class="todo-group" data-sc="año">Este año</div>
+                <div class="todo-item" data-sc="año" data-type="fiscal"><span class="todo-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg></span><div class="todo-tx"><div class="todo-n">Recategorización Monotributo</div><div class="todo-s">Julio · semestral</div></div><span class="todo-tag" style="background:rgba(91,140,255,0.14);color:#3b6fd4">Fiscal</span></div>
+                <div class="todo-group" data-sc="dia">Hechas hoy</div>
+                <div class="todo-item done" data-sc="dia" data-type="caja"><span class="todo-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg></span><div class="todo-tx"><div class="todo-n">Cerrar caja de ayer</div><div class="todo-s">Cierre Z · sin descuadre</div></div></div>
+                <div class="todo-item done" data-sc="dia" data-type="caja"><span class="todo-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg></span><div class="todo-tx"><div class="todo-n">Pedir cambio al banco</div><div class="todo-s">Monedas y billetes chicos</div></div></div>
+              </div>
+              <div class="quickadd" id="quickAdd">
+                <button class="qa-trigger" id="qaTrigger"><span class="plus">+</span>Agregar tarea, nota o pedido</button>
+                <div class="qa-form" id="qaForm">
+                  <div class="qa-row">
+                    <button class="qa-type on" data-qt="tarea">Tarea</button>
+                    <button class="qa-type" data-qt="nota">Nota</button>
+                    <button class="qa-type" data-qt="pedido">Pedido</button>
+                  </div>
+                  <input class="qa-input" id="qaInput" placeholder="¿Qué hay que hacer?" />
+                  <div class="qa-row qa-bottom">
+                    <div class="qa-when">
+                      <button class="qa-w on" data-qw="Hoy">Hoy</button>
+                      <button class="qa-w" data-qw="Esta semana">Semana</button>
+                      <button class="qa-w" data-qw="Este mes">Mes</button>
+                    </div>
+                    <div style="display:flex;gap:4px;">
+                      <button class="qa-cancel" id="qaCancel">Cancelar</button>
+                      <button class="qa-submit" id="qaSubmit">Agregar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <!-- CUENTAS CORRIENTES -->
+          <section class="card glass">
+            <div class="card-title"><h3>Cuentas corrientes</h3><a class="label-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-weight:500;">Ver todas <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 5l7 7-7 7"/></svg></a></div>
+            <div class="cc-grid">
+              <div>
+                <div class="cc-col-h"><span class="cc-lbl"><i style="background:var(--green)"></i>Por cobrar · 9 clientes</span><span class="cc-tot cobrar">$487.000</span></div>
+                <div class="cc-row"><span class="cc-av" style="background:linear-gradient(135deg,#34c77d,#5b8cff)">GS</span><div class="cc-tx"><div class="cc-n">García SRL</div><div class="cc-s">vence en 45 días</div></div><span class="cc-m">$187.000</span></div>
+                <div class="cc-row"><span class="cc-av" style="background:linear-gradient(135deg,#6b5fff,#9088ff)">KN</span><div class="cc-tx"><div class="cc-n">Kiosco Norte SA</div><div class="cc-s">vence en 8 días</div></div><span class="cc-m">$134.000</span></div>
+                <div class="cc-row"><span class="cc-av" style="background:linear-gradient(135deg,#f7984a,#ee6a8e)">MC</span><div class="cc-tx"><div class="cc-n">Mercería del Centro</div><div class="cc-s">al día</div></div><span class="cc-m">$34.000</span></div>
+              </div>
+              <div class="cc-col2">
+                <div class="cc-col-h"><span class="cc-lbl"><i style="background:var(--red)"></i>Por pagar · 4 proveedores</span><span class="cc-tot pagar">$312.000</span></div>
+                <div class="cc-row"><span class="cc-av" style="background:linear-gradient(135deg,#ef5d6a,#f7984a)">DA</span><div class="cc-tx"><div class="cc-n">Distribuidora Austral</div><div class="cc-s">vence 12/07</div></div><span class="cc-m">$148.300</span></div>
+                <div class="cc-row"><span class="cc-av" style="background:linear-gradient(135deg,#5b8cff,#0e8f9e)">MS</span><div class="cc-tx"><div class="cc-n">Mayorista Sur</div><div class="cc-s">vence 20/07</div></div><span class="cc-m">$98.700</span></div>
+                <div class="cc-row"><span class="cc-av" style="background:linear-gradient(135deg,#7681a0,#4a5570)">AL</span><div class="cc-tx"><div class="cc-n">Alquiler del local</div><div class="cc-s">vence 30/06</div></div><span class="cc-m">$65.000</span></div>
+              </div>
+            </div>
+          </section>
+
+          <script>
+            (function(){
+              var _tl = document.querySelector('.col-main .todo-list');
+              if(_tl) _tl.addEventListener('click', function(e){
+                var it = e.target.closest('.todo-item');
+                if(it) it.classList.toggle('done');
+              });
+              (function(){
+                var qa = document.getElementById('quickAdd');
+                var tl = document.querySelector('.col-main .todo-list');
+                if(!qa || !tl) return;
+                var input = document.getElementById('qaInput');
+                var curType = 'tarea', curWhen = 'Hoy';
+                var CHK = '<span class="todo-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg></span>';
+                var PH = { tarea: '¿Qué hay que hacer?', nota: 'Escribí la nota…', pedido: '¿Qué encarga el cliente?' };
+                function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+                function openQa(){ qa.classList.add('open'); input.focus(); }
+                function closeQa(){ qa.classList.remove('open'); input.value = ''; }
+                document.getElementById('qaTrigger').addEventListener('click', openQa);
+                document.getElementById('qaCancel').addEventListener('click', closeQa);
+                qa.querySelectorAll('.qa-type').forEach(function(b){ b.addEventListener('click', function(){ qa.querySelectorAll('.qa-type').forEach(function(x){ x.classList.remove('on'); }); b.classList.add('on'); curType = b.dataset.qt; input.placeholder = PH[curType]; }); });
+                qa.querySelectorAll('.qa-w').forEach(function(b){ b.addEventListener('click', function(){ qa.querySelectorAll('.qa-w').forEach(function(x){ x.classList.remove('on'); }); b.classList.add('on'); curWhen = b.dataset.qw; }); });
+                function add(){
+                  var text = input.value.trim(); if(!text){ input.focus(); return; }
+                  var tag = '';
+                  if(curType === 'nota') tag = '<span class="todo-tag" style="background:rgba(247,152,74,0.15);color:#b96c1a">Nota</span>';
+                  else if(curType === 'pedido') tag = '<span class="todo-tag" style="background:rgba(214,93,177,0.15);color:#b0388f">Pedido</span>';
+                  var sc = curWhen === 'Hoy' ? 'dia' : 'mes';
+                  var html = '<div class="todo-item just-added" data-sc="' + sc + '">' + CHK + '<div class="todo-tx"><div class="todo-n">' + esc(text) + '</div><div class="todo-s">' + curWhen + '</div></div>' + tag + '</div>';
+                  var tmp = document.createElement('div'); tmp.innerHTML = html; var node = tmp.firstElementChild;
+                  var target = null, gname = curWhen === 'Hoy' ? 'Hoy' : (curWhen === 'Esta semana' ? 'Esta semana' : 'Este mes');
+                  tl.querySelectorAll('.todo-group').forEach(function(gr){ if(gr.textContent.trim() === gname) target = gr; });
+                  if(target) target.insertAdjacentElement('afterend', node); else tl.insertBefore(node, tl.firstChild);
+                  closeQa();
+                  if(typeof matchPendHeight === 'function') matchPendHeight();
+                  node.scrollIntoView({ block: 'nearest' });
+                }
+                document.getElementById('qaSubmit').addEventListener('click', add);
+                input.addEventListener('keydown', function(e){ if(e.key === 'Enter') add(); else if(e.key === 'Escape') closeQa(); });
+              })();
+              var g = document.getElementById('greet-txt');
+              if(g){ var h = new Date().getHours(); g.textContent = (h < 12 ? 'Buenos días' : (h < 20 ? 'Buenas tardes' : 'Buenas noches')) + ', Agus'; }
+              var seg = document.getElementById('todoSeg');
+              var list = document.querySelector('.col-main .todo-list');
+              if(seg && list){
+                seg.querySelectorAll('button').forEach(function(b){
+                  b.addEventListener('click', function(){
+                    seg.querySelectorAll('button').forEach(function(x){ x.classList.remove('on'); });
+                    b.classList.add('on');
+                    list.dataset.view = b.dataset.v;
+                  });
+                });
+              }
+              var filter = document.getElementById('todoFilter');
+              var tfBtn = document.getElementById('tfBtn');
+              var tfMenu = document.getElementById('tfMenu');
+              var tfLabel = document.getElementById('tfLabel');
+              if(filter && tfBtn && tfMenu && list){
+                tfBtn.addEventListener('click', function(e){ e.stopPropagation(); filter.classList.toggle('open'); });
+                tfMenu.querySelectorAll('button').forEach(function(b){
+                  b.addEventListener('click', function(){
+                    tfMenu.querySelectorAll('button').forEach(function(x){ x.classList.remove('on'); });
+                    b.classList.add('on');
+                    list.dataset.tf = b.dataset.t;
+                    tfLabel.textContent = b.textContent.trim();
+                    filter.classList.remove('open');
+                  });
+                });
+                document.addEventListener('click', function(e){ if(!filter.contains(e.target)){ filter.classList.remove('open'); } });
+              }
+              function matchPendHeight(){
+                var cal = document.getElementById('calCard');
+                var pend = document.getElementById('pendCard');
+                if(cal && pend){ pend.style.width = cal.offsetWidth + 'px'; pend.style.height = cal.offsetHeight + 'px'; }
+              }
+              (function(){
+                var dayItems = {
+                  3:  [{t:'nota', txt:'Pasar a buscar muestras al mayorista'}],
+                  19: [{t:'cobro', txt:'Cobro cta. cte. · García SRL', amt:'$45.000'}],
+                  24: [{t:'retiro', over:true, cli:'Mercería Belén', txt:'3 cierres invisibles 60 cm', sena:'seña $8.000'}],
+                  27: [{t:'retiro', cli:'García', txt:'50 m de tafeta roja', sena:'seña $20.000'}],
+                  28: [{t:'nota', txt:'Llamar a la modista por el vestido'}],
+                  30: [{t:'pago', txt:'Sueldos · 2 empleados', amt:'$656.000'}]
+                };
+                var TODAY = 26, DOW = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+                var cells = document.querySelectorAll('.cal-grid .cal-day:not(.empty)');
+                var dateEl = document.getElementById('calDetailDate');
+                var bodyEl = document.getElementById('calDetailBody');
+                if(!cells.length || !dateEl || !bodyEl) return;
+                function addDot(cell, cls){
+                  var ev = cell.querySelector('.ev');
+                  if(!ev){ ev = document.createElement('span'); ev.className = 'ev'; cell.appendChild(ev); }
+                  var ic = document.createElement('i'); ic.className = cls; ev.appendChild(ic);
+                }
+                Object.keys(dayItems).forEach(function(d){
+                  var cell = cells[(+d) - 1]; if(!cell) return;
+                  dayItems[d].forEach(function(it){
+                    if(it.t === 'retiro') addDot(cell, it.over ? 'ret over' : 'ret');
+                    else if(it.t === 'nota') addDot(cell, 'note');
+                  });
+                });
+                function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+                function rowHtml(it){
+                  if(it.t === 'retiro'){
+                    var over = it.over || it.carried;
+                    return '<div class="cd-row"><span class="cd-ic ret' + (over?' over':'') + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></span><div class="cd-tx"><div class="cd-n">Retirar · ' + esc(it.txt) + '</div><div class="cd-s">' + esc(it.cli) + ' · ' + esc(it.sena) + (over?' · <b style="color:#c93545">sin retirar, sigue pendiente</b>':'') + '</div></div></div>';
+                  }
+                  if(it.t === 'nota'){
+                    return '<div class="cd-row"><span class="cd-ic note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/></svg></span><div class="cd-tx"><div class="cd-n">' + esc(it.txt) + '</div><div class="cd-s">Nota</div></div></div>';
+                  }
+                  var isC = it.t === 'cobro', color = isC ? '#1a8e5a' : '#c93545', bg = isC ? 'rgba(52,199,125,0.14)' : 'rgba(239,93,106,0.13)';
+                  return '<div class="cd-row"><span class="cd-ic" style="background:' + bg + ';color:' + color + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span><div class="cd-tx"><div class="cd-n">' + esc(it.txt) + '</div><div class="cd-s">' + (isC?'Cobro':'Pago') + '</div></div><span class="cd-amt" style="color:' + color + '">' + esc(it.amt) + '</span></div>';
+                }
+                function render(day){
+                  var date = new Date(2026, 5, day);
+                  dateEl.textContent = DOW[date.getDay()] + ' ' + day + ' de junio';
+                  var items = (dayItems[day] || []).slice();
+                  if(day === TODAY){
+                    Object.keys(dayItems).forEach(function(d){
+                      if((+d) < TODAY) dayItems[d].forEach(function(it){ if(it.t === 'retiro' && it.over){ var c = {}; for(var k in it) c[k] = it[k]; c.carried = true; items.push(c); } });
+                    });
+                  }
+                  bodyEl.innerHTML = items.length ? items.map(rowHtml).join('') : '<div class="cd-empty">Nada agendado. Tocá "+ Nota" para agregar un recordatorio.</div>';
+                  if(typeof matchPendHeight === 'function') matchPendHeight();
+                }
+                cells.forEach(function(cell, i){
+                  cell.addEventListener('click', function(){
+                    cells.forEach(function(c){ c.classList.remove('sel'); });
+                    cell.classList.add('sel');
+                    render(i + 1);
+                  });
+                });
+                var addBtn = document.getElementById('calAddNote');
+                if(addBtn) addBtn.addEventListener('click', function(){
+                  var sel = document.querySelector('.cal-grid .cal-day.sel');
+                  var day = sel ? (Array.prototype.indexOf.call(cells, sel) + 1) : TODAY;
+                  (dayItems[day] = dayItems[day] || []).push({t:'nota', txt:'Nueva nota…'});
+                  if(cells[day - 1]) cells[day - 1].classList.add('sel');
+                  render(day);
+                });
+                // === vínculo Calendario ↔ Pendientes ===
+                var todoList = document.querySelector('.col-main .todo-list');
+                var dayView = document.getElementById('pendDayView');
+                var seg = document.getElementById('todoSeg');
+                var CHK = '<span class="todo-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg></span>';
+                function pendRow(it){
+                  var tag, n, s;
+                  if(it.t === 'retiro'){ tag = '<span class="todo-tag" style="background:rgba(214,93,177,0.15);color:#b0388f">Retiro</span>'; n = 'Retirar · ' + it.txt; s = it.cli + ' · ' + it.sena + (it.over ? ' · sin retirar' : ''); }
+                  else if(it.t === 'nota'){ tag = '<span class="todo-tag" style="background:rgba(247,152,74,0.15);color:#b96c1a">Nota</span>'; n = it.txt; s = 'Nota'; }
+                  else if(it.t === 'cobro'){ tag = '<span class="todo-tag" style="background:rgba(52,199,125,0.15);color:#1a8e5a">Cobro</span>'; n = it.txt; s = it.amt; }
+                  else { tag = '<span class="todo-tag" style="background:rgba(239,93,106,0.13);color:#c93545">Pago</span>'; n = it.txt; s = it.amt; }
+                  return '<div class="todo-item">' + CHK + '<div class="todo-tx"><div class="todo-n">' + esc(n) + '</div><div class="todo-s">' + esc(s) + '</div></div>' + tag + '</div>';
+                }
+                function setSegDia(){
+                  if(!seg) return;
+                  seg.querySelectorAll('button').forEach(function(x){ x.classList.remove('on'); });
+                  var db = seg.querySelector('[data-v="dia"]'); if(db) db.classList.add('on');
+                  if(todoList){ todoList.dataset.view = 'dia'; todoList.dataset.tf = 'all'; }
+                }
+                function syncPend(day){
+                  if(!todoList || !dayView) return;
+                  if(day === TODAY){
+                    todoList.classList.remove('dayspecific'); dayView.innerHTML = '';
+                  } else {
+                    var items = (dayItems[day] || []).slice();
+                    var lbl = DOW[new Date(2026, 5, day).getDay()] + ' ' + day + ' de junio';
+                    dayView.innerHTML = '<div class="pdv-head"><span>' + lbl + '</span><button class="pdv-back" id="pdvBack">volver a hoy</button></div>' + (items.length ? items.map(pendRow).join('') : '<div class="cd-empty">Nada para hacer este día.</div>');
+                    todoList.classList.add('dayspecific');
+                    var bk = document.getElementById('pdvBack'); if(bk) bk.addEventListener('click', function(){ selectDay(TODAY); });
+                  }
+                  if(typeof matchPendHeight === 'function') matchPendHeight();
+                }
+                function selectDay(day){
+                  cells.forEach(function(c){ c.classList.remove('sel'); });
+                  if(cells[day - 1]) cells[day - 1].classList.add('sel');
+                  render(day); setSegDia(); syncPend(day);
+                }
+                cells.forEach(function(cell, i){ cell.addEventListener('click', function(){ setSegDia(); syncPend(i + 1); }); });
+                if(seg) seg.querySelectorAll('button').forEach(function(b){
+                  b.addEventListener('click', function(){
+                    if(b.dataset.v === 'dia'){ var s = document.querySelector('.cal-grid .cal-day.sel'); var d = s ? (Array.prototype.indexOf.call(cells, s) + 1) : TODAY; syncPend(d); }
+                    else { if(todoList) todoList.classList.remove('dayspecific'); if(typeof matchPendHeight === 'function') matchPendHeight(); }
+                  });
+                });
+                if(cells[TODAY - 1]) cells[TODAY - 1].classList.add('sel');
+                render(TODAY);
+                syncPend(TODAY);
+              })();
+              matchPendHeight();
+              window.addEventListener('load', matchPendHeight);
+              window.addEventListener('resize', matchPendHeight);
+            })();
+          </script>
+        </div>
+
+        <!-- COLUMNA DERECHA -->
+        <div class="col-side">
+          <!-- Cobrar / nueva venta -->
+          <button class="cta"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg> Nueva venta</button>
+          <!-- META DEL DÍA (anillo de progreso) -->
+          <section class="card glass" style="padding:18px 20px;">
+            <div style="display:flex;align-items:center;gap:16px;">
+              <div class="ring-wrap">
+                <svg viewBox="0 0 80 80" width="78" height="78">
+                  <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(107,95,255,0.13)" stroke-width="9"/>
+                  <circle cx="40" cy="40" r="34" fill="none" stroke="url(#ringg)" stroke-width="9" stroke-linecap="round" stroke-dasharray="213.6" stroke-dashoffset="29.9" transform="rotate(-90 40 40)"/>
+                  <defs><linearGradient id="ringg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#6b5fff"/><stop offset="100%" stop-color="#5b8cff"/></linearGradient></defs>
+                </svg>
+                <div class="ring-ctr"><div class="ring-pct">86%</div></div>
+              </div>
+              <div>
+                <div class="upper-mini">Meta del día</div>
+                <div class="tnum" style="font-size:19px;font-weight:700;letter-spacing:-0.02em;margin-top:4px;">$342.850</div>
+                <div style="font-size:11.5px;color:var(--ink-3);margin-top:2px;">de $400.000 · faltan $57.150</div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ESTADO DE CAJA -->
+          <div class="card glass">
+            <div class="card-title"><h3><span class="ic" style="background:rgba(52,199,125,0.13);color:#1a8e5a;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg></span>Caja</h3><span class="caja-state"><span style="width:6px;height:6px;border-radius:50%;background:#1a8e5a;"></span>Abierta</span></div>
+            <div class="kv"><span class="k">En caja</span><span class="v" style="font-size:18px;">$128.400</span></div>
+            <div class="divider"></div>
+            <div class="kv"><span class="k">Turno</span><span class="v">A · Agus</span></div>
+            <div class="kv"><span class="k">Apertura</span><span class="v">09:00 · $20.000</span></div>
+            <div class="kv"><span class="k">Efectivo del día</span><span class="v">$108.400</span></div>
+            <button class="quick" style="flex-direction:row;align-items:center;justify-content:center;gap:8px;margin-top:8px;padding:11px;font-weight:600;color:var(--ink-1);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg> Cerrar caja (Z)</button>
+          </div>
+
+          <!-- AFIP -->
+          <div class="card glass">
+            <div class="card-title"><h3><span class="ic" style="background:rgba(52,199,125,0.13);color:#1a8e5a;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg></span>AFIP</h3><span class="caja-state"><span style="width:6px;height:6px;border-radius:50%;background:#1a8e5a;"></span>Conectado</span></div>
+            <div class="label-sm" style="margin-bottom:4px;">Comprobantes emitidos hoy</div>
+            <div class="afipbar">
+              <div class="cell"><div class="n">41</div><div class="t">Factura B</div></div>
+              <div class="cell"><div class="n">4</div><div class="t">Factura A</div></div>
+              <div class="cell"><div class="n">2</div><div class="t">Factura C</div></div>
+            </div>
+            <div class="kv" style="margin-top:6px;"><span class="k">CAE último</span><span class="v">75012834…</span></div>
+            <div class="kv"><span class="k">Latencia P95</span><span class="v" style="color:#1a8e5a;">1,2 s</span></div>
+          </div>
+
+          <!-- STOCK BAJO -->
+          <div class="card glass">
+            <div class="card-title"><h3><span class="ic" style="background:rgba(239,93,106,0.13);color:#c0384a;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>Stock bajo</h3><span class="pay-pill" style="background:rgba(239,93,106,0.12);color:#c0384a;">6 productos</span></div>
+            <div class="stock-row"><div class="stock-thumb">🧴</div><div class="stock-name">Detergente Skip 3L</div><span class="stock-q">4 u</span></div>
+            <div class="stock-row"><div class="stock-thumb">🚬</div><div class="stock-name">Marlboro Box 20</div><span class="stock-q">6 u</span></div>
+            <div class="stock-row"><div class="stock-thumb">🍞</div><div class="stock-name">Pan Lactal Bimbo</div><span class="stock-q">3 u</span></div>
+            <div class="stock-row"><div class="stock-thumb">☕</div><div class="stock-name">Café La Virginia 250g</div><span class="stock-q">5 u</span></div>
+          </div>
+
+          <!-- ACCIONES RÁPIDAS -->
+          <div class="card glass">
+            <div class="card-title"><h3>Acciones rápidas</h3></div>
+            <div class="quick-grid">
+              <button class="quick"><span class="qi" style="background:rgba(107,95,255,0.13);color:var(--purple);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg></span><span class="ql">Nueva venta</span></button>
+              <button class="quick"><span class="qi" style="background:rgba(247,152,74,0.13);color:var(--orange);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.58a2 2 0 0 1 0 2.83z"/><circle cx="7" cy="7" r="1.5"/></svg></span><span class="ql">Agregar producto</span></button>
+              <button class="quick"><span class="qi" style="background:rgba(52,199,125,0.13);color:#1a8e5a;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg></span><span class="ql">Nuevo cliente</span></button>
+              <button class="quick"><span class="qi" style="background:rgba(91,140,255,0.13);color:var(--blue);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15v-3"/><path d="M12 15V8"/><path d="M16 15v-5"/></svg></span><span class="ql">Ver reportes</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+<script>
+(function(){
+  var map={'Panel':'dashboard.html','Venta':'checkpoint-v19-top-tools.html','Caja':'checkpoint-caja-v2.html','Productos':'productos-v3.html','Clientes':'clientes-v6.html','Stock':'stock-v2.html','Ofertas':'ofertas.html','Facturas':'facturas-v4.html','Presupuestos':'presupuestos-v1.html','Pedidos':'pedidos.html','Señas':'pedidos-senados.html','Devoluciones':'devoluciones.html','Reportes':'reportes-v2.html','Contador':'contador-v2.html','Integraciones':'integraciones.html','Configuración':'configuracion-v1.html'};
+  function txt(el){return (el.textContent||'').trim();}
+  function find(label){return [].slice.call(document.querySelectorAll('.nav-item')).filter(function(el){return txt(el)===label;})[0];}
+  function ins(label,after,svg){if(find(label))return;var a=find(after);if(!a)return;var d=document.createElement('div');d.className='nav-item';d.innerHTML='<div class="nav-icon-box">'+svg+'</div><span>'+label+'</span>';a.parentNode.insertBefore(d,a.nextSibling);}
+  ins('Presupuestos','Facturas','<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6"/><path d="M9 16h4"/></svg>');
+  ins('Contador','Reportes','<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8"/><path d="M8 10h8"/><path d="M8 14h3"/><circle cx="16" cy="16.5" r="1.6"/></svg>');
+  ins('Integraciones','Contador','<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>');
+  ins('Pedidos','Presupuestos','<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>');
+  ins('Devoluciones','Pedidos','<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>');
+  ins('Señas','Pedidos','<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg>');
+  [].slice.call(document.querySelectorAll('.nav-item')).forEach(function(el){var u=map[txt(el)];if(u){el.style.cursor='pointer';el.addEventListener('click',function(){location.href=u;});}});
+})();
+</script>
+<script>
+(function(){
+  var root=document.documentElement, btn=document.getElementById('themeBtn');
+  var MOON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  var SUN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+  function apply(t){
+    root.dataset.theme=t;
+    if(btn) btn.innerHTML = (t==='dark') ? SUN : MOON;
+    try{ localStorage.setItem('pandora-theme', t); }catch(e){}
+  }
+  var h=location.hash;
+  var saved = (h==='#dark') ? 'dark' : (h==='#light') ? 'light' : (function(){ try{ return localStorage.getItem('pandora-theme'); }catch(e){ return null; } })();
+  apply(saved==='dark' ? 'dark' : 'light');
+  if(btn) btn.addEventListener('click', function(){ apply(root.dataset.theme==='dark' ? 'light' : 'dark'); });
+})();
+</script>
+</body>
+</html>
