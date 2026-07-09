@@ -618,9 +618,9 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
                 <div><div class="k">Ingresos − Egresos</div><div class="v tnum">−$26.500</div></div>
               </div>
               <div class="cash-actions">
-                <button class="btn"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>Ingreso</button>
-                <button class="btn"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>Retiro</button>
-                <button class="btn"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M4 12h16"/></svg>Arqueo</button>
+                <button class="btn" id="btnIngreso"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>Ingreso</button>
+                <button class="btn" id="btnRetiro"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>Retiro</button>
+                <button class="btn" id="btnArqueo"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M4 12h16"/></svg>Arqueo</button>
               </div>
             </div>
             <div class="cash-right">
@@ -1018,6 +1018,120 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
       </div>
     </div>
   </div>
+
+  <!-- Modal: ingreso / retiro manual de efectivo -->
+  <div class="modal-ov" id="movModal">
+    <div class="modal-card glass-strong" style="max-width:400px;">
+      <div class="modal-head">
+        <div>
+          <div class="modal-title" id="movTitle"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--purple)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>Registrar ingreso</div>
+          <div class="modal-sub">Movimiento manual de efectivo</div>
+        </div>
+        <button class="modal-x" id="movClose">×</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px;margin:6px 0 2px;">
+        <label style="display:flex;flex-direction:column;gap:6px;">
+          <span class="upper-mini">Concepto</span>
+          <input id="movConcepto" placeholder="Ej: Cobro cuenta corriente" style="width:100%;padding:11px 13px;border-radius:11px;background:rgba(255,255,255,0.6);border:1px solid rgba(255,255,255,0.85);font-size:13.5px;color:var(--ink);" />
+        </label>
+        <label style="display:flex;flex-direction:column;gap:6px;">
+          <span class="upper-mini">Monto</span>
+          <div class="rm-inp"><span>$</span><input id="movMonto" class="rm-input tnum" inputmode="numeric" placeholder="0" /></div>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="movCancel">Cancelar</button>
+        <button class="btn-primary" id="movConfirm"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Botones Ingreso / Retiro / Arqueo (client-side, estado del mockup)
+    (function(){
+      function parse(s){ return parseInt(String(s||'').replace(/[^0-9]/g,''),10)||0; }
+      function money(n){ return '$'+Math.abs(n).toLocaleString('es-AR'); }
+
+      // Estado inicial = los valores del mockup
+      var efectivo = 141800, ingEgr = -26500, ingSum = 12000, egrSum = 38500;
+
+      var cashNum  = document.querySelector('.cash-num');
+      var nowEl    = document.querySelector('.cash-right-foot .now');
+      var subVs    = document.querySelectorAll('.cash-sub .v');
+      var ingEgrEl = subVs[2];
+      var cols     = document.querySelectorAll('.mov-cols > div');
+      var ingCol   = cols[0], egrCol = cols[1];
+      var ingSumEl = ingCol.querySelector('.mov-head .sum');
+      var egrSumEl = egrCol.querySelector('.mov-head .sum');
+
+      function render(){
+        cashNum.textContent = money(efectivo);
+        if(nowEl) nowEl.textContent = money(efectivo)+' · ahora';
+        if(ingEgrEl) ingEgrEl.textContent = (ingEgr<0?'−':'+')+money(ingEgr);
+        if(ingSumEl) ingSumEl.textContent = '+'+money(ingSum);
+        if(egrSumEl) egrSumEl.textContent = '−'+money(egrSum);
+      }
+
+      var ING_IC = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>';
+      var EGR_IC = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>';
+
+      function addRow(col, isIng, concepto, monto){
+        var now = new Date();
+        var hh = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+        var item = document.createElement('div');
+        item.className = 'mov-item';
+        item.innerHTML =
+          '<div class="mov-ic" style="background:'+(isIng?'rgba(52,199,125,0.12)':'rgba(239,93,106,0.12)')+';color:'+(isIng?'#1a8e5a':'var(--red)')+';">'+(isIng?ING_IC:EGR_IC)+'</div>'+
+          '<div class="mov-txt"><div class="mov-r"></div><div class="mov-h">'+hh+'</div></div>'+
+          '<div class="mov-v '+(isIng?'c-green':'c-red')+'">'+(isIng?'+':'−')+money(monto)+'</div>';
+        item.querySelector('.mov-r').textContent = concepto; // textContent = sin riesgo XSS
+        col.querySelector('.mov-head').insertAdjacentElement('afterend', item);
+      }
+
+      // Modal
+      var modal = document.getElementById('movModal');
+      var title = document.getElementById('movTitle');
+      var conceptoI = document.getElementById('movConcepto');
+      var montoI = document.getElementById('movMonto');
+      var mode = 'ingreso';
+
+      function openM(m){
+        mode = m;
+        title.innerHTML = (m==='ingreso'?ING_IC:EGR_IC) + (m==='ingreso'?'Registrar ingreso':'Registrar retiro');
+        conceptoI.value=''; montoI.value='';
+        conceptoI.placeholder = m==='ingreso'?'Ej: Cobro cuenta corriente':'Ej: Retiro a tesorería';
+        modal.classList.add('open');
+        setTimeout(function(){ conceptoI.focus(); }, 40);
+      }
+      function closeM(){ modal.classList.remove('open'); }
+
+      montoI.addEventListener('input', function(){ var d=parse(montoI.value); montoI.value = d?d.toLocaleString('es-AR'):''; });
+      document.getElementById('btnIngreso').addEventListener('click', function(){ openM('ingreso'); });
+      document.getElementById('btnRetiro').addEventListener('click', function(){ openM('retiro'); });
+      document.getElementById('movClose').addEventListener('click', closeM);
+      document.getElementById('movCancel').addEventListener('click', closeM);
+      modal.addEventListener('click', function(e){ if(e.target===modal) closeM(); });
+
+      document.getElementById('movConfirm').addEventListener('click', function(){
+        var monto = parse(montoI.value);
+        if(monto<=0){ montoI.focus(); return; }
+        var c = conceptoI.value.trim() || (mode==='ingreso'?'Ingreso manual':'Retiro de caja');
+        if(mode==='ingreso'){ efectivo+=monto; ingEgr+=monto; ingSum+=monto; addRow(ingCol,true,c,monto); }
+        else { efectivo-=monto; ingEgr-=monto; egrSum+=monto; addRow(egrCol,false,c,monto); }
+        render(); closeM();
+      });
+
+      // Arqueo -> conteo por denominación
+      var btnArq = document.getElementById('btnArqueo');
+      var denomOpen = document.getElementById('denomOpen');
+      if(btnArq && denomOpen){
+        btnArq.addEventListener('click', function(){
+          denomOpen.scrollIntoView({behavior:'smooth', block:'center'});
+          setTimeout(function(){ denomOpen.click(); }, 220);
+        });
+      }
+    })();
+  </script>
 
   <script>
     // Arqueo multi-medio: concilia cada medio de pago (es-AR)
