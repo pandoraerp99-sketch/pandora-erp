@@ -28,9 +28,19 @@
  *   Dedupea REQUESTS DUPLICADOS. NO hace recovery de crash-mid-operación: si
  *   fn lanza o el proceso muere después de clamar, el row queda 'pending'
  *   (huérfano). Eso es ACEPTABLE F0 — el cliente reintenta con key NUEVA; un
- *   crash en path fiscal lo resuelve la Reconciliation Engine (Sprint 7). NO
- *   liberamos la key automáticamente en error: para un side effect ya
- *   ejecutado, liberar reintroduciría el doble-side-effect.
+ *   crash en path fiscal lo resuelve la Reconciliation Engine (Sprint 7).
+ *
+ * ── `releaseOnError` — clave para operaciones TRANSACCIONALES ──
+ *   Default `false` (comportamiento CAE): si fn lanza, NO liberamos la key —
+ *   para un side effect NO-transaccional ya ejecutado parcialmente, liberar
+ *   reintroduciría el doble-side-effect. El row 'pending' huérfano es el precio.
+ *
+ *   `true` (ej: sale.finalize): si fn lanza, BORRAMOS el row 'pending'. Solo es
+ *   seguro cuando fn es 100% transaccional — un throw = rollback limpio = cero
+ *   efecto persistido — así liberar NO reintroduce doble-cobro. Y es NECESARIO:
+ *   sin esto un retry tras error transitorio (oversell, blip de red) chocaría
+ *   contra el 'pending' huérfano → IdempotencyInProgressError para siempre (key
+ *   envenenada), rompiendo justo la promesa de "retry seguro" en el POS.
  *
  * @returns `{ replayed, result }` — `replayed=true` ⇒ vino del cache (fn NO
  *   se ejecutó). `result` debe ser JSON-serializable (round-trip jsonb).
@@ -52,6 +62,12 @@ export interface IdempotencyParams {
   operation: string;
   /** Hash de los params canónicos del request (detecta reuse de key). */
   requestHash: string;
+  /**
+   * Si `true` y `fn` lanza, se borra el row 'pending' (permite retry con la
+   * misma key). SOLO seguro para `fn` 100% transaccional (throw = rollback
+   * limpio). Default `false` = comportamiento CAE (no liberar). Ver header.
+   */
+  releaseOnError?: boolean;
 }
 
 export interface IdempotencyResult<T> {
@@ -64,7 +80,7 @@ export async function withIdempotency<T>(
   params: IdempotencyParams,
   fn: () => Promise<T>
 ): Promise<IdempotencyResult<T>> {
-  const { tenantId, key, operation, requestHash } = params;
+  const { tenantId, key, operation, requestHash, releaseOnError = false } = params;
 
   // ── Fase 1: reservar la key (INSERT pending, auto-commit) ──
   const claimed = await db
@@ -109,9 +125,28 @@ export async function withIdempotency<T>(
   }
 
   // ── Fase 2: somos el winner. Ejecutar la operación. ──
-  // Si fn lanza, el row queda 'pending' (huérfano aceptable F0 — ver header).
-  // NO lo borramos: liberar la key reintroduciría doble-side-effect.
-  const result = await fn();
+  let result: T;
+  try {
+    result = await fn();
+  } catch (err) {
+    // releaseOnError=true (fn transaccional, ej: sale.finalize): borramos
+    // NUESTRO row 'pending' → el retry con la misma key puede re-clamar y
+    // completar. Seguro porque el throw hizo rollback (cero efecto).
+    // releaseOnError=false (default, ej: CAE no-transaccional): el row queda
+    // 'pending' huérfano (ver header) — liberar reintroduciría doble-side-effect.
+    if (releaseOnError) {
+      await db
+        .delete(idempotency_log)
+        .where(
+          and(
+            eq(idempotency_log.tenant_id, tenantId),
+            eq(idempotency_log.idempotency_key, key),
+            eq(idempotency_log.status, 'pending')
+          )
+        );
+    }
+    throw err;
+  }
 
   // ── Fase 3: completar (llenar result). ──
   await db

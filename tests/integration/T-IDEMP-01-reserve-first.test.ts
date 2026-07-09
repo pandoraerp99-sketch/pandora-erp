@@ -205,4 +205,56 @@ describe('T-IDEMP-01 — withIdempotency reserve-first', () => {
       .where(eq(idempotency_log.idempotency_key, key));
     expect(row?.status).toBe('pending');
   });
+
+  it('7. releaseOnError=true: fn falla → row liberado; retry misma key → re-ejecuta OK', async () => {
+    const key = crypto.randomUUID();
+
+    // 1er intento falla → con releaseOnError, el row 'pending' se borra.
+    await expect(
+      withIdempotency(
+        {
+          tenantId: tenantA,
+          key,
+          operation: 'test.release',
+          requestHash: 'h',
+          releaseOnError: true,
+        },
+        async () => {
+          throw new Error('transient');
+        }
+      )
+    ).rejects.toThrow('transient');
+
+    // El row fue liberado (NO quedó huérfano).
+    const afterFail = await db
+      .select({ id: idempotency_log.id })
+      .from(idempotency_log)
+      .where(eq(idempotency_log.idempotency_key, key));
+    expect(afterFail).toHaveLength(0);
+
+    // Retry con la MISMA key → re-clama y ejecuta (la key NO quedó envenenada).
+    let retried = false;
+    const r = await withIdempotency(
+      {
+        tenantId: tenantA,
+        key,
+        operation: 'test.release',
+        requestHash: 'h',
+        releaseOnError: true,
+      },
+      async () => {
+        retried = true;
+        return { v: 7 };
+      }
+    );
+    expect(retried).toBe(true);
+    expect(r.replayed).toBe(false);
+    expect(r.result).toEqual({ v: 7 });
+
+    const [completed] = await db
+      .select({ status: idempotency_log.status })
+      .from(idempotency_log)
+      .where(eq(idempotency_log.idempotency_key, key));
+    expect(completed?.status).toBe('completed');
+  });
 });

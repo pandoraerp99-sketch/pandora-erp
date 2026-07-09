@@ -23,6 +23,7 @@
  *     Son lifecycle interno operativo, no auditable. La info final del cliente
  *     y los items quedan en el payload de sale.completed.
  */
+import { createHash } from 'node:crypto';
 import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import type { ZodType } from 'zod';
 import { db } from '../../db/client.js';
@@ -62,6 +63,7 @@ import {
   requireTenantId,
 } from '../../tracing/context.js';
 import { generateCorrelationId } from '../../tracing/ids.js';
+import { withIdempotency } from '../../idempotency/idempotency.js';
 import {
   AddItemInputSchema,
   CancelSaleInputSchema,
@@ -160,6 +162,26 @@ function buildPaymentBreakdown(
   const compact = payments.map((p) => ({ m: p.method, a: p.amount }));
   const json = JSON.stringify(compact);
   return json.length > 500 ? json.slice(0, 497) + '...' : json;
+}
+
+/**
+ * Hash canónico del request de cobro (para idempotency reuse-detection).
+ *
+ * Si llega la MISMA idempotency-key con params distintos (otro monto, otros
+ * items de pago) → bug del cliente → IdempotencyKeyReuseError. NO incluye la
+ * key en el hash (obvio). Field order fijo → determinístico entre retries.
+ */
+function hashFinalizeRequest(input: FinalizeSaleInput): string {
+  const canonical = JSON.stringify({
+    sale_id: input.sale_id,
+    require_fiscal_invoice: input.require_fiscal_invoice,
+    payments: input.payments.map((p) => ({
+      method: p.method,
+      amount: p.amount,
+      mp_payment_external_id: p.mp_payment_external_id ?? null,
+    })),
+  });
+  return createHash('sha256').update(canonical, 'utf8').digest('hex');
 }
 
 /**
@@ -489,6 +511,44 @@ export async function finalizeSale(rawInput: unknown): Promise<SaleWithItems> {
     'finalize_sale'
   );
 
+  // ADR-0010: si el cobro trae idempotency-key, dedup reserve-first — un retry
+  // (doble-click / timeout de red / dos requests concurrentes) NO re-ejecuta el
+  // cobro ni decrementa stock dos veces. Sin key: comportamiento previo intacto
+  // (backward-compat con callers viejos y tests pre-Sprint 5 cierre).
+  if (input.idempotency_key) {
+    await withIdempotency(
+      {
+        tenantId,
+        key: input.idempotency_key,
+        operation: 'sale.finalize',
+        requestHash: hashFinalizeRequest(input),
+        // finalizeSaleCore es 100% transaccional: un throw (oversell, blip)
+        // hace rollback limpio. Liberamos la key para que el cajero pueda
+        // reintentar el MISMO cobro sin quedar bloqueado por un 'pending'
+        // huérfano (retry seguro — CLAUDE.md §1.7 "11pm con cola de gente").
+        releaseOnError: true,
+      },
+      () => finalizeSaleCore(tenantId, input)
+    );
+  } else {
+    await finalizeSaleCore(tenantId, input);
+  }
+
+  // Re-fetch para devolver SaleWithItems tipado. En replay el core NO corrió;
+  // igual devolvemos el estado real (cobrada) desde la DB — esto evita el
+  // problema Date→string del cache jsonb de withIdempotency.
+  return getSaleWithItems(input.sale_id);
+}
+
+/**
+ * Núcleo del cobro (mutación real). Separado de `finalizeSale` para envolverlo
+ * en `withIdempotency`. Devuelve `{ sale_id }` JSON-serializable (round-trip
+ * jsonb del cache); el caller re-fetchea el SaleWithItems tipado.
+ */
+async function finalizeSaleCore(
+  tenantId: string,
+  input: FinalizeSaleInput
+): Promise<{ sale_id: string }> {
   const sale = await getSaleByIdInternal(tenantId, input.sale_id);
   if (!sale) throw new NotFoundError('Venta', input.sale_id);
 
@@ -756,7 +816,7 @@ export async function finalizeSale(rawInput: unknown): Promise<SaleWithItems> {
     'sale.completed'
   );
 
-  return getSaleWithItems(input.sale_id);
+  return { sale_id: input.sale_id };
 }
 
 export async function cancelSale(rawInput: unknown): Promise<Sale> {

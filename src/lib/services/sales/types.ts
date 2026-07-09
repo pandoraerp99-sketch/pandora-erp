@@ -111,6 +111,16 @@ export const FinalizeSaleInputSchema = z.object({
    */
   payments: z.array(PaymentItemSchema).min(1, 'Al menos 1 payment requerido'),
   require_fiscal_invoice: z.boolean().default(false),
+  /**
+   * Sprint 5 (cierre no-fiscal): idempotency-key del cobro (ADR-0010).
+   *
+   * El POS DEBE generar un UUID por intento de cobro y reenviarlo en retries
+   * (doble-click, timeout de red). Con la misma key, `finalizeSale` NO
+   * re-ejecuta el cobro: dedup vía `withIdempotency` reserve-first. Opcional
+   * por backward-compat (callers viejos sin key mantienen el comportamiento
+   * previo), pero el POS real siempre la envía.
+   */
+  idempotency_key: z.string().uuid().optional(),
 });
 
 export type FinalizeSaleInput = z.infer<typeof FinalizeSaleInputSchema>;
