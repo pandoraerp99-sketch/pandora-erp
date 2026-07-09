@@ -334,7 +334,7 @@ export function POSClient({
           </div>
         }
         actionBar={
-          <div className="flex items-center justify-between gap-4 h-full px-1">
+          <div className="pos-surface-action flex items-center justify-between gap-4 px-5 py-3">
             <div className="flex items-center gap-3">
               {toast ? (
                 <span

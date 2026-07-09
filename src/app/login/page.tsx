@@ -23,7 +23,7 @@ export default async function LoginPage({
   const { next } = await searchParams;
 
   return (
-    <main className="min-h-dvh grid place-items-center px-6 py-12">
+    <main className="pos-stage min-h-dvh grid place-items-center px-6 py-12">
       <div className="w-full max-w-[380px]">
         {/* Marca — hero editorial en Instrument Serif */}
         <div className="mb-8">
@@ -44,16 +44,10 @@ export default async function LoginPage({
           </p>
         </div>
 
-        {/* Card operacional (Layer 1 — NO glass, se lee siempre) */}
+        {/* Card glass (mockups Dawn Sky) */}
         <section
           aria-labelledby="login-heading"
-          className="rounded-2xl p-6"
-          style={{
-            background: 'var(--surface-elevated)',
-            border: '1px solid oklch(94% 0.020 235)',
-            boxShadow:
-              '0 0 0 1px oklch(94% 0.020 235), 0 8px 30px oklch(20% 0.04 240 / 0.06)',
-          }}
+          className="pos-surface-operational rounded-2xl p-6"
         >
           <h2
             id="login-heading"

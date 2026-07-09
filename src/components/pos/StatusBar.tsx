@@ -84,7 +84,7 @@ export function StatusBar({
   return (
     <header
       role="banner"
-      className="pos-stage relative w-full flex items-stretch border-b border-[color:color-mix(in_oklch,var(--dawn-200)_55%,transparent)] h-14"
+      className="pos-glass-bar relative w-full flex items-stretch h-14"
       style={{ fontFamily: 'var(--font-ui)' }}
     >
       {/* LEFT: identidad minima */}
