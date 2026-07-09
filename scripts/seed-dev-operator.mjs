@@ -77,6 +77,30 @@ try {
       SELECT 1 FROM company_users
       WHERE company_id = ${COMPANY_ID} AND user_id = ${userId}
     )`;
+
+  // ── Catálogo demo (para el POS funcional Slice 5) ──
+  // sku único por tenant → ON CONFLICT no re-inserta en corridas repetidas.
+  // Algunos tdf_exempt=true (Ley 19.640) para ver el badge + ImpOpEx.
+  const DEMO_PRODUCTS = [
+    ['COCA600', 'Coca-Cola 600ml', '1800.0000', '1200.0000', '21.00', false, '48.0000'],
+    ['SPRITE600', 'Sprite 600ml', '1750.0000', '1150.0000', '21.00', false, '36.0000'],
+    ['YERBA1K', 'Yerba Playadito 1kg', '3800.0000', '2600.0000', '21.00', false, '20.0000'],
+    ['PANLAC', 'Pan Lactal Bimbo', '2900.0000', '1900.0000', '21.00', false, '12.0000'],
+    ['CAFE250', 'Café La Virginia 250g', '3200.0000', '2100.0000', '21.00', false, '15.0000'],
+    ['AGUA15', 'Agua Mineral 1.5L', '1200.0000', '700.0000', '21.00', true, '60.0000'],
+    ['NOTEBOOK', 'Cuaderno A4 Rivadavia', '2500.0000', '1500.0000', '21.00', true, '30.0000'],
+  ];
+  for (const [sku, name, price, cost, tax, exempt, stock] of DEMO_PRODUCTS) {
+    // products no tiene UNIQUE(tenant_id, sku) → WHERE NOT EXISTS (idempotente).
+    await sql`
+      INSERT INTO products (id, tenant_id, sku, name, unit_type, price, cost,
+        tax_rate, tdf_exempt, stock_current, stock_minimum, stock_tracking_enabled, is_active)
+      SELECT gen_random_uuid(), ${COMPANY_ID}, ${sku}, ${name}, 'unidad',
+        ${price}, ${cost}, ${tax}, ${exempt}, ${stock}, '3.0000', true, true
+      WHERE NOT EXISTS (
+        SELECT 1 FROM products WHERE tenant_id = ${COMPANY_ID} AND sku = ${sku}
+      )`;
+  }
 } finally {
   await sql.end();
 }
