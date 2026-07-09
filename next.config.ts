@@ -7,7 +7,10 @@ const nextConfig: NextConfig = {
   // (src/proxy.ts) exime /panel del CSP/auth para no romper los estilos/scripts
   // inline + fuentes del mockup. TODO F1: portar a componentes React nativos.
   async rewrites() {
-    return [{ source: "/panel", destination: "/panel.html" }];
+    return [
+      { source: "/panel", destination: "/panel.html" },
+      { source: "/caja", destination: "/caja.html" },
+    ];
   },
 
   // ── Resolución de imports `.js` → `.ts` (extensionAlias) ──

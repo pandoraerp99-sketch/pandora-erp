@@ -154,8 +154,9 @@ export async function proxy(req: NextRequest) {
 
 export const config = {
   matcher: [
-    // `panel` exento: /panel + /panel.html sirven el mockup literal (public/
-    // panel.html) sin CSP — necesita sus estilos/scripts inline + fuentes.
-    '/((?!_next/static|_next/image|favicon.ico|panel|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif)$).*)',
+    // `panel|caja` exentos: sirven los mockups literales (public/*.html) sin
+    // CSP — necesitan sus estilos/scripts inline + fuentes. Agregar acá cada
+    // pantalla-mockup nueva que se sirva verbatim.
+    '/((?!_next/static|_next/image|favicon.ico|panel|caja|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif)$).*)',
   ],
 };
