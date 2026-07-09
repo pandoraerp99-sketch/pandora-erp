@@ -373,6 +373,19 @@
 .alivio-btn{ width:100%; margin-top:14px; padding:12px; border-radius:13px; background:var(--purple); color:#fff; font-size:13.5px; font-weight:700; border:none; cursor:pointer; box-shadow:0 5px 14px rgba(107,95,255,0.32); transition:all 160ms; }
 .alivio-btn:hover:not(:disabled){ transform:translateY(-1px); box-shadow:0 8px 20px rgba(107,95,255,0.42); }
 .alivio-btn:disabled{ opacity:0.45; box-shadow:none; cursor:not-allowed; }
+/* Alivio: ajuste recibido menos / falta */
+.ali-chip.parcial{ background:rgba(247,152,74,0.18); color:#b96c1a; }
+.ali-chip.falta{ background:rgba(239,93,106,0.16); color:#c93545; }
+.ali-chip.ok2{ background:rgba(52,199,125,0.14); color:#1a8e5a; }
+.ali-adj-bar{ display:flex; align-items:center; gap:9px; margin:-4px 0 4px 30px; padding:8px 11px; border-radius:11px; background:rgba(247,152,74,0.08); border:1px dashed rgba(247,152,74,0.32); font-size:11.5px; color:var(--ink-2); animation:aliAdjIn 200ms ease; }
+@keyframes aliAdjIn{ from{ opacity:0; transform:translateY(-3px); } }
+.ali-adj-k{ font-size:9.5px; text-transform:uppercase; letter-spacing:0.05em; color:var(--ink-3); font-weight:700; flex:0 0 auto; }
+.ali-rin{ display:inline-flex; align-items:center; gap:2px; font-family:var(--mono); font-weight:600; padding:4px 9px; border-radius:8px; background:rgba(255,255,255,0.82); border:1px solid rgba(255,255,255,0.9); }
+.ali-recibido{ width:62px; font-family:var(--mono); font-weight:600; background:none; border:none; outline:none; color:var(--ink); text-align:right; }
+.ali-adj-exp{ color:var(--ink-3); flex:0 0 auto; }
+.ali-falta-btn{ margin-left:auto; font-size:10.5px; font-weight:700; padding:5px 11px; border-radius:8px; background:rgba(239,93,106,0.1); color:#c93545; border:1px solid rgba(239,93,106,0.24); cursor:pointer; transition:all 140ms; flex:0 0 auto; }
+.ali-falta-btn:hover{ background:rgba(239,93,106,0.16); }
+.ali-falta-btn.on{ background:var(--red); color:#fff; border-color:var(--red); }
 
 /* historial de cierres */
 .cl-cajero{ display:inline-flex; align-items:center; gap:8px; }
@@ -480,6 +493,12 @@ html[data-theme="dark"] .alivio{ background:rgba(255,255,255,0.05); border-color
 html[data-theme="dark"] .alivio.pend:hover{ background:rgba(255,255,255,0.09); }
 html[data-theme="dark"] .ali-sum, html[data-theme="dark"] .ali-chip.pend, html[data-theme="dark"] .cl-amber, html[data-theme="dark"] .cl-chip.warn{ color:#ffb87a; }
 html[data-theme="dark"] .ali-chip.done, html[data-theme="dark"] .cl-chip.ok{ color:#55dd9b; }
+html[data-theme="dark"] .ali-chip.parcial{ color:#ffb87a; }
+html[data-theme="dark"] .ali-chip.falta{ color:#ff8b96; }
+html[data-theme="dark"] .ali-chip.ok2{ color:#55dd9b; }
+html[data-theme="dark"] .ali-adj-bar{ background:rgba(247,152,74,0.1); border-color:rgba(247,152,74,0.28); }
+html[data-theme="dark"] .ali-rin{ background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.12); }
+html[data-theme="dark"] .ali-falta-btn{ background:rgba(239,93,106,0.16); color:#ff8b96; border-color:rgba(239,93,106,0.3); }
 html[data-theme="dark"] .cl-chip.err{ color:#ff8b96; }
 html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:var(--ink-1); }
 
@@ -1227,24 +1246,77 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
   var btn = document.getElementById('retirarBtn');
   var sumEl = document.getElementById('aliSum');
   function pend(){ return [].slice.call(document.querySelectorAll('.alivio.pend')); }
+
+  // esperado + recibido por alivio (recibido arranca = esperado = completo)
+  pend().forEach(function(a){ a.dataset.esperado = a.getAttribute('data-monto'); a.dataset.recibido = a.getAttribute('data-monto'); });
+
+  function classify(a){
+    var esp = parse(a.dataset.esperado), rec = parse(a.dataset.recibido);
+    var chip = a.querySelector('.ali-chip');
+    var bar = (a.nextElementSibling && a.nextElementSibling.classList.contains('ali-adj-bar')) ? a.nextElementSibling : null;
+    var fb = bar ? bar.querySelector('.ali-falta-btn') : null;
+    if(rec >= esp){ chip.className='ali-chip ok2'; chip.textContent='Completo'; if(fb) fb.classList.remove('on'); }
+    else if(rec <= 0){ chip.className='ali-chip falta'; chip.textContent='Falta'; if(fb) fb.classList.add('on'); }
+    else { chip.className='ali-chip parcial'; chip.textContent='Falt\u00f3 '+fmt(esp-rec); if(fb) fb.classList.remove('on'); }
+  }
+
+  function showAdj(a){
+    if(a.nextElementSibling && a.nextElementSibling.classList.contains('ali-adj-bar')) return;
+    var esp = parse(a.dataset.esperado);
+    var bar = document.createElement('div');
+    bar.className = 'ali-adj-bar';
+    bar.innerHTML =
+      '<span class="ali-adj-k">Recibido</span>'+
+      '<span class="ali-rin">$<input class="ali-recibido tnum" inputmode="numeric" value="'+esp.toLocaleString('es-AR')+'"></span>'+
+      '<span class="ali-adj-exp">de '+fmt(esp)+'</span>'+
+      '<button type="button" class="ali-falta-btn">Falta (no vino)</button>';
+    a.insertAdjacentElement('afterend', bar);
+    var input = bar.querySelector('.ali-recibido');
+    input.addEventListener('input', function(){ var d=parse(input.value); input.value = d?d.toLocaleString('es-AR'):''; a.dataset.recibido=d; classify(a); update(); });
+    bar.querySelector('.ali-falta-btn').addEventListener('click', function(){
+      if(parse(a.dataset.recibido) <= 0){ a.dataset.recibido=a.dataset.esperado; input.value=esp.toLocaleString('es-AR'); }
+      else { a.dataset.recibido='0'; input.value='0'; }
+      classify(a); update();
+    });
+    classify(a);
+  }
+  function hideAdj(a){
+    var bar = a.nextElementSibling;
+    if(bar && bar.classList.contains('ali-adj-bar')) bar.remove();
+    a.dataset.recibido = a.dataset.esperado;
+    var chip = a.querySelector('.ali-chip'); chip.className='ali-chip pend'; chip.textContent='Pendiente';
+  }
+
   function update(){
     var p = pend();
-    var ptot = 0; p.forEach(function(a){ ptot += parse(a.getAttribute('data-monto')); });
-    var sel = p.filter(function(a){ var c = a.querySelector('input'); return c && c.checked; });
-    var stot = 0; sel.forEach(function(a){ stot += parse(a.getAttribute('data-monto')); });
-    if(sumEl) sumEl.textContent = p.length + ' pendiente' + (p.length!==1?'s':'') + ' \u00b7 ' + fmt(ptot);
+    var ptot = 0; p.forEach(function(a){ ptot += parse(a.dataset.esperado); });
+    var sel = p.filter(function(a){ var c = a.querySelector('input[type=checkbox]'); return c && c.checked; });
+    var stot = 0, falt = 0;
+    sel.forEach(function(a){ stot += parse(a.dataset.recibido); falt += parse(a.dataset.esperado) - parse(a.dataset.recibido); });
+    if(sumEl){ var base = p.length + ' pendiente' + (p.length!==1?'s':'') + ' \u00b7 ' + fmt(ptot); sumEl.textContent = falt>0 ? base + '  \u00b7  faltan ' + fmt(falt) : base; }
     if(btn){ btn.textContent = 'Marcar retirados (' + sel.length + ')' + (stot ? ' \u00b7 ' + fmt(stot) : ''); btn.disabled = sel.length===0; }
   }
-  document.querySelectorAll('.alivio.pend input').forEach(function(c){ c.addEventListener('change', update); });
+
+  var CK_OK = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#1a8e5a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+  var CK_WARN = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#b96c1a" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
+  var CK_X = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#c93545" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+
+  pend().forEach(function(a){
+    var c = a.querySelector('input[type=checkbox]');
+    c.addEventListener('change', function(){ if(c.checked) showAdj(a); else hideAdj(a); update(); });
+  });
+
   if(btn) btn.addEventListener('click', function(){
-    pend().forEach(function(a){
-      var c = a.querySelector('input');
-      if(c && c.checked){
-        a.classList.remove('pend'); a.classList.add('done'); a.style.cursor = 'default';
-        var chip = a.querySelector('.ali-chip'); chip.className = 'ali-chip done'; chip.textContent = 'Retirado';
-        var sub = a.querySelector('.alivio-sub'); sub.textContent += ' \u00b7 retirado por Due\u00f1a ' + T;
-        var ck = a.querySelector('.ali-check'); if(ck) ck.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#1a8e5a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
-      }
+    pend().slice().forEach(function(a){
+      var c = a.querySelector('input[type=checkbox]');
+      if(!(c && c.checked)) return;
+      var esp = parse(a.dataset.esperado), rec = parse(a.dataset.recibido);
+      var bar = a.nextElementSibling; if(bar && bar.classList.contains('ali-adj-bar')) bar.remove();
+      a.classList.remove('pend'); a.classList.add('done'); a.style.cursor = 'default';
+      var chip = a.querySelector('.ali-chip'), sub = a.querySelector('.alivio-sub'), ck = a.querySelector('.ali-check');
+      if(rec >= esp){ chip.className='ali-chip done'; chip.textContent='Retirado'; sub.textContent += ' \u00b7 retirado por Due\u00f1a ' + T; if(ck) ck.innerHTML=CK_OK; }
+      else if(rec <= 0){ chip.className='ali-chip falta'; chip.textContent='No vino'; sub.textContent += ' \u00b7 marcado FALTA por Due\u00f1a ' + T; if(ck) ck.innerHTML=CK_X; }
+      else { chip.className='ali-chip parcial'; chip.textContent='Falt\u00f3 '+fmt(esp-rec); sub.textContent += ' \u00b7 recibido '+fmt(rec)+' de '+fmt(esp)+' \u00b7 Due\u00f1a ' + T; if(ck) ck.innerHTML=CK_WARN; }
     });
     update();
   });
