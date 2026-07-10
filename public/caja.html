@@ -135,6 +135,11 @@
   .cerrada-card h2{ font-size:21px; font-weight:700; letter-spacing:-0.02em; }
   .cerrada-card p{ font-size:13px; color:var(--ink-2); line-height:1.5; max-width:300px; margin-top:2px; }
   .cerrada-last{ font-size:11.5px; color:var(--ink-3); margin:6px 0 14px; }
+  .abrir-dif{ margin-top:9px; font-size:11.5px; font-weight:700; text-align:center; padding:8px 10px; border-radius:9px; line-height:1.35; }
+  .abrir-dif.ok{ background:rgba(52,199,125,0.13); color:#1a8e5a; }
+  .abrir-dif.falta{ background:rgba(247,152,74,0.16); color:#b96c1a; }
+  .abrir-dif.sobra{ background:rgba(91,140,255,0.13); color:#3a63c0; }
+  #abrirDenomToggle.on{ background:rgba(107,95,255,0.12); color:var(--purple); border-color:rgba(107,95,255,0.28); }
   .mini-ava { width:30px; height:30px; border-radius:999px; background:linear-gradient(135deg,var(--purple),var(--blue));
     display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px; font-weight:600;
     border:2px solid rgba(255,255,255,0.85); flex-shrink:0; }
@@ -1101,6 +1106,23 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
           <span class="upper-mini">Fondo inicial · efectivo con el que abrís</span>
           <div class="rm-inp"><span>$</span><input id="abrirFondo" class="rm-input tnum" inputmode="numeric" value="20.000" /></div>
         </label>
+        <div>
+          <button type="button" class="denom-btn" id="abrirDenomToggle" style="width:100%;justify-content:center;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 12 10 5 10-5"/><path d="m2 17 10 5 10-5"/></svg>Contar por denominación</button>
+          <div class="abrir-denom" id="abrirDenom" style="display:none;margin-top:11px;">
+            <div class="denom-grid">
+              <div class="denom-hd"><span>Denominación</span><span>Cantidad</span><span>Subtotal</span></div>
+              <div class="denom-row" data-val="20000"><span class="dv">$20.000</span><input class="dq tnum" value="0" inputmode="numeric"><span class="ds tnum">$0</span></div>
+              <div class="denom-row" data-val="10000"><span class="dv">$10.000</span><input class="dq tnum" value="0" inputmode="numeric"><span class="ds tnum">$0</span></div>
+              <div class="denom-row" data-val="2000"><span class="dv">$2.000</span><input class="dq tnum" value="0" inputmode="numeric"><span class="ds tnum">$0</span></div>
+              <div class="denom-row" data-val="1000"><span class="dv">$1.000</span><input class="dq tnum" value="0" inputmode="numeric"><span class="ds tnum">$0</span></div>
+              <div class="denom-row" data-val="500"><span class="dv">$500</span><input class="dq tnum" value="0" inputmode="numeric"><span class="ds tnum">$0</span></div>
+              <div class="denom-row" data-val="200"><span class="dv">$200</span><input class="dq tnum" value="0" inputmode="numeric"><span class="ds tnum">$0</span></div>
+              <div class="denom-row" data-val="100"><span class="dv">$100</span><input class="dq tnum" value="0" inputmode="numeric"><span class="ds tnum">$0</span></div>
+            </div>
+            <div class="denom-foot"><span>Total contado</span><span class="denom-total tnum" id="abrirDenomTotal">$0</span></div>
+            <div class="abrir-dif" id="abrirDif"></div>
+          </div>
+        </div>
         <div style="display:flex;gap:12px;">
           <div style="flex:1;display:flex;flex-direction:column;gap:6px;min-width:0;">
             <span class="upper-mini">Cajero</span>
@@ -1164,6 +1186,50 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
         if(fondoSub) fondoSub.textContent = money(fondo);
         cerradaOv.style.display='none';
         closeM();
+      });
+    })();
+  </script>
+
+  <script>
+    // Contar por denominación al abrir caja (para saber si falta un billete)
+    (function(){
+      function parse(s){ return parseInt(String(s||'').replace(/[^0-9]/g,''),10)||0; }
+      function money(n){ return '$'+n.toLocaleString('es-AR'); }
+      var toggle = document.getElementById('abrirDenomToggle');
+      var box = document.getElementById('abrirDenom');
+      var totalEl = document.getElementById('abrirDenomTotal');
+      var difEl = document.getElementById('abrirDif');
+      var fondo = document.getElementById('abrirFondo');
+      var rows = [].slice.call(document.querySelectorAll('#abrirDenom .denom-row'));
+      var esperado = 20000;
+
+      function recompute(){
+        var total = 0;
+        rows.forEach(function(r){
+          var val = parseInt(r.getAttribute('data-val'),10);
+          var q = parse(r.querySelector('.dq').value);
+          total += val*q;
+          r.querySelector('.ds').textContent = money(val*q);
+        });
+        totalEl.textContent = money(total);
+        if(total>0) fondo.value = total.toLocaleString('es-AR');
+        if(total===0){ difEl.textContent=''; difEl.className='abrir-dif'; }
+        else {
+          var d = total - esperado;
+          if(d===0){ difEl.textContent='✓ Coincide con lo declarado ('+money(esperado)+')'; difEl.className='abrir-dif ok'; }
+          else if(d<0){ difEl.textContent='Faltan '+money(-d)+' · ¿falta algún billete? — declaraste '+money(esperado); difEl.className='abrir-dif falta'; }
+          else { difEl.textContent='Sobran '+money(d)+' vs lo declarado ('+money(esperado)+')'; difEl.className='abrir-dif sobra'; }
+        }
+        return total;
+      }
+      rows.forEach(function(r){
+        var inp = r.querySelector('.dq');
+        inp.addEventListener('input', function(){ var v=parse(inp.value); inp.value = v?v.toLocaleString('es-AR'):''; recompute(); });
+      });
+      if(toggle) toggle.addEventListener('click', function(){
+        var showing = box.style.display !== 'none';
+        if(showing){ box.style.display='none'; toggle.classList.remove('on'); }
+        else { esperado = parse(fondo.value) || 20000; box.style.display='block'; toggle.classList.add('on'); recompute(); }
       });
     })();
   </script>
@@ -1311,7 +1377,7 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
   var modal=document.getElementById('denomModal');
   var ef=document.getElementById('efContado');
   var totalEl=document.getElementById('denomTotal');
-  var rows=[].slice.call(document.querySelectorAll('.denom-row'));
+  var rows=[].slice.call(document.querySelectorAll('#denomModal .denom-row'));
   function parse(s){ return parseInt(String(s||'').replace(/[^0-9]/g,''),10)||0; }
   function fmt(n){ return '$'+n.toLocaleString('es-AR'); }
   function recompute(){
