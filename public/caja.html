@@ -365,6 +365,27 @@
 .modal-actions .btn{ flex:1; }
 .modal-actions .btn-primary{ width:auto; flex:2; }
 
+/* Lectura X — reporte de control (read-only, no cierra la caja) */
+.lx-badge{ margin-left:9px; font-family:var(--mono); font-size:11px; font-weight:700; color:var(--purple); background:rgba(107,95,255,0.13); padding:2px 9px; border-radius:999px; }
+.lx-body{ display:flex; flex-direction:column; gap:16px; }
+.lx-meta{ display:grid; grid-template-columns:1fr 1fr; gap:10px 16px; padding:13px 15px; border-radius:13px; background:rgba(255,255,255,0.5); border:1px solid rgba(255,255,255,0.8); }
+html[data-theme="dark"] .lx-meta{ background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.09); }
+.lx-meta .k{ font-size:9px; text-transform:uppercase; letter-spacing:0.07em; font-family:var(--mono); color:var(--ink-3); }
+.lx-meta .v{ font-size:12.5px; font-weight:650; color:var(--ink-1); margin-top:2px; }
+.lx-sec-h{ font-size:9.5px; text-transform:uppercase; letter-spacing:0.08em; font-family:var(--mono); color:var(--ink-3); font-weight:600; margin-bottom:8px; }
+.lx-line{ display:flex; align-items:center; justify-content:space-between; padding:5px 0; font-size:13px; color:var(--ink-1); }
+.lx-line.sub{ font-size:12px; color:var(--ink-2); padding:3px 0; }
+.lx-line.total{ border-top:1px solid rgba(13,20,36,0.10); margin-top:6px; padding-top:10px; font-weight:700; color:var(--ink-0); }
+html[data-theme="dark"] .lx-line.total{ border-top-color:rgba(255,255,255,0.12); }
+.lx-line.total b{ color:var(--purple); font-size:16px; }
+.lx-pago{ display:flex; align-items:center; gap:10px; padding:4px 0; font-size:12.5px; color:var(--ink-1); }
+.lx-pago .d{ width:8px; height:8px; border-radius:3px; flex:0 0 auto; }
+.lx-pago .nm{ flex:1; }
+.lx-pago .tk{ font-size:11px; color:var(--ink-3); margin-right:10px; }
+.lx-pago .am{ font-weight:650; }
+.lx-note{ font-size:11px; line-height:1.55; color:var(--ink-2); background:rgba(107,95,255,0.06); border:1px solid rgba(107,95,255,0.15); border-radius:12px; padding:11px 13px; }
+.lx-note b{ color:var(--purple); }
+
 /* alivios de caja */
 .ali-add{ display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:600; color:var(--purple); background:none; border:none; cursor:pointer; }
 .ali-add:hover{ opacity:0.75; }
@@ -1113,6 +1134,45 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
     </div>
   </div>
 
+  <!-- Modal: Lectura X (reporte de control · read-only · NO cierra la caja) -->
+  <div class="modal-ov" id="lecturaXModal">
+    <div class="modal-card glass-strong" style="max-width:440px;">
+      <div class="modal-head">
+        <div>
+          <div class="modal-title"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--purple)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>Lectura X<span class="lx-badge" id="lxNum">#1</span></div>
+          <div class="modal-sub" id="lxWhen">Reporte de control</div>
+        </div>
+        <button class="modal-x" id="lxClose">×</button>
+      </div>
+      <div class="lx-body">
+        <div class="lx-meta" id="lxMeta"></div>
+        <div>
+          <div class="lx-sec-h">Ventas del día</div>
+          <div class="lx-line"><span>Total</span><b class="tnum" id="lxVentas">—</b></div>
+          <div class="lx-line sub"><span>Tickets</span><span class="tnum" id="lxTickets">—</span></div>
+          <div class="lx-line sub"><span>Ticket promedio</span><span class="tnum" id="lxProm">—</span></div>
+        </div>
+        <div>
+          <div class="lx-sec-h">Por medio de pago</div>
+          <div id="lxPagos"></div>
+        </div>
+        <div>
+          <div class="lx-sec-h">Efectivo en el cajón</div>
+          <div class="lx-line sub"><span>Fondo inicial</span><span class="tnum" id="lxFondo">—</span></div>
+          <div class="lx-line sub"><span>Ventas en efectivo</span><span class="tnum" id="lxVefvo">—</span></div>
+          <div class="lx-line sub"><span>Ingresos manuales</span><span class="tnum" id="lxIng">—</span></div>
+          <div class="lx-line sub"><span>Egresos / retiros</span><span class="tnum" id="lxEgr">—</span></div>
+          <div class="lx-line sub"><span>Sangrías a caja fuerte</span><span class="tnum" id="lxSang">—</span></div>
+          <div class="lx-line total"><span>Efectivo esperado</span><b class="tnum" id="lxEsperado">—</b></div>
+        </div>
+        <div class="lx-note">Lectura de control · <b>no cierra la caja</b> · comprobante no fiscal. El cierre definitivo se hace en <b>Arqueo y cierre</b>.</div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-primary" id="lxCloseBtn" style="width:100%;flex:1;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Entendido</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Overlay: caja cerrada (sin sesión activa) -->
   <div class="cerrada-ov" id="cerradaOv">
     <div class="cerrada-card glass-strong">
@@ -1661,6 +1721,91 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
   }
 
   update();
+})();
+</script>
+<script>
+// Lectura X — reporte de control de la sesión. Read-only: NO cierra la caja,
+// NO emite, NO toca AFIP. Se lee del estado VIVO del DOM al abrir, así refleja
+// alivios/ingresos/retiros hechos en el turno. Numerada por sesión (X#1, X#2…).
+// Ver pos-preview/LECTURA-X-research.md.
+(function(){
+  var btn   = document.querySelector('.lecturax');
+  var modal = document.getElementById('lecturaXModal');
+  if(!btn || !modal) return;
+
+  var lxCount = 0;
+  function parseM(s){ return parseInt(String(s||'').replace(/[^0-9]/g,''),10)||0; }
+  function fmtPos(n){ return '$'+n.toLocaleString('es-AR'); }
+  function fmtSigned(n, sign){ return n ? (sign+'$'+n.toLocaleString('es-AR')) : '$0'; }
+  function esc(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+  function textOf(sel){ var e=document.querySelector(sel); return e?e.textContent.trim():'—'; }
+
+  // El cajero vive como "<span class=mini-ava>MG</span>Mateo Giordano": tomamos
+  // solo los nodos de texto para no pegar las iniciales al nombre.
+  function cajeroName(){
+    var m = document.querySelector('.session-meta .meta-cell .meta-v');
+    if(!m) return '—';
+    var name='';
+    m.childNodes.forEach(function(n){ if(n.nodeType===3) name+=n.textContent; });
+    name = name.trim();
+    return name || m.textContent.trim();
+  }
+  function cell(k,v){ return '<div><div class="k">'+esc(k)+'</div><div class="v">'+esc(v)+'</div></div>'; }
+
+  function fill(){
+    lxCount++;
+    document.getElementById('lxNum').textContent = '#'+lxCount;
+    var now = new Date();
+    var hh = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+    document.getElementById('lxWhen').textContent = 'Reporte de control · lectura de las '+hh;
+
+    var meta = document.querySelectorAll('.session-meta .meta-cell .meta-v');
+    document.getElementById('lxMeta').innerHTML =
+      cell('Sesión', textOf('.session-sub')) +
+      cell('Cajero', cajeroName()) +
+      cell('Punto de venta', meta[1]?meta[1].textContent.trim():'—') +
+      cell('Apertura', meta[2]?meta[2].textContent.trim():'—');
+
+    var glance = document.querySelectorAll('.session-glance .sg-v');
+    document.getElementById('lxVentas').textContent  = glance[0]?glance[0].textContent.trim():'—';
+    document.getElementById('lxTickets').textContent = glance[1]?glance[1].textContent.trim():'—';
+    document.getElementById('lxProm').textContent    = glance[2]?glance[2].textContent.trim():'—';
+
+    var pagos='';
+    document.querySelectorAll('.pay-row').forEach(function(r){
+      var dot=r.querySelector('.pay-dot');
+      var color=dot?dot.style.background:'#999';
+      pagos += '<div class="lx-pago"><span class="d" style="background:'+esc(color)+'"></span>'+
+               '<span class="nm">'+esc(r.querySelector('.pay-name').textContent.trim())+'</span>'+
+               '<span class="tk">'+esc(r.querySelector('.pay-tick').textContent.trim())+'</span>'+
+               '<span class="am tnum">'+esc(r.querySelector('.pay-amt').textContent.trim())+'</span></div>';
+    });
+    document.getElementById('lxPagos').innerHTML = pagos;
+
+    // Efectivo en cajón: todo del estado vivo. Sangrías se derivan para no
+    // duplicar tracking: fondo + ventas efvo + ingresos − egresos − esperado.
+    var subs = document.querySelectorAll('.cash-sub .v');
+    var fondo    = parseM(subs[0]?subs[0].textContent:'');
+    var vefvo    = parseM(subs[1]?subs[1].textContent:'');
+    var esperado = parseM(textOf('.cash-num'));
+    var movSums  = document.querySelectorAll('.mov-cols .mov-head .sum');
+    var ing = parseM(movSums[0]?movSums[0].textContent:'');
+    var egr = parseM(movSums[1]?movSums[1].textContent:'');
+    var sang = Math.max(0, fondo + vefvo + ing - egr - esperado);
+    document.getElementById('lxFondo').textContent    = fmtPos(fondo);
+    document.getElementById('lxVefvo').textContent    = fmtPos(vefvo);
+    document.getElementById('lxIng').textContent      = fmtSigned(ing, '+');
+    document.getElementById('lxEgr').textContent      = fmtSigned(egr, '−');
+    document.getElementById('lxSang').textContent     = fmtSigned(sang, '−');
+    document.getElementById('lxEsperado').textContent = fmtPos(esperado);
+  }
+
+  function open(){ fill(); modal.classList.add('open'); }
+  function close(){ modal.classList.remove('open'); }
+  btn.addEventListener('click', open);
+  document.getElementById('lxClose').addEventListener('click', close);
+  document.getElementById('lxCloseBtn').addEventListener('click', close);
+  modal.addEventListener('click', function(e){ if(e.target===modal) close(); });
 })();
 </script>
 <script>
