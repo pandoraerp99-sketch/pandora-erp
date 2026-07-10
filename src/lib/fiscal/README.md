@@ -35,13 +35,29 @@ Tests: `tests/unit/wsaa-tra.test.ts` (9) + `wsaa-client.test.ts` (7).
 - `LoginCmsTransport` real: `fetch` POST del envelope a WSAA (thin adapter).
 - `WsaaTokenCache` real: mapea a la tabla `wsaa_tokens` vía Drizzle (integration test).
 
+## Slice 3 — Cliente WSFEv1 SOAP — hecho (partes puras + orquestación)
+
+`src/lib/integrations/afip/`:
+| Archivo | Estado |
+|---|---|
+| `xml.ts` | ✅ helpers extractTag/extractAll/unescape (tolerante a namespace/atributos) |
+| `wsfev1-request.ts` | ✅ `buildFecaeSolicitarEnvelope()` + `buildFecompUltimoAutorizadoEnvelope()` — orden XSD verificado (ImpTrib→ImpIVA→MonId→CondicionIVAReceptorId→Iva). Puro, TDD |
+| `wsfev1-response.ts` | ✅ `parseFecaeSolicitarResponse()` + `classifyCaeResult()` (issued/observed/rejected/error, fail-closed) + `parseFecompUltimoAutorizadoResponse()`. Puro, TDD |
+| `wsfev1-client.ts` | ✅ `Wsfev1Client.getLastAuthorized()` (numeración) + `requestCae()` — auth/transport **inyectables**, TDD con fakes |
+
+Tests: `wsfev1-response` (6) + `wsfev1-request` (4) + `wsfev1-client` (5).
+
+**Falta enchufar (necesita cert / DB):**
+- `Wsfev1Transport` real: `fetch` POST con SOAPAction (thin adapter).
+- `AfipAuthProvider` real: envuelve `WsaaClient.getCredentials()` + el CUIT del tenant.
+
 ## Próximos slices (pendientes)
 
-2. **Cliente WSFEv1 SOAP** (`integrations/afip/wsfev1.ts`): serializa el `FECAEDetRequest`
-   del projection layer a SOAP → `FECAESolicitar` → parsea CAE + vencimiento (o rechazo/observaciones).
-   Numeración vía `FECompUltimoAutorizado` + `invoice_sequences` (SELECT FOR UPDATE, ADR-0006).
-3. **Fiscal Snapshot + wiring**: persistir `fiscal_snapshots` (inmutable) con payload+response+CAE;
+4. **Fiscal Snapshot + wiring**: persistir `fiscal_snapshots` (inmutable) con payload+response+CAE;
+   numeración `invoice_sequences` SELECT FOR UPDATE (ADR-0006) + `getLastAuthorized` para recovery;
    cablear al `finalizeSale` que ya funciona. Fail-closed §8.12 en timeout (F0 = sin CAEA, → F0.5).
+5. **Adaptadores reales** (con el cert): TraSigner CMS, transports fetch (WSAA+WSFEv1),
+   caches DB. Recién ahí se prueba live contra homologación.
 
 ## ⚠️ Dependencia externa que desbloquea el LIVE homologación: el certificado
 
