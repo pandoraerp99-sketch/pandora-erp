@@ -1366,7 +1366,7 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
         var c = conceptoI.value.trim() || (mode==='ingreso'?'Ingreso manual':'Retiro de caja');
         if(mode==='ingreso'){ efectivo+=monto; ingEgr+=monto; ingSum+=monto; addRow(ingCol,true,c,monto); }
         else { efectivo-=monto; ingEgr-=monto; egrSum+=monto; addRow(egrCol,false,c,monto); }
-        render(); closeM();
+        render(); syncArqueo(mode==='ingreso'?monto:-monto); closeM();
       });
 
       // Arqueo -> conteo por denominación
@@ -1378,6 +1378,23 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
           setTimeout(function(){ denomOpen.click(); }, 220);
         });
       }
+
+      // El "Efectivo esperado" del arqueo es EL MISMO número que "Efectivo en
+      // caja": lo que el sistema espera físicamente en el cajón. Todo cambio del
+      // cajón (alivio, ingreso/retiro manual) debe moverlo también, o el arqueo
+      // mostraría un faltante/sobrante falso. syncArqueo() delega al módulo de
+      // arqueo (definido más abajo → guard). Ver CAJA-cash-management-research.md.
+      function syncArqueo(delta){
+        if(window.CajaArqueo && window.CajaArqueo.adjustEfectivo) window.CajaArqueo.adjustEfectivo(delta);
+      }
+
+      // Interfaz mínima: un alivio (cash drop) saca plata del cajón. Otros
+      // módulos impactan el efectivo por acá.
+      // (fórmula: fondo + ventas efectivo − sangrías = arqueo).
+      window.Caja = {
+        egreso: function(amount){ efectivo -= amount; ingEgr -= amount; render(); syncArqueo(-amount); },
+        ingreso: function(amount){ efectivo += amount; ingEgr += amount; render(); syncArqueo(amount); }
+      };
     })();
   </script>
 
@@ -1430,6 +1447,26 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
         });
       });
       render();
+
+      // Un cambio en el cajón (alivio/ingreso/retiro) mueve el efectivo esperado
+      // Y el contado por igual, así el descuadre se mantiene (no inventa faltante).
+      // La primera .rm es Efectivo. delta<0 = sale plata del cajón.
+      window.CajaArqueo = {
+        adjustEfectivo: function (delta) {
+          var row = rows[0];
+          if (!row) return;
+          var exp = Math.max(0, (parseInt(row.getAttribute('data-exp'), 10) || 0) + delta);
+          row.setAttribute('data-exp', exp);
+          var b = row.querySelector('.rm-exp b');
+          if (b) b.textContent = fmt(exp);
+          var inp = row.querySelector('.rm-input');
+          if (inp) {
+            var dec = Math.max(0, parse(inp.value) + delta);
+            inp.value = dec ? dec.toLocaleString('es-AR') : '';
+          }
+          render();
+        }
+      };
     })();
   </script>
 <script>
@@ -1617,6 +1654,7 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
         '<span class="ali-chip pend">Pendiente</span>';
       document.getElementById('aliviosList').appendChild(el);
       bindAlivio(el);
+      if(window.Caja && window.Caja.egreso) window.Caja.egreso(monto); // el alivio sale del cajón
       update();
       nClose();
     });
