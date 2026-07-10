@@ -26,7 +26,11 @@ const COMMERCIAL_TRANSITIONS: Record<CommercialStatus, ReadonlyArray<CommercialS
 };
 
 const FISCAL_TRANSITIONS: Record<FiscalStatus, ReadonlyArray<FiscalStatus>> = {
-  not_required: [],
+  // not_required es el default de un draft (aún no se sabe si lleva factura).
+  // Al FINALIZAR con require_fiscal_invoice=true, se determina → pending. Una
+  // venta finalizada SIN factura queda en not_required de facto (nadie la
+  // transiciona), pero el estado admite esta arista de determinación.
+  not_required: ['pending'],
 
   pending: ['requesting'],
   requesting: ['issued', 'requires_reconciliation', 'failed', 'contingency'],
@@ -48,8 +52,10 @@ const FISCAL_TRANSITIONS: Record<FiscalStatus, ReadonlyArray<FiscalStatus>> = {
   manual_resolution_required: [],
 };
 
+// not_required NO se lista como terminal: admite la arista de determinación
+// hacia pending (ver FISCAL_TRANSITIONS). Los terminales fiscales reales son
+// los estados "fiscal cerrado".
 const TERMINAL_FISCAL: ReadonlySet<FiscalStatus> = new Set([
-  'not_required',
   'issued',
   'reconciled_issued',
   'manual_resolution_required',

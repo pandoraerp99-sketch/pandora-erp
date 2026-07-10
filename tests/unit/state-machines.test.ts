@@ -87,8 +87,8 @@ describe('fiscal state machine', () => {
     expect(() => assertFiscalTransition('issued', 'pending')).toThrow(StateTransitionError);
   });
 
-  it('not_required es terminal', () => {
-    expect(isFiscalTerminal('not_required')).toBe(true);
-    expect(listAllowedFiscalTransitions('not_required')).toEqual([]);
+  it('not_required se determina a pending al finalizar con factura (no es terminal)', () => {
+    expect(isFiscalTerminal('not_required')).toBe(false);
+    expect(listAllowedFiscalTransitions('not_required')).toEqual(['pending']);
   });
 });

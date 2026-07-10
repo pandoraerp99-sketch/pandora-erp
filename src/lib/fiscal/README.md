@@ -51,13 +51,29 @@ Tests: `wsfev1-response` (6) + `wsfev1-request` (4) + `wsfev1-client` (5).
 - `Wsfev1Transport` real: `fetch` POST con SOAPAction (thin adapter).
 - `AfipAuthProvider` real: envuelve `WsaaClient.getCredentials()` + el CUIT del tenant.
 
+## Slice 4 — emitInvoice (emisión del CAE) — hecho
+
+`src/lib/fiscal/`:
+| Archivo | Estado |
+|---|---|
+| `receptor.ts` | ✅ deriva DocTipo/DocNro/CondicionIVAReceptor + condición desde el snapshot de cliente. Puro, TDD |
+| `emit-invoice.ts` | ✅ `emitInvoice(saleId, {client})` — numeración SELECT FOR UPDATE (ADR-0006) + `requestCae` **inyectado** + snapshot inmutable (solo en éxito) + transiciones + audit. Los 5 outcomes + guards |
+
+Tests: `fiscal-receptor` (5, unit) + `T-FISCAL-EMIT-01` (6, integración con DB real + cliente fake).
+
+**Outcomes (fail-closed):** issued→issued+snapshot+número+1 · observed→issued (CAE válido)+obs · rejected/error→manual_resolution_required, sin snapshot, número NO avanza · timeout/red→requires_reconciliation (worker recupera).
+
+**Frontera transaccional (§8.5, decisión consciente):** el número avanza SOLO cuando AFIP autoriza (correlatividad estricta AFIP, error 10016). La tx se sostiene durante la llamada AFIP → **requiere conexión directa/session en producción, NO el pooler transaccional 6543 de Supabase** (dev usa 5432). Ver comentario en `emit-invoice.ts`.
+
+**Gap latente corregido:** `finalizeSale(require_fiscal_invoice=true)` nunca funcionó — la máquina de estados prohibía `not_required→pending`. Se agregó esa arista (determinación fiscal al finalizar) en `domain/state-machines.ts`. Ningún test previo lo ejercía (todos usaban `false`).
+
+**Falta:** cablear `emitInvoice` al POS (llamarlo tras `finalizeSale` cuando haya cliente) — hoy son servicios separados: sin cliente wired, la venta queda limpia en `pending` (fail-closed A-2). Y los adaptadores reales:
+
 ## Próximos slices (pendientes)
 
-4. **Fiscal Snapshot + wiring**: persistir `fiscal_snapshots` (inmutable) con payload+response+CAE;
-   numeración `invoice_sequences` SELECT FOR UPDATE (ADR-0006) + `getLastAuthorized` para recovery;
-   cablear al `finalizeSale` que ya funciona. Fail-closed §8.12 en timeout (F0 = sin CAEA, → F0.5).
-5. **Adaptadores reales** (con el cert): TraSigner CMS, transports fetch (WSAA+WSFEv1),
-   caches DB. Recién ahí se prueba live contra homologación.
+5. **Cablear emitInvoice al flujo POS** (Server Action tras finalize) + **adaptadores reales** (con el cert):
+   TraSigner CMS (node-forge), transports fetch (WSAA+WSFEv1), `AfipAuthProvider` (WsaaClient+cuit),
+   `WsaaTokenCache` sobre tabla. Recién ahí se prueba live contra homologación.
 
 ## ⚠️ Dependencia externa que desbloquea el LIVE homologación: el certificado
 
