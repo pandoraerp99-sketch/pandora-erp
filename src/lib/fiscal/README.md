@@ -1,0 +1,49 @@
+# Fiscal — WSFEv1 (Sprint 6)
+
+Emisión de comprobantes electrónicos AFIP/ARCA. ADR-0022 (Fiscal Projection Layer) +
+tax-policy-versions (SRS) + decisiones provisionales del guion contadora 2026-07-10.
+
+## 🔒 Regla de seguridad (no negociable)
+
+Todo esto corre **solo contra AFIP homologación** (`AFIP_ENVIRONMENT=homologacion`,
+ADR-0019 S13). **NO se emite ni un comprobante a cliente real hasta que la contadora
+revise la app funcionando.** El env.ts ya bloquea `produccion` fuera de `NODE_ENV=production`.
+
+## Qué está construido (slice 1 — capa pura, sin red)
+
+| Archivo | Qué hace |
+|---|---|
+| `afip-codes.ts` | Constantes AFIP de fuente primaria (Manual COMPG v4.5): CbteTipo, IVA Id, Concepto, DocTipo, CondicionIVAReceptor. Fail-closed si falta un código. |
+| `invoice-type.ts` | `selectInvoiceType(regimenEmisor, receptor)` → A/B/C. Monotri→C siempre; RI→B a CF, A a sujeto con condición. |
+| `projection/wsfev1.ts` | `projectToWSFEv1(...)` → `FECAEDetRequest`. Reusa `domain/calculation.ts`. Invariantes fail-closed (ImpTotal=Σcomponentes, ImpIVA=ΣIva[], Tipo C sin Iva[]). Exención TDF→ImpOpEx. |
+
+Tests: `tests/unit/fiscal-invoice-type.test.ts` + `tests/unit/fiscal-projection-wsfev1.test.ts` (12, TDD).
+
+## Próximos slices (pendientes)
+
+1. **Cliente WSAA** (`integrations/afip/wsaa.ts`): genera TRA (Ticket de Requerimiento
+   de Acceso) XML → lo firma CMS/PKCS#7 con el cert → llama WSAA → obtiene TA (token+sign).
+   Cachea en `wsaa_tokens` (tabla ya existe, TTL 12h, aislamiento homo/prod). **Requiere el cert** (ver abajo).
+2. **Cliente WSFEv1 SOAP** (`integrations/afip/wsfev1.ts`): serializa el `FECAEDetRequest`
+   del projection layer a SOAP → `FECAESolicitar` → parsea CAE + vencimiento (o rechazo/observaciones).
+   Numeración vía `FECompUltimoAutorizado` + `invoice_sequences` (SELECT FOR UPDATE, ADR-0006).
+3. **Fiscal Snapshot + wiring**: persistir `fiscal_snapshots` (inmutable) con payload+response+CAE;
+   cablear al `finalizeSale` que ya funciona. Fail-closed §8.12 en timeout (F0 = sin CAEA, → F0.5).
+
+## ⚠️ Dependencia externa que desbloquea el LIVE homologación: el certificado
+
+Para que WSAA autentique hace falta un **certificado X.509 de homologación** de AFIP.
+Es lo único que falta para probar de punta a punta. Cómo obtenerlo (owner, una vez):
+
+1. Generar clave privada + CSR:
+   `openssl req -new -newkey rsa:2048 -nodes -keyout pandora-homo.key -out pandora-homo.csr -subj "/C=AR/O=<razon social>/CN=pandora-homo/serialNumber=CUIT <cuit>"`
+2. En el portal AFIP (homologación / WSASS con clave fiscal): subir el CSR → descargar el certificado.
+3. Autorizar el servicio **wsfe** (WSFEv1) para ese certificado/CUIT en WSASS.
+4. Guardar cert + key. F0 piloto: env vars / vault cifrado (§11.8, nunca en git, nunca loguear).
+
+Env vars que se agregarán en el slice WSAA (aún no en `env.ts`):
+`AFIP_CUIT`, `AFIP_CERT` (o path/handle en storage cifrado), `AFIP_PRIVATE_KEY`.
+
+Endpoints homologación (constantes por environment):
+- WSAA: `https://wsaahomo.afip.gov.ar/ws/services/LoginCms`
+- WSFEv1: `https://wswhomo.afip.gov.ar/wsfev1/service.asmx`
