@@ -125,6 +125,16 @@
     display:inline-flex; align-items:center; gap:7px; padding:7px 13px; border-radius:999px;
     background:rgba(52,199,125,0.13); color:#1a8e5a; font-size:12.5px; font-weight:600;
   }
+  .pill-closed {
+    display:inline-flex; align-items:center; gap:7px; padding:7px 13px; border-radius:999px;
+    background:rgba(120,129,168,0.16); color:var(--ink-2); font-size:12.5px; font-weight:600;
+  }
+  .cerrada-ov{ position:fixed; inset:0; z-index:90; display:none; align-items:center; justify-content:center; padding:24px; background:rgba(13,20,36,0.30); backdrop-filter:blur(5px); -webkit-backdrop-filter:blur(5px); }
+  .cerrada-card{ width:400px; max-width:100%; padding:34px 30px 28px; border-radius:22px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:5px; animation:aliAdjIn 240ms ease; }
+  .cerrada-ic{ width:58px; height:58px; border-radius:17px; display:flex; align-items:center; justify-content:center; background:rgba(120,129,168,0.14); color:var(--ink-2); margin-bottom:8px; }
+  .cerrada-card h2{ font-size:21px; font-weight:700; letter-spacing:-0.02em; }
+  .cerrada-card p{ font-size:13px; color:var(--ink-2); line-height:1.5; max-width:300px; margin-top:2px; }
+  .cerrada-last{ font-size:11.5px; color:var(--ink-3); margin:6px 0 14px; }
   .mini-ava { width:30px; height:30px; border-radius:999px; background:linear-gradient(135deg,var(--purple),var(--blue));
     display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px; font-weight:600;
     border:2px solid rgba(255,255,255,0.85); flex-shrink:0; }
@@ -946,7 +956,7 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
           <textarea class="motivo-input" id="motivo" placeholder="Detallá el motivo de la diferencia para registrar el cierre…"></textarea>
 
           <div style="margin-top:18px;">
-            <button class="btn-primary">
+            <button class="btn-primary" id="cerrarBtn">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="13" rx="2"/><path d="M8 8V6a4 4 0 0 1 8 0v2"/></svg>
               Cerrar caja
             </button>
@@ -1064,6 +1074,99 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
       </div>
     </div>
   </div>
+
+  <!-- Overlay: caja cerrada (sin sesión activa) -->
+  <div class="cerrada-ov" id="cerradaOv">
+    <div class="cerrada-card glass-strong">
+      <div class="cerrada-ic"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
+      <h2>Caja cerrada</h2>
+      <p>No hay una sesión de caja activa. Abrí la caja con el fondo inicial para empezar a operar.</p>
+      <div class="cerrada-last" id="cerradaLast">Última sesión #00482 cerrada</div>
+      <button class="btn-primary" id="abrirFromClosed" style="width:100%;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0"/></svg>Abrir caja</button>
+    </div>
+  </div>
+
+  <!-- Modal: abrir caja -->
+  <div class="modal-ov" id="abrirModal">
+    <div class="modal-card glass-strong" style="max-width:420px;">
+      <div class="modal-head">
+        <div>
+          <div class="modal-title"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--purple)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0"/></svg>Abrir caja</div>
+          <div class="modal-sub">Iniciás una nueva sesión de caja</div>
+        </div>
+        <button class="modal-x" id="abrirClose">×</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <label style="display:flex;flex-direction:column;gap:6px;">
+          <span class="upper-mini">Fondo inicial · efectivo con el que abrís</span>
+          <div class="rm-inp"><span>$</span><input id="abrirFondo" class="rm-input tnum" inputmode="numeric" value="20.000" /></div>
+        </label>
+        <div style="display:flex;gap:12px;">
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px;min-width:0;">
+            <span class="upper-mini">Cajero</span>
+            <div style="display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:11px;background:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.8);font-size:12.5px;font-weight:600;"><span class="mini-ava" style="width:22px;height:22px;font-size:9.5px;">MG</span>Mateo Giordano</div>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px;min-width:0;">
+            <span class="upper-mini">Punto de venta</span>
+            <div style="padding:9px 11px;border-radius:11px;background:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.8);font-size:12.5px;font-weight:600;">Río Grande · PV 0002</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="abrirCancel">Cancelar</button>
+        <button class="btn-primary" id="abrirConfirm"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Abrir caja</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Abrir / cerrar caja (ciclo de sesión, client-side)
+    (function(){
+      function parse(s){ return parseInt(String(s||'').replace(/[^0-9]/g,''),10)||0; }
+      function money(n){ return '$'+n.toLocaleString('es-AR'); }
+      function hhmm(){ var d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+
+      var cerrarBtn = document.getElementById('cerrarBtn');
+      var cerradaOv = document.getElementById('cerradaOv');
+      var abrirModal = document.getElementById('abrirModal');
+      var fondoInput = document.getElementById('abrirFondo');
+      var sub = document.querySelector('.session-sub');
+      var metaVs = document.querySelectorAll('.session-meta .meta-cell .meta-v');
+      var aperturaEl = metaVs[2];
+      var cashNum = document.querySelector('.cash-num');
+      var fondoSub = document.querySelectorAll('.cash-sub .v')[0];
+      var sesionN = 482;
+
+      function pillEl(){ return document.querySelector('.pill-open, .pill-closed'); }
+      function openM(){ abrirModal.classList.add('open'); setTimeout(function(){ fondoInput.focus(); }, 40); }
+      function closeM(){ abrirModal.classList.remove('open'); }
+
+      if(cerrarBtn) cerrarBtn.addEventListener('click', function(){
+        document.getElementById('cerradaLast').textContent = 'Última sesión #00'+sesionN+' cerrada a las '+hhmm();
+        var p = pillEl(); if(p){ p.className='pill-closed'; p.textContent='Cerrada'; }
+        cerradaOv.style.display='flex';
+      });
+
+      document.getElementById('abrirFromClosed').addEventListener('click', openM);
+      document.getElementById('abrirClose').addEventListener('click', closeM);
+      document.getElementById('abrirCancel').addEventListener('click', closeM);
+      abrirModal.addEventListener('click', function(e){ if(e.target===abrirModal) closeM(); });
+      fondoInput.addEventListener('input', function(){ var d=parse(fondoInput.value); fondoInput.value = d?d.toLocaleString('es-AR'):''; });
+
+      document.getElementById('abrirConfirm').addEventListener('click', function(){
+        var fondo = parse(fondoInput.value);
+        sesionN += 1;
+        var ap = hhmm();
+        if(sub) sub.textContent = 'Sesión #00'+sesionN+' · abierta hoy '+ap;
+        if(aperturaEl) aperturaEl.textContent = ap;
+        var p = pillEl(); if(p){ p.className='pill-open'; p.innerHTML='<span class="live-dot"></span>Abierta'; }
+        if(cashNum) cashNum.textContent = money(fondo);
+        if(fondoSub) fondoSub.textContent = money(fondo);
+        cerradaOv.style.display='none';
+        closeM();
+      });
+    })();
+  </script>
 
   <script>
     // Botones Ingreso / Retiro / Arqueo (client-side, estado del mockup)
