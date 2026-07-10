@@ -1124,6 +1124,33 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
     </div>
   </div>
 
+  <!-- Modal: nuevo alivio -->
+  <div class="modal-ov" id="nuevoAliModal">
+    <div class="modal-card glass-strong" style="max-width:400px;">
+      <div class="modal-head">
+        <div>
+          <div class="modal-title"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--purple)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="11" rx="2"/><path d="M12 3v8"/><path d="m8 7 4 4 4-4"/></svg>Nuevo alivio</div>
+          <div class="modal-sub">Guardás efectivo de la caja en la caja fuerte</div>
+        </div>
+        <button class="modal-x" id="nuevoAliClose">×</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <label style="display:flex;flex-direction:column;gap:6px;">
+          <span class="upper-mini">Monto a guardar</span>
+          <div class="rm-inp"><span>$</span><input id="nuevoAliMonto" class="rm-input tnum" inputmode="numeric" placeholder="0" /></div>
+        </label>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <span class="upper-mini">Cajero que hace el alivio</span>
+          <div style="display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:11px;background:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.8);font-size:12.5px;font-weight:600;"><span class="mini-ava" style="width:22px;height:22px;font-size:9.5px;">MG</span>Mateo Giordano</div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="nuevoAliCancel">Cancelar</button>
+        <button class="btn-primary" id="nuevoAliConfirm"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="11" rx="2"/><path d="M12 3v8"/><path d="m8 7 4 4 4-4"/></svg>Guardar en caja fuerte</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: abrir caja -->
   <div class="modal-ov" id="abrirModal">
     <div class="modal-card glass-strong" style="max-width:420px;">
@@ -1454,9 +1481,6 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
   var histToggle = document.getElementById('aliHistToggle');
   function pend(){ return [].slice.call(document.querySelectorAll('#aliviosList .alivio.pend')); }
 
-  // esperado + recibido por alivio (recibido arranca = esperado = completo)
-  pend().forEach(function(a){ a.dataset.esperado = a.getAttribute('data-monto'); a.dataset.recibido = a.getAttribute('data-monto'); });
-
   function classify(a){
     var esp = parse(a.dataset.esperado), rec = parse(a.dataset.recibido);
     var chip = a.querySelector('.ali-chip');
@@ -1474,14 +1498,23 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
     bar.className = 'ali-adj-bar';
     bar.innerHTML =
       '<span class="ali-adj-k">Recibido</span>'+
-      '<span class="ali-rin">$<input class="ali-recibido tnum" inputmode="numeric" value="'+esp.toLocaleString('es-AR')+'"></span>'+
+      '<span class="ali-rin">$<input class="ali-recibido tnum" inputmode="numeric" placeholder="'+esp.toLocaleString('es-AR')+'"></span>'+
       '<span class="ali-adj-exp">de '+fmt(esp)+'</span>'+
       '<button type="button" class="ali-falta-btn">Falta (no vino)</button>';
     a.insertAdjacentElement('afterend', bar);
     var input = bar.querySelector('.ali-recibido');
-    input.addEventListener('input', function(){ var d=parse(input.value); input.value = d?d.toLocaleString('es-AR'):''; a.dataset.recibido=d; classify(a); update(); });
+    // Vacío = usa el esperado (completo, se ve como marca de agua). Escribís el
+    // monto real sin borrar. "0" explícito = falta.
+    input.addEventListener('input', function(){
+      var raw = input.value.replace(/[^0-9]/g,'');
+      if(raw === ''){ input.value=''; a.dataset.recibido = a.dataset.esperado; classify(a); update(); return; }
+      var d = parseInt(raw,10) || 0;
+      input.value = d.toLocaleString('es-AR');
+      a.dataset.recibido = String(d);
+      classify(a); update();
+    });
     bar.querySelector('.ali-falta-btn').addEventListener('click', function(){
-      if(parse(a.dataset.recibido) <= 0){ a.dataset.recibido=a.dataset.esperado; input.value=esp.toLocaleString('es-AR'); }
+      if(parse(a.dataset.recibido) <= 0){ a.dataset.recibido=a.dataset.esperado; input.value=''; }
       else { a.dataset.recibido='0'; input.value='0'; }
       classify(a); update();
     });
@@ -1529,10 +1562,13 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
     histList.insertBefore(row, histList.firstChild);
   }
 
-  pend().forEach(function(a){
+  function bindAlivio(a){
+    a.dataset.esperado = a.getAttribute('data-monto');
+    a.dataset.recibido = a.getAttribute('data-monto');
     var c = a.querySelector('input[type=checkbox]');
     c.addEventListener('change', function(){ if(c.checked) showAdj(a); else hideAdj(a); update(); });
-  });
+  }
+  pend().forEach(bindAlivio);
 
   if(btn) btn.addEventListener('click', function(){
     pend().forEach(function(a){
@@ -1551,6 +1587,40 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
     histBox.style.display = showing ? 'none' : 'block';
     histToggle.classList.toggle('on', !showing);
   });
+
+  // ── Nuevo alivio: guardar efectivo en la caja fuerte (nuevo pendiente) ──
+  function pad3(n){ return ('00'+n).slice(-3); }
+  function nextNum(){ var mx=0; document.querySelectorAll('.alivio-num').forEach(function(n){ var v=parseInt(n.textContent.replace(/[^0-9]/g,''),10)||0; if(v>mx)mx=v; }); return mx+1; }
+  function nowHM(){ var d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+  var addBtn = document.querySelector('.ali-add');
+  var nModal = document.getElementById('nuevoAliModal');
+  var nMonto = document.getElementById('nuevoAliMonto');
+  function nClose(){ if(nModal) nModal.classList.remove('open'); }
+  if(addBtn && nModal){
+    addBtn.addEventListener('click', function(){ nMonto.value=''; nModal.classList.add('open'); setTimeout(function(){ nMonto.focus(); },40); });
+    document.getElementById('nuevoAliClose').addEventListener('click', nClose);
+    document.getElementById('nuevoAliCancel').addEventListener('click', nClose);
+    nModal.addEventListener('click', function(e){ if(e.target===nModal) nClose(); });
+    nMonto.addEventListener('input', function(){ var d=parse(nMonto.value); nMonto.value = d?d.toLocaleString('es-AR'):''; });
+    document.getElementById('nuevoAliConfirm').addEventListener('click', function(){
+      var monto = parse(nMonto.value);
+      if(monto<=0){ nMonto.focus(); return; }
+      var num = nextNum();
+      var el = document.createElement('label');
+      el.className = 'alivio pend';
+      el.setAttribute('data-monto', String(monto));
+      el.innerHTML =
+        '<span class="ali-check"><input type="checkbox"></span>'+
+        '<span class="alivio-av">MG</span>'+
+        '<div class="alivio-tx"><div class="alivio-name">Mateo Giordano <span class="alivio-num">#'+pad3(num)+'</span></div><div class="alivio-sub">21/06 · '+nowHM()+'</div></div>'+
+        '<span class="alivio-monto tnum">'+fmt(monto)+'</span>'+
+        '<span class="ali-chip pend">Pendiente</span>';
+      document.getElementById('aliviosList').appendChild(el);
+      bindAlivio(el);
+      update();
+      nClose();
+    });
+  }
 
   update();
 })();
