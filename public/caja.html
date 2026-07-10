@@ -404,6 +404,25 @@
 .ali-falta-btn{ margin-left:auto; font-size:10.5px; font-weight:700; padding:5px 11px; border-radius:8px; background:rgba(239,93,106,0.1); color:#c93545; border:1px solid rgba(239,93,106,0.24); cursor:pointer; transition:all 140ms; flex:0 0 auto; }
 .ali-falta-btn:hover{ background:rgba(239,93,106,0.16); }
 .ali-falta-btn.on{ background:var(--red); color:#fff; border-color:var(--red); }
+/* Caja fuerte + historial de alivios */
+.ali-safe-v{ font-family:var(--mono); color:var(--ink-1); font-weight:700; }
+.ali-hist-toggle{ font-size:11px; font-weight:700; color:var(--purple); padding:4px 11px; border-radius:8px; background:rgba(107,95,255,0.09); border:1px solid rgba(107,95,255,0.18); cursor:pointer; transition:all 140ms; }
+.ali-hist-toggle:hover, .ali-hist-toggle.on{ background:rgba(107,95,255,0.16); }
+.ali-auth{ display:flex; align-items:center; gap:7px; margin-top:12px; font-size:11px; color:var(--ink-3); }
+.ali-auth svg{ width:13px; height:13px; flex:0 0 auto; color:var(--ink-4); }
+.ali-hist{ margin-top:14px; padding-top:13px; border-top:1px solid rgba(13,20,36,0.07); }
+.ali-hist-head{ font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-3); margin-bottom:6px; }
+.ali-hist-row{ display:flex; align-items:center; gap:11px; padding:8px 0; border-top:1px solid rgba(13,20,36,0.04); font-size:12.5px; }
+.ali-hist-row:first-child{ border-top:none; }
+.ali-hist-av{ width:28px; height:28px; border-radius:50%; background:linear-gradient(135deg,var(--purple),var(--blue)); color:#fff; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+.ali-hist-tx{ flex:1; min-width:0; }
+.ali-hist-name{ font-weight:600; color:var(--ink-1); }
+.ali-hist-sub{ font-size:10.5px; color:var(--ink-3); margin-top:1px; }
+.ali-hist-amt{ font-family:var(--mono); font-weight:700; color:var(--ink-1); flex:0 0 auto; }
+.ali-hist-amt .falt{ color:#c93545; font-weight:700; font-size:10.5px; margin-left:6px; }
+html[data-theme="dark"] .ali-hist{ border-top-color:rgba(255,255,255,0.08); }
+html[data-theme="dark"] .ali-hist-row{ border-top-color:rgba(255,255,255,0.05); }
+html[data-theme="dark"] .ali-hist-amt .falt{ color:#ff8b96; }
 
 /* historial de cierres */
 .cl-cajero{ display:inline-flex; align-items:center; gap:8px; }
@@ -771,8 +790,11 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
             <h3><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="color:var(--purple)"><rect x="3" y="9" width="18" height="11" rx="2"/><path d="M12 3v8"/><path d="m8 7 4 4 4-4"/></svg>Alivios de caja</h3>
             <button class="ali-add"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Nuevo alivio</button>
           </div>
-          <div class="ali-bar"><span><span class="ali-sum" id="aliSum">3 pendientes · $58.000</span> a retirar por la dueña</span><span class="ali-real" id="aliReal"></span></div>
-          <div class="alivios">
+          <div class="ali-bar">
+            <span>En la caja fuerte <b class="ali-safe-v" id="aliSafe">$58.000</b> · <span id="aliPendN">3</span> pendientes de retiro</span>
+            <button class="ali-hist-toggle" id="aliHistToggle" type="button">Historial (<span id="aliHistN">1</span>)</button>
+          </div>
+          <div class="alivios" id="aliviosList">
             <label class="alivio pend" data-monto="18000">
               <span class="ali-check"><input type="checkbox"></span>
               <span class="alivio-av">MG</span>
@@ -794,15 +816,19 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
               <span class="alivio-monto tnum">$15.000</span>
               <span class="ali-chip pend">Pendiente</span>
             </label>
-            <div class="alivio done" data-monto="30000">
-              <span class="ali-check"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#1a8e5a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
-              <span class="alivio-av">MG</span>
-              <div class="alivio-tx"><div class="alivio-name">Mateo Giordano</div><div class="alivio-sub">10:15 · retirado por Dueña 11:00</div></div>
-              <span class="alivio-monto tnum">$30.000</span>
-              <span class="ali-chip done">Retirado</span>
+          </div>
+          <div class="ali-auth"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Solo la persona autorizada (Dueña) puede retirar de la caja fuerte.</div>
+          <button class="alivio-btn" id="retirarBtn" disabled>Retirar de la caja fuerte (0)</button>
+          <div class="ali-hist" id="aliHist" style="display:none;">
+            <div class="ali-hist-head">Historial de retiros</div>
+            <div id="aliHistList">
+              <div class="ali-hist-row">
+                <span class="ali-hist-av">MG</span>
+                <div class="ali-hist-tx"><div class="ali-hist-name">Mateo Giordano</div><div class="ali-hist-sub">alivio 10:15 · retirado por Dueña 11:00</div></div>
+                <span class="ali-hist-amt tnum">$30.000</span>
+              </div>
             </div>
           </div>
-          <button class="alivio-btn" id="retirarBtn" disabled>Marcar retirados (0)</button>
         </section>
 
         <!-- Últimos movimientos -->
@@ -1418,8 +1444,13 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
   function parse(s){ return parseInt(String(s||'').replace(/[^0-9]/g,''),10)||0; }
   function fmt(n){ return '$'+n.toLocaleString('es-AR'); }
   var btn = document.getElementById('retirarBtn');
-  var sumEl = document.getElementById('aliSum');
-  function pend(){ return [].slice.call(document.querySelectorAll('.alivio.pend')); }
+  var safeEl = document.getElementById('aliSafe');
+  var pendNEl = document.getElementById('aliPendN');
+  var histNEl = document.getElementById('aliHistN');
+  var histList = document.getElementById('aliHistList');
+  var histBox = document.getElementById('aliHist');
+  var histToggle = document.getElementById('aliHistToggle');
+  function pend(){ return [].slice.call(document.querySelectorAll('#aliviosList .alivio.pend')); }
 
   // esperado + recibido por alivio (recibido arranca = esperado = completo)
   pend().forEach(function(a){ a.dataset.esperado = a.getAttribute('data-monto'); a.dataset.recibido = a.getAttribute('data-monto'); });
@@ -1463,31 +1494,33 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
 
   function update(){
     var p = pend();
-    var ptot = 0; p.forEach(function(a){ ptot += parse(a.dataset.esperado); });
+    // Caja fuerte = suma de los alivios que TODAV\u00cdA no se retiraron (est\u00e1n en el safe)
+    var safe = 0; p.forEach(function(a){ safe += parse(a.dataset.esperado); });
     var sel = p.filter(function(a){ var c = a.querySelector('input[type=checkbox]'); return c && c.checked; });
-    var stot = 0, falt = 0;
-    sel.forEach(function(a){ stot += parse(a.dataset.recibido); falt += parse(a.dataset.esperado) - parse(a.dataset.recibido); });
-    if(sumEl){ var base = p.length + ' pendiente' + (p.length!==1?'s':'') + ' \u00b7 ' + fmt(ptot); sumEl.textContent = falt>0 ? base + '  \u00b7  faltan ' + fmt(falt) : base; }
-    if(btn){ btn.textContent = 'Marcar retirados (' + sel.length + ')' + (stot ? ' \u00b7 ' + fmt(stot) : ''); btn.disabled = sel.length===0; }
-    // Realizados (retirados): total que DEBER\u00cdA HABER (esperado) vs lo recibido
-    var realEl = document.getElementById('aliReal');
-    if(realEl){
-      var done = [].slice.call(document.querySelectorAll('.alivio.done'));
-      var deb = 0, rec = 0;
-      done.forEach(function(a){
-        var e = parse(a.dataset.esperado != null ? a.dataset.esperado : a.getAttribute('data-monto'));
-        var r = (a.dataset.recibido != null && a.dataset.recibido !== '') ? parse(a.dataset.recibido) : e;
-        deb += e; rec += r;
-      });
-      if(done.length === 0){ realEl.innerHTML = ''; }
-      else if(deb - rec > 0){ realEl.innerHTML = done.length + ' realizado' + (done.length!==1?'s':'') + ' \u00b7 deber\u00eda haber <b>' + fmt(deb) + '</b> \u00b7 recibido <b>' + fmt(rec) + '</b> <span class="falt">(falt\u00f3 ' + fmt(deb-rec) + ')</span>'; }
-      else { realEl.innerHTML = done.length + ' realizado' + (done.length!==1?'s':'') + ' \u00b7 deber\u00eda haber <b>' + fmt(deb) + '</b>'; }
-    }
+    if(safeEl) safeEl.textContent = fmt(safe);
+    if(pendNEl) pendNEl.textContent = p.length;
+    if(histNEl) histNEl.textContent = document.querySelectorAll('#aliHistList .ali-hist-row').length;
+    if(btn){ btn.textContent = 'Retirar de la caja fuerte (' + sel.length + ')'; btn.disabled = sel.length===0; }
   }
 
-  var CK_OK = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#1a8e5a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
-  var CK_WARN = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#b96c1a" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
-  var CK_X = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#c93545" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+  // Al retirar, el alivio SALE de la caja fuerte y queda registrado en el historial.
+  function addHist(a){
+    var esp = parse(a.dataset.esperado), rec = parse(a.dataset.recibido);
+    var name = a.querySelector('.alivio-name').textContent;
+    var av = a.querySelector('.alivio-av').textContent;
+    var origHora = (a.querySelector('.alivio-sub').textContent.split(' \u00b7 ')[0] || '').trim();
+    var falto = esp - rec, amt, note;
+    if(rec <= 0){ amt = '<span class="falt">no vino \u00b7 '+fmt(esp)+'</span>'; note = ' \u00b7 marcado FALTA por Due\u00f1a '+T; }
+    else if(falto > 0){ amt = fmt(rec)+'<span class="falt">falt\u00f3 '+fmt(falto)+'</span>'; note = ' \u00b7 retirado por Due\u00f1a '+T+' \u00b7 recibido '+fmt(rec)+' de '+fmt(esp); }
+    else { amt = fmt(esp); note = ' \u00b7 retirado por Due\u00f1a '+T; }
+    var row = document.createElement('div');
+    row.className = 'ali-hist-row';
+    row.innerHTML = '<span class="ali-hist-av"></span><div class="ali-hist-tx"><div class="ali-hist-name"></div><div class="ali-hist-sub"></div></div><span class="ali-hist-amt tnum">'+amt+'</span>';
+    row.querySelector('.ali-hist-av').textContent = av;
+    row.querySelector('.ali-hist-name').textContent = name;
+    row.querySelector('.ali-hist-sub').textContent = 'alivio '+origHora+note;
+    histList.insertBefore(row, histList.firstChild);
+  }
 
   pend().forEach(function(a){
     var c = a.querySelector('input[type=checkbox]');
@@ -1495,19 +1528,23 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
   });
 
   if(btn) btn.addEventListener('click', function(){
-    pend().slice().forEach(function(a){
+    pend().forEach(function(a){
       var c = a.querySelector('input[type=checkbox]');
       if(!(c && c.checked)) return;
-      var esp = parse(a.dataset.esperado), rec = parse(a.dataset.recibido);
       var bar = a.nextElementSibling; if(bar && bar.classList.contains('ali-adj-bar')) bar.remove();
-      a.classList.remove('pend'); a.classList.add('done'); a.style.cursor = 'default';
-      var chip = a.querySelector('.ali-chip'), sub = a.querySelector('.alivio-sub'), ck = a.querySelector('.ali-check');
-      if(rec >= esp){ chip.className='ali-chip done'; chip.textContent='Retirado'; sub.textContent += ' \u00b7 retirado por Due\u00f1a ' + T; if(ck) ck.innerHTML=CK_OK; }
-      else if(rec <= 0){ chip.className='ali-chip falta'; chip.textContent='No vino'; sub.textContent += ' \u00b7 marcado FALTA por Due\u00f1a ' + T; if(ck) ck.innerHTML=CK_X; }
-      else { chip.className='ali-chip parcial'; chip.textContent='Falt\u00f3 '+fmt(esp-rec); sub.textContent += ' \u00b7 recibido '+fmt(rec)+' de '+fmt(esp)+' \u00b7 Due\u00f1a ' + T; if(ck) ck.innerHTML=CK_WARN; }
+      addHist(a);   // queda registrado en el historial
+      a.remove();   // sale de la caja fuerte: desaparece de la lista
     });
+    if(histBox && histBox.style.display === 'none'){ histBox.style.display='block'; if(histToggle) histToggle.classList.add('on'); }
     update();
   });
+
+  if(histToggle) histToggle.addEventListener('click', function(){
+    var showing = histBox.style.display !== 'none';
+    histBox.style.display = showing ? 'none' : 'block';
+    histToggle.classList.toggle('on', !showing);
+  });
+
   update();
 })();
 </script>
