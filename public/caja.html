@@ -420,6 +420,8 @@
 .ali-hist-sub{ font-size:10.5px; color:var(--ink-3); margin-top:1px; }
 .ali-hist-amt{ font-family:var(--mono); font-weight:700; color:var(--ink-1); flex:0 0 auto; }
 .ali-hist-amt .falt{ color:#c93545; font-weight:700; font-size:10.5px; margin-left:6px; }
+.alivio-num{ font-family:var(--mono); font-size:10px; font-weight:600; color:var(--ink-3); background:rgba(13,20,36,0.05); padding:1px 6px; border-radius:5px; margin-left:6px; }
+html[data-theme="dark"] .alivio-num{ background:rgba(255,255,255,0.08); }
 html[data-theme="dark"] .ali-hist{ border-top-color:rgba(255,255,255,0.08); }
 html[data-theme="dark"] .ali-hist-row{ border-top-color:rgba(255,255,255,0.05); }
 html[data-theme="dark"] .ali-hist-amt .falt{ color:#ff8b96; }
@@ -798,21 +800,21 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
             <label class="alivio pend" data-monto="18000">
               <span class="ali-check"><input type="checkbox"></span>
               <span class="alivio-av">MG</span>
-              <div class="alivio-tx"><div class="alivio-name">Mateo Giordano</div><div class="alivio-sub">12:30</div></div>
+              <div class="alivio-tx"><div class="alivio-name">Mateo Giordano <span class="alivio-num">#004</span></div><div class="alivio-sub">21/06 · 12:30</div></div>
               <span class="alivio-monto tnum">$18.000</span>
               <span class="ali-chip pend">Pendiente</span>
             </label>
             <label class="alivio pend" data-monto="25000">
               <span class="ali-check"><input type="checkbox"></span>
               <span class="alivio-av">MG</span>
-              <div class="alivio-tx"><div class="alivio-name">Mateo Giordano</div><div class="alivio-sub">14:31</div></div>
+              <div class="alivio-tx"><div class="alivio-name">Mateo Giordano <span class="alivio-num">#005</span></div><div class="alivio-sub">21/06 · 14:31</div></div>
               <span class="alivio-monto tnum">$25.000</span>
               <span class="ali-chip pend">Pendiente</span>
             </label>
             <label class="alivio pend" data-monto="15000">
               <span class="ali-check"><input type="checkbox"></span>
               <span class="alivio-av">LP</span>
-              <div class="alivio-tx"><div class="alivio-name">Lucía Pérez</div><div class="alivio-sub">16:05</div></div>
+              <div class="alivio-tx"><div class="alivio-name">Lucía Pérez <span class="alivio-num">#006</span></div><div class="alivio-sub">21/06 · 16:05</div></div>
               <span class="alivio-monto tnum">$15.000</span>
               <span class="ali-chip pend">Pendiente</span>
             </label>
@@ -824,7 +826,7 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
             <div id="aliHistList">
               <div class="ali-hist-row">
                 <span class="ali-hist-av">MG</span>
-                <div class="ali-hist-tx"><div class="ali-hist-name">Mateo Giordano</div><div class="ali-hist-sub">alivio 10:15 · retirado por Dueña 11:00</div></div>
+                <div class="ali-hist-tx"><div class="ali-hist-name">Mateo Giordano <span class="alivio-num">#003</span></div><div class="ali-hist-sub">alivio 21/06 · 10:15 · retirado por Dueña 11:00</div></div>
                 <span class="ali-hist-amt tnum">$30.000</span>
               </div>
             </div>
@@ -1506,9 +1508,12 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
   // Al retirar, el alivio SALE de la caja fuerte y queda registrado en el historial.
   function addHist(a){
     var esp = parse(a.dataset.esperado), rec = parse(a.dataset.recibido);
-    var name = a.querySelector('.alivio-name').textContent;
+    var nameNode = a.querySelector('.alivio-name');
+    var name = (nameNode.childNodes[0] ? nameNode.childNodes[0].textContent : nameNode.textContent).trim();
+    var numEl = a.querySelector('.alivio-num');
+    var num = numEl ? numEl.textContent : '';
     var av = a.querySelector('.alivio-av').textContent;
-    var origHora = (a.querySelector('.alivio-sub').textContent.split(' \u00b7 ')[0] || '').trim();
+    var fecha = a.querySelector('.alivio-sub').textContent.trim();
     var falto = esp - rec, amt, note;
     if(rec <= 0){ amt = '<span class="falt">no vino \u00b7 '+fmt(esp)+'</span>'; note = ' \u00b7 marcado FALTA por Due\u00f1a '+T; }
     else if(falto > 0){ amt = fmt(rec)+'<span class="falt">falt\u00f3 '+fmt(falto)+'</span>'; note = ' \u00b7 retirado por Due\u00f1a '+T+' \u00b7 recibido '+fmt(rec)+' de '+fmt(esp); }
@@ -1517,8 +1522,10 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
     row.className = 'ali-hist-row';
     row.innerHTML = '<span class="ali-hist-av"></span><div class="ali-hist-tx"><div class="ali-hist-name"></div><div class="ali-hist-sub"></div></div><span class="ali-hist-amt tnum">'+amt+'</span>';
     row.querySelector('.ali-hist-av').textContent = av;
-    row.querySelector('.ali-hist-name').textContent = name;
-    row.querySelector('.ali-hist-sub').textContent = 'alivio '+origHora+note;
+    var nEl = row.querySelector('.ali-hist-name');
+    nEl.textContent = name + ' ';
+    if(num){ var s=document.createElement('span'); s.className='alivio-num'; s.textContent=num; nEl.appendChild(s); }
+    row.querySelector('.ali-hist-sub').textContent = 'alivio '+fecha+note;
     histList.insertBefore(row, histList.firstChild);
   }
 
