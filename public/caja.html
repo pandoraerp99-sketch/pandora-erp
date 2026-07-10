@@ -368,7 +368,10 @@
 /* alivios de caja */
 .ali-add{ display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:600; color:var(--purple); background:none; border:none; cursor:pointer; }
 .ali-add:hover{ opacity:0.75; }
-.ali-bar{ font-size:11.5px; color:var(--ink-3); margin:-8px 0 14px; }
+.ali-bar{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; font-size:11.5px; color:var(--ink-3); margin:-8px 0 14px; }
+.ali-real{ font-weight:600; color:var(--ink-2); }
+.ali-real b{ font-family:var(--mono); color:#1a8e5a; }
+.ali-real .falt{ color:#c93545; font-weight:700; }
 .ali-sum{ font-weight:700; color:#b96c1a; }
 .alivios{ display:flex; flex-direction:column; gap:9px; }
 .alivio{ display:flex; align-items:center; gap:11px; padding:10px 12px; border-radius:13px; background:rgba(255,255,255,0.5); border:1px solid rgba(255,255,255,0.7); transition:all 150ms; }
@@ -511,6 +514,8 @@ html[data-theme="dark"] .ali-chip.done, html[data-theme="dark"] .cl-chip.ok{ col
 html[data-theme="dark"] .ali-chip.parcial{ color:#ffb87a; }
 html[data-theme="dark"] .ali-chip.falta{ color:#ff8b96; }
 html[data-theme="dark"] .ali-chip.ok2{ color:#55dd9b; }
+html[data-theme="dark"] .ali-real b{ color:#55dd9b; }
+html[data-theme="dark"] .ali-real .falt{ color:#ff8b96; }
 html[data-theme="dark"] .ali-adj-bar{ background:rgba(247,152,74,0.1); border-color:rgba(247,152,74,0.28); }
 html[data-theme="dark"] .ali-rin{ background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.12); }
 html[data-theme="dark"] .ali-falta-btn{ background:rgba(239,93,106,0.16); color:#ff8b96; border-color:rgba(239,93,106,0.3); }
@@ -766,7 +771,7 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
             <h3><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="color:var(--purple)"><rect x="3" y="9" width="18" height="11" rx="2"/><path d="M12 3v8"/><path d="m8 7 4 4 4-4"/></svg>Alivios de caja</h3>
             <button class="ali-add"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Nuevo alivio</button>
           </div>
-          <div class="ali-bar"><span class="ali-sum" id="aliSum">3 pendientes · $58.000</span> a retirar por la dueña</div>
+          <div class="ali-bar"><span><span class="ali-sum" id="aliSum">3 pendientes · $58.000</span> a retirar por la dueña</span><span class="ali-real" id="aliReal"></span></div>
           <div class="alivios">
             <label class="alivio pend" data-monto="18000">
               <span class="ali-check"><input type="checkbox"></span>
@@ -1464,6 +1469,20 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
     sel.forEach(function(a){ stot += parse(a.dataset.recibido); falt += parse(a.dataset.esperado) - parse(a.dataset.recibido); });
     if(sumEl){ var base = p.length + ' pendiente' + (p.length!==1?'s':'') + ' \u00b7 ' + fmt(ptot); sumEl.textContent = falt>0 ? base + '  \u00b7  faltan ' + fmt(falt) : base; }
     if(btn){ btn.textContent = 'Marcar retirados (' + sel.length + ')' + (stot ? ' \u00b7 ' + fmt(stot) : ''); btn.disabled = sel.length===0; }
+    // Realizados (retirados): total que DEBER\u00cdA HABER (esperado) vs lo recibido
+    var realEl = document.getElementById('aliReal');
+    if(realEl){
+      var done = [].slice.call(document.querySelectorAll('.alivio.done'));
+      var deb = 0, rec = 0;
+      done.forEach(function(a){
+        var e = parse(a.dataset.esperado != null ? a.dataset.esperado : a.getAttribute('data-monto'));
+        var r = (a.dataset.recibido != null && a.dataset.recibido !== '') ? parse(a.dataset.recibido) : e;
+        deb += e; rec += r;
+      });
+      if(done.length === 0){ realEl.innerHTML = ''; }
+      else if(deb - rec > 0){ realEl.innerHTML = done.length + ' realizado' + (done.length!==1?'s':'') + ' \u00b7 deber\u00eda haber <b>' + fmt(deb) + '</b> \u00b7 recibido <b>' + fmt(rec) + '</b> <span class="falt">(falt\u00f3 ' + fmt(deb-rec) + ')</span>'; }
+      else { realEl.innerHTML = done.length + ' realizado' + (done.length!==1?'s':'') + ' \u00b7 deber\u00eda haber <b>' + fmt(deb) + '</b>'; }
+    }
   }
 
   var CK_OK = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#1a8e5a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
