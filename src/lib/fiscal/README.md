@@ -19,11 +19,24 @@ revise la app funcionando.** El env.ts ya bloquea `produccion` fuera de `NODE_EN
 
 Tests: `tests/unit/fiscal-invoice-type.test.ts` + `tests/unit/fiscal-projection-wsfev1.test.ts` (12, TDD).
 
+## Slice 2 — Cliente WSAA (auth) — parcial (partes puras + orquestación hechas)
+
+`src/lib/integrations/afip/`:
+| Archivo | Estado |
+|---|---|
+| `wsaa-endpoints.ts` | ✅ URLs homo/prod WSAA + WSFEv1 + servicio 'wsfe' |
+| `wsaa-tra.ts` | ✅ `buildTra()` (TRA XML, offset AR -03:00) + `parseLoginCmsResponse()` (extrae token/sign/exp del SOAP) — puro, TDD |
+| `wsaa-client.ts` | ✅ `WsaaClient.getCredentials()` cache get-or-refresh + `buildLoginCmsEnvelope()` — signer/transport/cache **inyectables**, TDD con fakes |
+
+Tests: `tests/unit/wsaa-tra.test.ts` (9) + `wsaa-client.test.ts` (7).
+
+**Falta enchufar (necesita cert / red / DB — todo tras la interfaz):**
+- `TraSigner` real: firma CMS/PKCS#7 del TRA con el cert (node built-in no arma CMS → node-forge o similar). **Requiere el cert.**
+- `LoginCmsTransport` real: `fetch` POST del envelope a WSAA (thin adapter).
+- `WsaaTokenCache` real: mapea a la tabla `wsaa_tokens` vía Drizzle (integration test).
+
 ## Próximos slices (pendientes)
 
-1. **Cliente WSAA** (`integrations/afip/wsaa.ts`): genera TRA (Ticket de Requerimiento
-   de Acceso) XML → lo firma CMS/PKCS#7 con el cert → llama WSAA → obtiene TA (token+sign).
-   Cachea en `wsaa_tokens` (tabla ya existe, TTL 12h, aislamiento homo/prod). **Requiere el cert** (ver abajo).
 2. **Cliente WSFEv1 SOAP** (`integrations/afip/wsfev1.ts`): serializa el `FECAEDetRequest`
    del projection layer a SOAP → `FECAESolicitar` → parsea CAE + vencimiento (o rechazo/observaciones).
    Numeración vía `FECompUltimoAutorizado` + `invoice_sequences` (SELECT FOR UPDATE, ADR-0006).
