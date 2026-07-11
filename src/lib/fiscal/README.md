@@ -67,13 +67,24 @@ Tests: `fiscal-receptor` (5, unit) + `T-FISCAL-EMIT-01` (6, integración con DB 
 
 **Gap latente corregido:** `finalizeSale(require_fiscal_invoice=true)` nunca funcionó — la máquina de estados prohibía `not_required→pending`. Se agregó esa arista (determinación fiscal al finalizar) en `domain/state-machines.ts`. Ningún test previo lo ejercía (todos usaban `false`).
 
-**Falta:** cablear `emitInvoice` al POS (llamarlo tras `finalizeSale` cuando haya cliente) — hoy son servicios separados: sin cliente wired, la venta queda limpia en `pending` (fail-closed A-2). Y los adaptadores reales:
+## Slice 5 — Cableado al POS (post-cobro) — hecho
 
-## Próximos slices (pendientes)
+`src/lib/fiscal/` + `src/app/pos/actions.ts`:
+| Archivo | Estado |
+|---|---|
+| `fiscal-client-factory.ts` | ✅ `getCaeRequester(tenant)` → `null` mientras no haya cert/adaptadores (emisión diferida) |
+| `emit-after-cobro.ts` | ✅ `emitAfterCobro(saleId, {getClient?})` **best-effort, NUNCA lanza**: not_pending (no-op) / fiscal_client_unavailable (skip→pending) / emit_error (captura) / delega en emitInvoice |
+| `actions.ts` | ✅ `finalizeSaleAction` llama a `emitAfterCobro` tras el cobro; devuelve `data.fiscal` (aditivo, no rompe la UI) |
 
-5. **Cablear emitInvoice al flujo POS** (Server Action tras finalize) + **adaptadores reales** (con el cert):
-   TraSigner CMS (node-forge), transports fetch (WSAA+WSFEv1), `AfipAuthProvider` (WsaaClient+cuit),
-   `WsaaTokenCache` sobre tabla. Recién ahí se prueba live contra homologación.
+Tests: `T-FISCAL-EMIT-02` (4 integración). **Aditivo:** el POS hoy pasa `require_fiscal_invoice=false` → la venta queda `not_required` y esto es no-op. El cobro NUNCA se rompe por un fallo de emisión.
+
+## Próximos slices (pendientes) — todo gated por el CERTIFICADO
+
+6. **Adaptadores reales del cliente** (en `getCaeRequester`): TraSigner CMS (node-forge, firma con el cert),
+   transports fetch (WSAA `LoginCms` + WSFEv1), `AfipAuthProvider` (WsaaClient + cuit de la company),
+   `WsaaTokenCache` sobre la tabla `wsaa_tokens`. Con esto `getCaeRequester` deja de devolver `null`.
+7. **POS UI**: pasar `require_fiscal_invoice=true` (o según cliente) + mostrar `data.fiscal` (CAE / "en proceso").
+8. **Homologación live**: primera factura de prueba de punta a punta. Recién con el cert.
 
 ## ⚠️ Dependencia externa que desbloquea el LIVE homologación: el certificado
 
