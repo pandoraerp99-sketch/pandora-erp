@@ -58,6 +58,7 @@ next-env.d.ts
 *.swp
 *.swo
 *~
+*.bak
 
 # Drizzle Kit metadata (las migraciones SQL sí se commitean)
 drizzle/migrations/meta/_journal.json.bak
