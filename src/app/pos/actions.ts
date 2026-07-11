@@ -34,6 +34,7 @@ import {
   getSaleWithItems,
   type SaleWithItems,
 } from '@/lib/services/sales/sale.service';
+import { emitAfterCobro, type EmitAfterCobroResult } from '@/lib/fiscal/emit-after-cobro';
 import type { Sale } from '@/lib/db/schema/sales';
 
 export type ActionResult<T> =
@@ -144,11 +145,25 @@ export interface FinalizeSaleActionInput {
   idempotency_key: string;
 }
 
-/** Cobra la venta (transición a `cobrada`, registra pagos, descuenta stock). */
+export type FinalizeSaleActionData = SaleWithItems & { fiscal: EmitAfterCobroResult };
+
+/**
+ * Cobra la venta (transición a `cobrada`, registra pagos, descuenta stock) y,
+ * si requiere factura, intenta emitir el CAE.
+ *
+ * La emisión es BEST-EFFORT (`emitAfterCobro` nunca lanza): el cobro ya está
+ * commiteado cuando finalizeSale retorna, así que un fallo de AFIP / la falta de
+ * cert deja la venta en `pending` sin romper el cobro. El resultado fiscal va en
+ * `data.fiscal` para que el POS muestre "Factura emitida CAE X" o "en proceso".
+ */
 export async function finalizeSaleAction(
   input: FinalizeSaleActionInput
-): Promise<ActionResult<SaleWithItems>> {
-  return runAction(() => finalizeSale(input));
+): Promise<ActionResult<FinalizeSaleActionData>> {
+  return runAction(async () => {
+    const saleWithItems = await finalizeSale(input);
+    const fiscal = await emitAfterCobro(input.sale_id);
+    return { ...saleWithItems, fiscal };
+  });
 }
 
 /** Relee una venta con sus ítems (para refrescar el carrito en el cliente). */
