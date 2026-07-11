@@ -21,7 +21,6 @@ import type { SaleTotalsCalculated } from '../../domain/calculation.js';
 import {
   money,
   moneyRound,
-  moneySubtract,
   moneySum,
   type MoneyInput,
 } from '../../money/decimal.js';
@@ -136,7 +135,6 @@ export function projectToWSFEv1(input: Wsfev1ProjectionInput): Wsfev1DetRequest 
   } else {
     // Tipo A / B: neto gravado + IVA discriminado + exento (ImpOpEx).
     const impOpEx = afip(totals.exempt_amount);
-    const impNeto = afip(moneySubtract(totals.subtotal, totals.exempt_amount));
 
     const iva: Wsfev1IvaAliquot[] = totals.iva_breakdown.map((entry) => ({
       Id: ivaIdForRate(entry.rate),
@@ -144,6 +142,10 @@ export function projectToWSFEv1(input: Wsfev1ProjectionInput): Wsfev1DetRequest 
       Importe: afip(entry.importe),
     }));
 
+    // ImpNeto = Σ Iva[].BaseImp — NO round2(subtotal − exento). AFIP valida
+    // ImpNeto == Σ BaseImp; con ≥2 alícuotas, round2(Σ base) puede diferir de
+    // Σ round2(base_i) en un centavo → rechazo. Espejamos ImpIVA = Σ Importe.
+    const impNeto = afip(moneySum(iva.map((i) => i.BaseImp)));
     // ImpIVA = Σ Iva[].Importe (por construcción, garantiza invariante 2).
     const impIva = afip(moneySum(iva.map((i) => i.Importe)));
 
@@ -195,6 +197,18 @@ function assertWsfev1Invariants(
     );
   }
 
+  // Invariante 2b: ImpNeto = Σ Iva[].BaseImp (AFIP lo valida en A/B; en Tipo C
+  // no hay Iva[] y ImpNeto = ImpTotal, por eso se saltea).
+  if (det.Iva && det.Iva.length > 0) {
+    const baseSum = moneySum(det.Iva.map((i) => i.BaseImp));
+    if (!baseSum.eq(money(det.ImpNeto))) {
+      throw new FiscalIntegrityError(
+        'Invariante WSFEv1 violada: ImpNeto != Σ Iva[].BaseImp',
+        { impNeto: det.ImpNeto, baseSum: baseSum.toString() }
+      );
+    }
+  }
+
   // Invariante 3: Tipo C → sin Iva[], ImpIVA = 0, ImpOpEx = 0.
   if (cbteTipo === CBTE_TIPO_BY_INVOICE_TYPE.C) {
     if (det.Iva !== undefined) {
@@ -208,14 +222,24 @@ function assertWsfev1Invariants(
     }
   }
 
-  // Sanity: el ImpTotal proyectado no debe alejarse del total comercial más de
-  // 1 centavo (diferencia = redondeo a 2 decimales; más = bug).
+  // Sanity: el ImpTotal proyectado no debe alejarse del total comercial más allá
+  // de la tolerancia de redondeo a 2 decimales. Cada componente redondeado aporta
+  // hasta ~medio centavo; con N alícuotas + exento la deriva legítima llega a
+  // ~(N+1) centavos. Más que eso = bug, no redondeo. (AFIP igual es autoridad del
+  // ImpTotal; esto solo caza discrepancias groseras vs lo cobrado.)
+  const bracketCount = det.Iva?.length ?? 0;
+  const maxGap = money('0.01').times(bracketCount + 1);
   const commercialTotal = moneyRound(totals.total, 2);
   const gap = commercialTotal.minus(money(det.ImpTotal)).abs();
-  if (gap.gt('0.01')) {
+  if (gap.gt(maxGap)) {
     throw new FiscalIntegrityError(
-      'ImpTotal proyectado difiere del total comercial en más de $0.01',
-      { impTotal: det.ImpTotal, commercialTotal: commercialTotal.toFixed(2), gap: gap.toString() }
+      'ImpTotal proyectado difiere del total comercial más allá de la tolerancia de redondeo',
+      {
+        impTotal: det.ImpTotal,
+        commercialTotal: commercialTotal.toFixed(2),
+        gap: gap.toString(),
+        maxGap: maxGap.toString(),
+      }
     );
   }
 }

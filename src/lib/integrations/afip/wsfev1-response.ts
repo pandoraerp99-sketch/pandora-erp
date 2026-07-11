@@ -26,7 +26,11 @@ export interface FecaeSolicitarResult {
 /**
  * Clasificación operativa del resultado (mapea a fiscal_status del dominio):
  * - 'issued'   → Aprobado con CAE y sin observaciones.
- * - 'observed' → Aprobado pero con observaciones (A-7: revisión manual, no auto-entregar).
+ * - 'observed' → Aprobado CON CAE VÁLIDO + observaciones. Se emite igual (el CAE
+ *                ya se otorgó; frenarlo lo quemaría). Las observaciones quedan
+ *                persistidas en el snapshot + audit para revisión. NO bloquea la
+ *                entrega. (Un "retener entrega si observado" sería decisión A-7
+ *                de la contadora + un estado propio; hoy no se hace.)
  * - 'rejected' → Rechazado por AFIP (número quemado).
  * - 'error'    → Error de request (validación/estructura); NO se emitió, revisar payload.
  */

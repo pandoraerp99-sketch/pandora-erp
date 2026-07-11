@@ -94,6 +94,30 @@ describe('projectToWSFEv1 — Tipo A multi-alícuota', () => {
       { Id: 5, BaseImp: '1000.00', Importe: '210.00' },
     ]);
   });
+
+  // Regresión HIGH-1 (auditoría externa 2026-07-10): con bases de centavos
+  // fraccionarios y ≥2 alícuotas, ImpNeto debe ser Σ round2(BaseImp), NO
+  // round2(Σ base). AFIP valida ImpNeto == Σ BaseImp (rechaza si difieren).
+  it('bases con centavos: ImpNeto = Σ BaseImp (no round2 del subtotal)', () => {
+    const det = project(
+      [
+        item({ unit_price: '10.333', tax_rate: '21' }),
+        item({ product_id: 'p2', unit_price: '20.334', tax_rate: '10.5' }),
+      ],
+      'A',
+      { doc_tipo: DOC_TIPO.CUIT, doc_nro: '30111111118', condicion_iva_id: 1 }
+    );
+
+    // Σ BaseImp = 20.33 + 10.33 = 30.66 (el bug daba round2(30.667) = 30.67).
+    expect(det.ImpNeto).toBe('30.66');
+    expect(det.Iva).toEqual([
+      { Id: 4, BaseImp: '20.33', Importe: '2.14' },
+      { Id: 5, BaseImp: '10.33', Importe: '2.17' },
+    ]);
+    // La invariante ImpNeto == Σ BaseImp se cumple (projectToWSFEv1 la asserta).
+    const baseSum = det.Iva!.reduce((s, i) => s + Number(i.BaseImp), 0);
+    expect(Number(det.ImpNeto)).toBeCloseTo(baseSum, 2);
+  });
 });
 
 describe('projectToWSFEv1 — Tipo C (Monotributo)', () => {

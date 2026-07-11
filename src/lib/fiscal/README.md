@@ -9,6 +9,29 @@ Todo esto corre **solo contra AFIP homologación** (`AFIP_ENVIRONMENT=homologaci
 ADR-0019 S13). **NO se emite ni un comprobante a cliente real hasta que la contadora
 revise la app funcionando.** El env.ts ya bloquea `produccion` fuera de `NODE_ENV=production`.
 
+## ⚠️ Auditoría externa 2026-07-10 — estado
+
+- ✅ **HIGH-1 CORREGIDO** (bug de correctitud): `ImpNeto` debe ser `Σ Iva[].BaseImp`,
+  no `round2(Σ base)` — con ≥2 alícuotas y bases de centavos difieren y AFIP rechaza
+  (valida `ImpNeto == Σ BaseImp`). Fix en `projection/wsfev1.ts` + assertion nueva +
+  test de regresión (`bases con centavos`).
+- 🔴 **HIGH-2 ABIERTO — bloqueador de GO-LIVE (no de dev):** la frontera §8.5 (tx abierta
+  durante AFIP) requiere conexión **directa/session, NO el pooler transaccional 6543**.
+  Hoy `db/client.ts` es un cliente global con `prepare:false` (típico del pooler). Antes
+  de emitir en producción hace falta: **(a)** pool fiscal dedicado directo/session, **(b)**
+  assertion de arranque que rechace 6543 en la ruta fiscal, **(c)** timeout AFIP acotado
+  < `idle_in_transaction_session_timeout`. Se implementa en el slice del cliente real
+  (con el cert). Dev usa 5432 directo → seguro.
+- 🟡 **Seeding de numeración (extra):** `emitInvoice` confía en `next_number` local (arranca
+  en 1) y NO llama `FECompUltimoAutorizado` en el primer uso. OK para un PV **nuevo** en AFIP
+  (LIS homologación arranca en 0). **Riesgo** al onboardear un comercio que YA factura, o si
+  se pierde el contador local con AFIP reteniendo estado → reuso de CbteDesde → 10016. Cerrar
+  en el slice reconciliación (seed/cross-check con `getLastAuthorized`, que el cliente ya expone).
+- ✅ Resto verificado OK: numeración correlativa, códigos AFIP (incl. `51 = A ALEY` vs Manual
+  v4.5), fail-closed, cambio `not_required→pending`, snapshot inmutable (0010 = CREATE OR REPLACE
+  intencional + TRUNCATE), parseo XML. RLS inerte en la ruta fiscal = patrón codebase-wide (los
+  services usan filtros app-level, no `withRlsContext`), no específico de lo fiscal.
+
 ## Qué está construido (slice 1 — capa pura, sin red)
 
 | Archivo | Qué hace |
