@@ -50,8 +50,10 @@ import {
   StateTransitionError,
 } from '../multi_tenant/errors.js';
 import { requireTenantId } from '../tracing/context.js';
+import { env } from '../env.js';
 import type { RequestCaeResult } from '../integrations/afip/wsfev1-client.js';
 import { CBTE_TIPO_BY_INVOICE_TYPE } from './afip-codes.js';
+import { assertFiscalDbConnectionMode } from './fiscal-db-guard.js';
 import { formatArIso } from '../integrations/afip/wsaa-tra.js';
 import { selectInvoiceType, type InvoiceType } from './invoice-type.js';
 import { projectToWSFEv1, type Wsfev1DetRequest } from './projection/wsfev1.js';
@@ -111,6 +113,10 @@ export async function emitInvoice(
 ): Promise<EmitInvoiceResult> {
   const tenantId = requireTenantId();
   const now = deps.now ?? (() => new Date());
+
+  // Guard HIGH-2: la ruta fiscal sostiene una tx durante AFIP → no puede correr
+  // sobre el pooler transaccional (6543). Fail-fast antes de tocar la venta.
+  assertFiscalDbConnectionMode(env.DATABASE_URL);
 
   // ── 1. Cargar venta + validar precondiciones ──────────────────────────────
   const saleRows = await db
