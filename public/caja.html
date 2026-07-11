@@ -260,6 +260,35 @@
   .mov-empty { text-align:center; padding:28px 10px; color:var(--ink-3); font-size:12.5px; }
   .mov-empty b { color:var(--purple); cursor:pointer; }
 
+  /* reasignar el medio de una venta (corrige mala clasificación) */
+  .medio-edit { cursor:pointer; position:relative; border-radius:8px; transition:background 140ms; }
+  .medio-edit:hover { background:rgba(107,95,255,0.06); }
+  .medio-edit:focus-visible { outline:2px solid var(--purple); outline-offset:-2px; }
+  .medio-edit .medio-edit-ic { display:inline-flex; vertical-align:middle; margin-left:7px; color:var(--purple); opacity:0.32; transition:opacity 140ms; }
+  .medio-edit:hover .medio-edit-ic, .medio-edit:focus-visible .medio-edit-ic { opacity:0.9; }
+  .mov-corr { margin-left:8px; font-size:9.5px; font-weight:700; letter-spacing:0.03em; text-transform:uppercase; font-family:var(--mono); color:#1a8e5a; background:rgba(52,199,125,0.14); padding:2px 7px; border-radius:6px; vertical-align:middle; }
+  html[data-theme="dark"] .mov-corr { color:#55dd9b; background:rgba(52,199,125,0.16); }
+  .reasign-cur { font-size:13px; color:var(--ink-2); }
+  .reasign-cur b { color:var(--ink-0); }
+  .reasign-pick { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .reasign-opt { display:inline-flex; align-items:center; gap:8px; padding:10px 12px; border-radius:11px; font-size:13px; font-weight:600; color:var(--ink-1); background:rgba(255,255,255,0.5); border:1px solid rgba(13,20,36,0.08); cursor:pointer; transition:all 150ms; text-align:left; }
+  html[data-theme="dark"] .reasign-opt { background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.09); }
+  .reasign-opt:hover:not(:disabled) { border-color:rgba(107,95,255,0.4); transform:translateY(-1px); }
+  .reasign-opt.sel { background:var(--glass-bg-2); border-color:var(--purple); box-shadow:0 0 0 3px rgba(107,95,255,0.12); }
+  .reasign-opt:disabled { opacity:0.5; cursor:default; }
+  .reasign-sw { width:9px; height:9px; border-radius:3px; flex:0 0 auto; }
+  .reasign-cur-tag { font-size:9px; font-weight:700; text-transform:uppercase; font-family:var(--mono); color:var(--ink-4); margin-left:auto; }
+  .reasign-impact { background:rgba(107,95,255,0.06); border:1px solid rgba(107,95,255,0.16); border-radius:12px; padding:11px 13px; }
+  .reasign-imp-h { font-size:9.5px; text-transform:uppercase; letter-spacing:0.07em; font-family:var(--mono); color:var(--ink-3); font-weight:600; margin-bottom:7px; }
+  .reasign-imp-row { display:flex; align-items:center; justify-content:space-between; font-size:12.5px; color:var(--ink-1); padding:3px 0; }
+  .reasign-imp-row > span { display:inline-flex; align-items:center; gap:7px; }
+  .reasign-imp-row b { font-family:var(--mono); }
+  .btn-primary:disabled { opacity:0.45; box-shadow:none; transform:none; cursor:not-allowed; }
+  @keyframes rmFlash { 0% { box-shadow:0 0 0 2px rgba(107,95,255,0.35); } 100% { box-shadow:0 0 0 2px rgba(107,95,255,0); } }
+  .rm.flash { animation:rmFlash 1000ms ease-out; border-radius:12px; }
+  .toast { position:fixed; left:50%; bottom:26px; transform:translate(-50%,16px); z-index:200; max-width:440px; padding:12px 18px; border-radius:13px; background:var(--glass-bg-2); -webkit-backdrop-filter:blur(24px) saturate(150%); backdrop-filter:blur(24px) saturate(150%); border:1px solid var(--glass-border); box-shadow:var(--glass-shadow); font-size:12.5px; font-weight:600; color:var(--ink-1); opacity:0; transition:opacity 280ms, transform 280ms cubic-bezier(0.16,1,0.3,1); pointer-events:none; }
+  .toast.show { opacity:1; transform:translate(-50%,0); }
+
   /* pedido sin medio (bloquea el cierre) */
   .pedido-alert { margin-top:16px; padding:13px 15px; border-radius:13px; background:rgba(247,152,74,0.10); border:1px solid rgba(247,152,74,0.28); }
   .pedido-alert.hidden { display:none; }
@@ -1029,11 +1058,11 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
             </div>
             <div class="rm" data-exp="72900">
               <div class="rm-top"><span class="rm-name"><span class="rm-dot" style="background:#5b8cff"></span>Débito</span><span class="rm-exp">esperado <b class="tnum">$72.900</b></span></div>
-              <div class="rm-bot"><div class="rm-inp"><span>$</span><input class="rm-input tnum" value="72.900" inputmode="numeric"></div><span class="rm-diff tnum">—</span></div>
+              <div class="rm-bot"><div class="rm-inp"><span>$</span><input class="rm-input tnum" value="68.300" inputmode="numeric"></div><span class="rm-diff tnum">—</span></div>
             </div>
             <div class="rm" data-exp="58640">
               <div class="rm-top"><span class="rm-name"><span class="rm-dot" style="background:#f7984a"></span>Crédito</span><span class="rm-exp">esperado <b class="tnum">$58.640</b></span></div>
-              <div class="rm-bot"><div class="rm-inp"><span>$</span><input class="rm-input tnum" value="58.640" inputmode="numeric"></div><span class="rm-diff tnum">—</span></div>
+              <div class="rm-bot"><div class="rm-inp"><span>$</span><input class="rm-input tnum" value="63.240" inputmode="numeric"></div><span class="rm-diff tnum">—</span></div>
             </div>
           </div>
 
@@ -1240,6 +1269,35 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
       <div class="modal-actions">
         <button class="btn" id="cerrarConfirmCancel">Cancelar</button>
         <button class="btn-primary" id="cerrarConfirmYes"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="13" rx="2"/><path d="M8 8V6a4 4 0 0 1 8 0v2"/></svg>Sí, cerrar caja</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: reasignar medio de pago de una venta (corrige mala clasificación) -->
+  <div class="modal-ov" id="reasignModal">
+    <div class="modal-card glass-strong" style="max-width:420px;">
+      <div class="modal-head">
+        <div>
+          <div class="modal-title"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--purple)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="m16 3 3 3-3 3"/><path d="M19 6H9a4 4 0 0 0-4 4v1"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/><path d="m8 21-3-3 3-3"/><path d="M5 18h10a4 4 0 0 0 4-4v-1"/></svg>Reasignar medio de pago</div>
+          <div class="modal-sub" id="reasignRef">Venta —</div>
+        </div>
+        <button class="modal-x" id="reasignClose">×</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:13px;margin:2px 0;">
+        <div class="reasign-cur" id="reasignActual">Medio actual: <b>—</b></div>
+        <div>
+          <div class="upper-mini" style="margin-bottom:8px;">Nuevo medio</div>
+          <div class="reasign-pick" id="reasignPick"></div>
+        </div>
+        <div class="reasign-impact" id="reasignImpact" style="display:none;"></div>
+        <label style="display:flex;flex-direction:column;gap:6px;">
+          <span class="upper-mini">Nota <span style="opacity:.6;">(opcional)</span></span>
+          <input id="reasignNota" placeholder="Ej: el cliente pagó con crédito, se marcó débito" style="width:100%;padding:11px 13px;border-radius:11px;background:rgba(255,255,255,0.6);border:1px solid rgba(255,255,255,0.85);font-size:13px;color:var(--ink-0);" />
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="reasignCancel">Cancelar</button>
+        <button class="btn-primary" id="reasignConfirm" disabled><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Reasignar medio</button>
       </div>
     </div>
   </div>
@@ -1559,7 +1617,13 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
       // (fórmula: fondo + ventas efectivo − sangrías = arqueo).
       window.Caja = {
         egreso: function(amount){ efectivo -= amount; ingEgr -= amount; render(); syncArqueo(-amount); },
-        ingreso: function(amount){ efectivo += amount; ingEgr += amount; render(); syncArqueo(amount); }
+        ingreso: function(amount){ efectivo += amount; ingEgr += amount; render(); syncArqueo(amount); },
+        // Reclasificación de medio (NO mueve plata física): la plata ya estaba en
+        // el cajón, solo estaba mal etiquetada. Ajusta SOLO el efectivo esperado
+        // del display. NO toca el contado y NO re-entra a syncArqueo/adjustEfectivo
+        // (esos mueven el contado = semántica alivio → doble conteo). El esperado
+        // del arqueo (rm[0]) lo mueve CajaArqueo.reassign directo, con el mismo delta.
+        reclasifEfectivo: function(delta){ efectivo += delta; render(); }
       };
     })();
   </script>
@@ -1617,20 +1681,48 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
       // Un cambio en el cajón (alivio/ingreso/retiro) mueve el efectivo esperado
       // Y el contado por igual, así el descuadre se mantiene (no inventa faltante).
       // La primera .rm es Efectivo. delta<0 = sale plata del cajón.
+      var MEDIO_IDX = { efectivo: 0, qr: 1, debito: 2, credito: 3 };
+      function setExp(i, delta) {
+        var row = rows[i];
+        if (!row) return;
+        var exp = Math.max(0, (parseInt(row.getAttribute('data-exp'), 10) || 0) + delta);
+        row.setAttribute('data-exp', exp);
+        var b = row.querySelector('.rm-exp b');
+        if (b) b.textContent = fmt(exp);
+      }
+      function flash(i) {
+        var row = rows[i];
+        if (!row) return;
+        row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash');
+      }
       window.CajaArqueo = {
         adjustEfectivo: function (delta) {
           var row = rows[0];
           if (!row) return;
-          var exp = Math.max(0, (parseInt(row.getAttribute('data-exp'), 10) || 0) + delta);
-          row.setAttribute('data-exp', exp);
-          var b = row.querySelector('.rm-exp b');
-          if (b) b.textContent = fmt(exp);
+          setExp(0, delta);
           var inp = row.querySelector('.rm-input');
           if (inp) {
             var dec = Math.max(0, parse(inp.value) + delta);
             inp.value = dec ? dec.toLocaleString('es-AR') : '';
           }
           render();
+        },
+        // Reasignación de medio: corrige una mala clasificación (NO mueve plata).
+        // Mueve SOLO el esperado entre los dos medios; el contado (.rm-input) queda
+        // intacto → el descuadre igual-y-opuesto se cierra. Si toca efectivo, el
+        // display del cajón se sincroniza vía Caja.reclasifEfectivo (mismo delta,
+        // solo esperado). El total del arqueo es invariante (la plata ya entró).
+        reassign: function (fromMedio, toMedio, amount) {
+          var fi = MEDIO_IDX[fromMedio], ti = MEDIO_IDX[toMedio];
+          if (fi == null || ti == null || fi === ti || !(amount > 0)) return;
+          setExp(fi, -amount);
+          setExp(ti, +amount);
+          var efDelta = (fromMedio === 'efectivo' ? -amount : 0) + (toMedio === 'efectivo' ? amount : 0);
+          if (efDelta !== 0 && window.Caja && window.Caja.reclasifEfectivo) {
+            window.Caja.reclasifEfectivo(efDelta);
+          }
+          render();
+          flash(fi); flash(ti);
         }
       };
     })();
@@ -1943,6 +2035,7 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
     chips.forEach(function(c){ c.setAttribute('aria-pressed', 'true'); });
     apply();
   });
+  window.CajaVentas = { apply: apply };
   apply();
 })();
 
@@ -1955,6 +2048,122 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
   [].slice.call(assign.querySelectorAll('button')).forEach(function(b){
     b.addEventListener('click', function(){ alert.classList.add('hidden'); });
   });
+})();
+
+// Reasignar el medio de pago de una venta (corrige una mala clasificación).
+// Caso real: una venta se marcó "débito" pero se cobró "crédito" → sobra en un
+// medio y falta el mismo monto en el otro. Reasignar mueve el ESPERADO entre
+// medios (contado intacto → cierra el descuadre). Delega en CajaArqueo.reassign.
+// Solo medios simples; mixto se edita por su detalle (diferido). 2da pasada.
+(function(){
+  var MEDIOS = {
+    efectivo: { label:'Efectivo',            color:'#34c77d' },
+    debito:   { label:'Débito',              color:'#5b8cff' },
+    credito:  { label:'Crédito',             color:'#f7984a' },
+    qr:       { label:'QR / Transferencia',  color:'#6b5fff' }
+  };
+  var EDIT_IC = '<span class="medio-edit-ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span>';
+  var body = document.getElementById('ventasBody');
+  var modal = document.getElementById('reasignModal');
+  if(!body || !modal) return;
+  var refEl = document.getElementById('reasignRef');
+  var curEl = document.getElementById('reasignActual');
+  var pick = document.getElementById('reasignPick');
+  var impact = document.getElementById('reasignImpact');
+  var noteEl = document.getElementById('reasignNota');
+  var confirmBtn = document.getElementById('reasignConfirm');
+  var ctx = null;
+
+  function parseAmt(s){ return parseInt(String(s||'').replace(/[^0-9]/g,''),10)||0; }
+  function fmt(n){ return '$'+Math.abs(n).toLocaleString('es-AR'); }
+
+  // Habilita la celda "medio" como control (mouse + teclado) en ventas de un
+  // solo medio. Mixto queda fuera (se editaría por su detalle).
+  [].slice.call(body.querySelectorAll('tr')).forEach(function(r){
+    if(r.dataset.medio === 'mixto') return;
+    var td = r.querySelectorAll('td')[2];
+    if(!td) return;
+    td.classList.add('medio-edit');
+    td.setAttribute('role','button');
+    td.setAttribute('tabindex','0');
+    td.setAttribute('aria-label','Reasignar medio de pago de esta venta');
+    td.insertAdjacentHTML('beforeend', EDIT_IC);
+    function openIt(){ openReasign(r); }
+    td.addEventListener('click', openIt);
+    td.addEventListener('keydown', function(e){ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); openIt(); } });
+  });
+
+  function openReasign(row){
+    var from = row.dataset.medio;
+    var tds = row.querySelectorAll('td');
+    var amount = parseAmt(tds[3].textContent);
+    var ref = (tds[1].textContent || '').trim();
+    var hora = row.querySelector('.hora') ? row.querySelector('.hora').textContent.trim() : '';
+    ctx = { row:row, from:from, amount:amount, to:null };
+    refEl.textContent = 'Venta ' + ref + (hora ? ' · ' + hora : '') + ' · ' + fmt(amount);
+    curEl.innerHTML = 'Medio actual: <b>' + (MEDIOS[from] ? MEDIOS[from].label : from) + '</b>';
+    pick.innerHTML = '';
+    Object.keys(MEDIOS).forEach(function(m){
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'reasign-opt' + (m === from ? ' current' : '');
+      b.dataset.medio = m;
+      b.innerHTML = '<span class="reasign-sw" style="background:' + MEDIOS[m].color + '"></span>' +
+        MEDIOS[m].label + (m === from ? '<span class="reasign-cur-tag">actual</span>' : '');
+      if(m === from){ b.disabled = true; }
+      else { b.addEventListener('click', function(){ selectTarget(m); }); }
+      pick.appendChild(b);
+    });
+    impact.style.display = 'none'; impact.innerHTML = '';
+    noteEl.value = '';
+    confirmBtn.disabled = true;
+    modal.classList.add('open');
+  }
+
+  function selectTarget(to){
+    ctx.to = to;
+    [].slice.call(pick.querySelectorAll('.reasign-opt')).forEach(function(b){
+      b.classList.toggle('sel', b.dataset.medio === to);
+    });
+    var f = MEDIOS[ctx.from], t = MEDIOS[to], a = fmt(ctx.amount);
+    impact.innerHTML =
+      '<div class="reasign-imp-h">Impacto en el arqueo</div>' +
+      '<div class="reasign-imp-row"><span><span class="reasign-sw" style="background:' + f.color + '"></span>' + f.label + ' esperado</span><b class="c-red">−' + a + '</b></div>' +
+      '<div class="reasign-imp-row"><span><span class="reasign-sw" style="background:' + t.color + '"></span>' + t.label + ' esperado</span><b class="c-green">+' + a + '</b></div>';
+    impact.style.display = 'block';
+    confirmBtn.disabled = false;
+  }
+
+  function close(){ modal.classList.remove('open'); ctx = null; }
+  document.getElementById('reasignClose').addEventListener('click', close);
+  document.getElementById('reasignCancel').addEventListener('click', close);
+  modal.addEventListener('click', function(e){ if(e.target === modal) close(); });
+
+  confirmBtn.addEventListener('click', function(){
+    if(!ctx || !ctx.to) return;
+    var from = ctx.from, to = ctx.to, amount = ctx.amount, row = ctx.row, m = MEDIOS[to];
+    // 1) arqueo: mueve el esperado entre medios (contado intacto)
+    if(window.CajaArqueo && window.CajaArqueo.reassign){ window.CajaArqueo.reassign(from, to, amount); }
+    // 2) fila de movimientos: nuevo medio + traza "corregido" (el listener del td sobrevive)
+    row.dataset.medio = to;
+    var td = row.querySelectorAll('td')[2];
+    td.innerHTML =
+      '<span class="medio-chip"><span class="medio-sw" style="background:' + m.color + '"></span>' + m.label + '</span>' +
+      '<span class="mov-corr" title="Medio reasignado por el cajero">corregido</span>' + EDIT_IC;
+    // 3) re-aplica el filtro activo (la fila pudo cambiar de grupo)
+    if(window.CajaVentas && window.CajaVentas.apply){ window.CajaVentas.apply(); }
+    // 4) feedback
+    toast('Medio reasignado: ' + MEDIOS[from].label + ' → ' + m.label + ' · ' + fmt(amount) + '. Arqueo actualizado.');
+    close();
+  });
+
+  function toast(msg){
+    var t = document.createElement('div');
+    t.className = 'toast'; t.textContent = msg;
+    document.body.appendChild(t);
+    requestAnimationFrame(function(){ t.classList.add('show'); });
+    setTimeout(function(){ t.classList.remove('show'); setTimeout(function(){ t.remove(); }, 320); }, 3200);
+  }
 })();
 </script>
 <script>
