@@ -9,7 +9,9 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       { source: "/panel", destination: "/panel.html" },
-      { source: "/caja", destination: "/caja.html" },
+      // /caja ahora es una ruta React real (src/app/caja) — port slice 1.
+      // El mockup original queda en /caja-mockup como referencia de diseño.
+      { source: "/caja-mockup", destination: "/caja.html" },
     ];
   },
 
