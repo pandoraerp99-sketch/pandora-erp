@@ -315,6 +315,7 @@
   .rs-fill { width:100%; display:flex; align-items:center; justify-content:center; gap:7px; padding:9px; border-radius:11px; font-size:12px; font-weight:600; color:var(--purple); background:rgba(107,95,255,0.08); border:1px solid rgba(107,95,255,0.22); cursor:pointer; transition:all 140ms; }
   .rs-fill:hover { background:rgba(107,95,255,0.14); }
   .rs-fill b { font-weight:700; }
+  .rs-hint { font-size:10.5px; color:var(--ink-4); text-align:center; margin:-3px 0 -1px; }
   .rs-numpad { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
   .rs-numpad button { height:38px; border-radius:10px; font-family:var(--mono); font-size:16px; font-weight:600; color:var(--ink-0); background:rgba(255,255,255,0.55); border:1px solid rgba(13,20,36,0.08); cursor:pointer; transition:all 120ms; }
   .rs-numpad button:hover { background:#fff; }
@@ -1344,6 +1345,7 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
             <span class="rs-f"><span class="rs-c">$</span><input class="rs-in zero" id="rs-inp-qr" inputmode="none" placeholder="0" aria-label="Monto en QR o transferencia"></span>
           </div>
         </div>
+        <div class="rs-hint">Doble clic en un medio = poné todo el total ahí.</div>
         <button type="button" class="rs-fill" id="rs-fill">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
           Auto-completar el resto en <b id="rs-fill-method">Efectivo</b>
@@ -2229,6 +2231,15 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
     if(e.target.closest('input')) return;
     var r = e.target.closest('.rs-row'); if(!r) return;
     e.preventDefault(); inpEl(r.dataset.k).focus();
+  });
+  // Doble clic en un medio = poné TODO el total ahí (cero en el resto). Atajo para
+  // el caso común: la venta estaba mal clasificada entera (todo débito → era crédito).
+  rowsEl.addEventListener('dblclick', function(e){
+    var r = e.target.closest('.rs-row'); if(!r || !ctx) return;
+    var k = r.dataset.k;
+    ORDER.forEach(function(m){ inpEl(m).value = (m === k ? String(ctx.saleTotal) : ''); });
+    active = k; recompute();
+    var inp = inpEl(k); inp.focus(); inp.select();
   });
   numpad.addEventListener('mousedown', function(e){
     var b = e.target.closest('button'); if(!b) return;
