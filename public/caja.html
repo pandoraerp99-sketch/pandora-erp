@@ -987,14 +987,14 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
               <tr data-medio="qr"><td class="hora">14:52</td><td><span class="cbte-ref">B 0472</span></td><td><span class="medio-chip"><span class="medio-sw" style="background:#6b5fff"></span>QR / Transferencia</span></td><td class="r amt c-green">$3.200</td></tr>
               <tr data-medio="efectivo"><td class="hora">14:47</td><td><span class="cbte-ref">B 0471</span></td><td><span class="medio-chip"><span class="medio-sw" style="background:#34c77d"></span>Efectivo</span></td><td class="r amt c-green">$1.850</td></tr>
               <tr data-medio="debito"><td class="hora">14:41</td><td><span class="cbte-ref">B 0470</span></td><td><span class="medio-chip"><span class="medio-sw" style="background:#5b8cff"></span>Débito</span></td><td class="r amt c-green">$4.600</td></tr>
-              <tr data-medio="mixto"><td class="hora">14:35</td><td><span class="cbte-ref">B 0469</span></td><td><span class="medio-chip"><span class="medio-sw mixto"></span>Mixto<span class="medio-split">Efvo+Déb</span></span></td><td class="r amt c-green">$12.400</td></tr>
+              <tr data-medio="mixto" data-split='{"efectivo":6000,"debito":6400}'><td class="hora">14:35</td><td><span class="cbte-ref">B 0469</span></td><td><span class="medio-chip"><span class="medio-sw mixto"></span>Mixto<span class="medio-split">Efvo+Déb</span></span></td><td class="r amt c-green">$12.400</td></tr>
               <tr data-medio="efectivo"><td class="hora">14:28</td><td><span class="cbte-ref">B 0468</span></td><td><span class="medio-chip"><span class="medio-sw" style="background:#34c77d"></span>Efectivo</span></td><td class="r amt c-green">$2.300</td></tr>
               <tr data-medio="credito"><td class="hora">14:20</td><td><span class="cbte-ref">B 0467</span></td><td><span class="medio-chip"><span class="medio-sw" style="background:#f7984a"></span>Crédito</span></td><td class="r amt c-green">$8.900</td></tr>
               <tr data-medio="qr"><td class="hora">14:12</td><td><span class="cbte-ref">B 0466</span></td><td><span class="medio-chip"><span class="medio-sw" style="background:#6b5fff"></span>QR / Transferencia</span></td><td class="r amt c-green">$5.100</td></tr>
               <tr data-medio="efectivo"><td class="hora">14:03</td><td><span class="cbte-ref">B 0465</span></td><td><span class="medio-chip"><span class="medio-sw" style="background:#34c77d"></span>Efectivo</span></td><td class="r amt c-green">$1.200</td></tr>
               <tr data-medio="debito"><td class="hora">13:55</td><td><span class="cbte-ref">B 0464</span></td><td><span class="medio-chip"><span class="medio-sw" style="background:#5b8cff"></span>Débito</span></td><td class="r amt c-green">$6.700</td></tr>
               <tr data-medio="qr"><td class="hora">13:48</td><td><span class="cbte-ref">B 0463</span></td><td><span class="medio-chip"><span class="medio-sw" style="background:#6b5fff"></span>QR / Transferencia</span></td><td class="r amt c-green">$2.900</td></tr>
-              <tr data-medio="mixto"><td class="hora">13:40</td><td><span class="cbte-ref">B 0462</span></td><td><span class="medio-chip"><span class="medio-sw mixto"></span>Mixto<span class="medio-split">Efvo+QR</span></span></td><td class="r amt c-green">$9.500</td></tr>
+              <tr data-medio="mixto" data-split='{"efectivo":4500,"qr":5000}'><td class="hora">13:40</td><td><span class="cbte-ref">B 0462</span></td><td><span class="medio-chip"><span class="medio-sw mixto"></span>Mixto<span class="medio-split">Efvo+QR</span></span></td><td class="r amt c-green">$9.500</td></tr>
               <tr data-medio="efectivo"><td class="hora">13:31</td><td><span class="cbte-ref">B 0461</span></td><td><span class="medio-chip"><span class="medio-sw" style="background:#34c77d"></span>Efectivo</span></td><td class="r amt c-green">$3.400</td></tr>
               <tr data-medio="credito"><td class="hora">13:22</td><td><span class="cbte-ref">B 0460</span></td><td><span class="medio-chip"><span class="medio-sw" style="background:#f7984a"></span>Crédito</span></td><td class="r amt c-green">$7.200</td></tr>
               <tr data-medio="efectivo"><td class="hora">13:10</td><td><span class="cbte-ref">B 0459</span></td><td><span class="medio-chip"><span class="medio-sw" style="background:#34c77d"></span>Efectivo</span></td><td class="r amt c-green">$2.750</td></tr>
@@ -2137,8 +2137,8 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
 // crédito → repartís y el arqueo mueve el ESPERADO de cada medio (contado intacto
 // → cierra el descuadre). Delega en CajaArqueo.resplit(oldSplit, newSplit).
 // Inputs tipeables (inputmode=none) + numpad + auto-completar (sigue al activo).
-// Abre solo en ventas de un solo medio; si queda "Mixto" ya no se reabre (el
-// split viejo no está modelado en el mock).
+// Reeditable: guarda el reparto por venta en data-split → CUALQUIER venta (single
+// o mixto) se reabre y se re-corrige (p.ej. si corregiste la venta equivocada).
 (function(){
   var MEDIOS = {
     efectivo: { label:'Efectivo',            color:'#34c77d' },
@@ -2167,10 +2167,10 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
   function valOf(k){ var n=parseInt((inpEl(k).value||'').replace(/[^0-9]/g,'')||'0',10); return Number.isFinite(n)?n:0; }
   function repartido(){ return ORDER.reduce(function(s,k){ return s+valOf(k); },0); }
 
-  // Habilita la celda "medio" como control (mouse + teclado). Mixto queda fuera
-  // (el split viejo no está modelado en el mock → no se puede reabrir un mixto).
+  // Habilita la celda "medio" como control (mouse + teclado). Editable si es de un
+  // solo medio, o mixto CON data-split (reparto conocido → reeditable).
   [].slice.call(body.querySelectorAll('tr')).forEach(function(r){
-    if(r.dataset.medio === 'mixto') return;
+    if(r.dataset.medio === 'mixto' && !r.dataset.split) return;
     var td = r.querySelectorAll('td')[2];
     if(!td) return;
     td.classList.add('medio-edit');
@@ -2238,22 +2238,29 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
   });
   fillBtn.addEventListener('click', function(e){ e.preventDefault(); fillRest(); });
 
+  // Reparto actual de una venta: data-split si existe, o {medio: total} si es de un
+  // solo medio. null = mixto sin split guardado (no editable).
+  function getSplit(row){
+    if(row.dataset.split){ try { return JSON.parse(row.dataset.split); } catch(e){} }
+    if(row.dataset.medio !== 'mixto'){ var o = {}; o[row.dataset.medio] = parseAmt(row.querySelectorAll('td')[3].textContent); return o; }
+    return null;
+  }
   function openReasign(row){
-    if(!row || row.dataset.medio === 'mixto') return;   // no se reabre un mixto (split viejo desconocido)
+    if(!row) return;
+    var oldSplit = getSplit(row);
+    if(!oldSplit) return;   // mixto sin split guardado
     var tds = row.querySelectorAll('td');
-    var from = row.dataset.medio;
     var saleTotal = parseAmt(tds[3].textContent);
     var ref = (tds[1].textContent || '').trim();
     var hora = row.querySelector('.hora') ? row.querySelector('.hora').textContent.trim() : '';
-    ctx = { row:row, from:from, saleTotal:saleTotal, oldSplit:{} };
-    ctx.oldSplit[from] = saleTotal;
-    refEl.textContent = 'Venta ' + ref + (hora ? ' · ' + hora : '') + ' · ' + fmt(saleTotal) + ' · cobrada en ' + (MEDIOS[from] ? MEDIOS[from].label : from);
-    ORDER.forEach(function(k){ inpEl(k).value = (k === from ? String(saleTotal) : ''); });
-    active = from;
+    ctx = { row:row, saleTotal:saleTotal, oldSplit:oldSplit };
+    refEl.textContent = 'Venta ' + ref + (hora ? ' · ' + hora : '') + ' · ' + fmt(saleTotal);
+    ORDER.forEach(function(k){ inpEl(k).value = (oldSplit[k] > 0 ? String(oldSplit[k]) : ''); });
+    active = ORDER.filter(function(k){ return oldSplit[k] > 0; })[0] || 'efectivo';
     noteEl.value = '';
     modal.classList.add('open');
     recompute();
-    var inp = inpEl(from); inp.focus(); inp.select();
+    var inp = inpEl(active); inp.focus(); inp.select();
   }
 
   function close(){ modal.classList.remove('open'); ctx = null; }
@@ -2268,22 +2275,24 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
     var newSplit = {}; ORDER.forEach(function(k){ newSplit[k] = valOf(k); });
     // 1) arqueo: aplica el delta por medio (contado intacto)
     if(window.CajaArqueo && window.CajaArqueo.resplit){ window.CajaArqueo.resplit(ctx.oldSplit, newSplit); }
-    // 2) fila: un solo medio → ese medio (sigue editable); varios → "Mixto" (ya no reeditable)
+    // 2) fila: guarda el reparto en data-split → SIEMPRE reeditable (single o mixto)
     var used = ORDER.filter(function(k){ return newSplit[k] > 0; });
     var row = ctx.row, td = row.querySelectorAll('td')[2], resumen;
     if(used.length === 1){
       var m = MEDIOS[used[0]];
       row.dataset.medio = used[0];
+      delete row.dataset.split;   // un solo medio: el reparto se deriva de {medio: total}
       td.innerHTML = '<span class="medio-chip"><span class="medio-sw" style="background:' + m.color + '"></span>' + m.label + '</span>' +
         '<span class="mov-corr" title="Pago editado por el cajero">corregido</span>' + EDIT_IC;
       resumen = m.label;
     } else {
       var abbr = { efectivo:'Efvo', debito:'Déb', credito:'Créd', qr:'QR' };
       var hint = used.map(function(k){ return abbr[k]; }).join('+');
+      var stored = {}; used.forEach(function(k){ stored[k] = newSplit[k]; });
       row.dataset.medio = 'mixto';
+      row.dataset.split = JSON.stringify(stored);   // guarda el reparto → reeditable
       td.innerHTML = '<span class="medio-chip"><span class="medio-sw mixto"></span>Mixto<span class="medio-split">' + hint + '</span></span>' +
-        '<span class="mov-corr" title="Pago editado por el cajero">corregido</span>';
-      td.classList.remove('medio-edit'); td.removeAttribute('role'); td.removeAttribute('tabindex'); td.removeAttribute('aria-label');
+        '<span class="mov-corr" title="Pago editado por el cajero">corregido</span>' + EDIT_IC;
       resumen = used.map(function(k){ return MEDIOS[k].label.replace(' / Transferencia','') + ' ' + fmt(newSplit[k]); }).join(' + ');
     }
     // 3) re-aplica el filtro activo (la fila pudo cambiar de grupo)
