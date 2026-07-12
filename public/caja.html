@@ -289,6 +289,39 @@
   .toast { position:fixed; left:50%; bottom:26px; transform:translate(-50%,16px); z-index:200; max-width:440px; padding:12px 18px; border-radius:13px; background:var(--glass-bg-2); -webkit-backdrop-filter:blur(24px) saturate(150%); backdrop-filter:blur(24px) saturate(150%); border:1px solid var(--glass-border); box-shadow:var(--glass-shadow); font-size:12.5px; font-weight:600; color:var(--ink-1); opacity:0; transition:opacity 280ms, transform 280ms cubic-bezier(0.16,1,0.3,1); pointer-events:none; }
   .toast.show { opacity:1; transform:translate(-50%,0); }
 
+  /* editor de reparto de pago (estilo lisCobro) — TODO namespaced rs-* para no
+     cruzarse con el arqueo (.rm/#efContado) ni el modal de denominación (.dq) */
+  .rs-bar { height:6px; border-radius:99px; background:rgba(13,20,36,0.08); overflow:hidden; }
+  .rs-bar-fill { height:100%; width:0%; border-radius:99px; background:linear-gradient(90deg,var(--purple),var(--purple-2)); transition:width 240ms cubic-bezier(.2,.8,.2,1); }
+  .rs-bar-fill.done { background:linear-gradient(90deg,#1f9d63,#34c77d); }
+  .rs-stat { display:flex; justify-content:space-between; align-items:baseline; font-size:11.5px; color:var(--ink-3); }
+  .rs-stat b { font-family:var(--mono); font-size:13px; font-weight:700; color:var(--ink-0); margin-left:3px; font-variant-numeric:tabular-nums; }
+  #rs-rem-wrap.done, #rs-rem-wrap.done b { color:#1a8e5a; }
+  .rs-rows { display:flex; flex-direction:column; gap:6px; }
+  .rs-row { display:flex; align-items:center; gap:9px; padding:8px 10px; border-radius:11px; cursor:pointer; background:rgba(255,255,255,0.5); border:1.5px solid rgba(13,20,36,0.08); transition:all 140ms; }
+  html[data-theme="dark"] .rs-row { background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.09); }
+  .rs-row.active { border-color:var(--purple); background:rgba(107,95,255,0.07); }
+  .rs-sw { width:9px; height:9px; border-radius:3px; flex:0 0 auto; }
+  .rs-n { flex:1; font-size:12.5px; font-weight:600; color:var(--ink-1); }
+  .rs-f { display:flex; align-items:center; gap:3px; padding:5px 9px; border-radius:9px; background:rgba(13,20,36,0.04); border:1px solid rgba(13,20,36,0.08); transition:all 140ms; }
+  html[data-theme="dark"] .rs-f { background:rgba(255,255,255,0.04); border-color:rgba(255,255,255,0.08); }
+  .rs-row.active .rs-f { background:rgba(107,95,255,0.09); border-color:rgba(107,95,255,0.4); }
+  .rs-c { font-family:var(--mono); font-size:12px; font-weight:700; color:var(--ink-4); }
+  .rs-row.active .rs-c { color:var(--purple); }
+  .rs-in { width:74px; text-align:right; font-family:var(--mono); font-size:14.5px; font-weight:700; font-variant-numeric:tabular-nums; color:var(--ink-0); background:transparent; border:none; outline:none; padding:0; caret-color:var(--purple); }
+  .rs-in.zero { color:var(--ink-4); }
+  .rs-row.active .rs-in { color:var(--purple); }
+  .rs-in::placeholder { color:var(--ink-4); }
+  .rs-fill { width:100%; display:flex; align-items:center; justify-content:center; gap:7px; padding:9px; border-radius:11px; font-size:12px; font-weight:600; color:var(--purple); background:rgba(107,95,255,0.08); border:1px solid rgba(107,95,255,0.22); cursor:pointer; transition:all 140ms; }
+  .rs-fill:hover { background:rgba(107,95,255,0.14); }
+  .rs-fill b { font-weight:700; }
+  .rs-numpad { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+  .rs-numpad button { height:38px; border-radius:10px; font-family:var(--mono); font-size:16px; font-weight:600; color:var(--ink-0); background:rgba(255,255,255,0.55); border:1px solid rgba(13,20,36,0.08); cursor:pointer; transition:all 120ms; }
+  .rs-numpad button:hover { background:#fff; }
+  .rs-numpad button:active { transform:scale(0.95); background:rgba(107,95,255,0.10); }
+  .rs-numpad button.bk { color:var(--ink-3); }
+  html[data-theme="dark"] .rs-numpad button { background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.09); color:var(--ink-0); }
+
   /* pedido sin medio (bloquea el cierre) */
   .pedido-alert { margin-top:16px; padding:13px 15px; border-radius:13px; background:rgba(247,152,74,0.10); border:1px solid rgba(247,152,74,0.28); }
   .pedido-alert.hidden { display:none; }
@@ -1278,26 +1311,57 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
     <div class="modal-card glass-strong" style="max-width:420px;">
       <div class="modal-head">
         <div>
-          <div class="modal-title"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--purple)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="m16 3 3 3-3 3"/><path d="M19 6H9a4 4 0 0 0-4 4v1"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/><path d="m8 21-3-3 3-3"/><path d="M5 18h10a4 4 0 0 0 4-4v-1"/></svg>Reasignar medio de pago</div>
+          <div class="modal-title"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--purple)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="m16 3 3 3-3 3"/><path d="M19 6H9a4 4 0 0 0-4 4v1"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/><path d="m8 21-3-3 3-3"/><path d="M5 18h10a4 4 0 0 0 4-4v-1"/></svg>Editar pago de la venta</div>
           <div class="modal-sub" id="reasignRef">Venta —</div>
         </div>
         <button class="modal-x" id="reasignClose">×</button>
       </div>
-      <div style="display:flex;flex-direction:column;gap:13px;margin:2px 0;">
-        <div class="reasign-cur" id="reasignActual">Medio actual: <b>—</b></div>
-        <div>
-          <div class="upper-mini" style="margin-bottom:8px;">Nuevo medio</div>
-          <div class="reasign-pick" id="reasignPick"></div>
+      <div style="display:flex;flex-direction:column;gap:11px;margin:2px 0;">
+        <div class="rs-bar"><div class="rs-bar-fill" id="rs-bar-fill"></div></div>
+        <div class="rs-stat">
+          <span>Repartido <b id="rs-pagado">$0</b></span>
+          <span id="rs-rem-wrap">Falta <b>$0</b></span>
         </div>
-        <div class="reasign-impact" id="reasignImpact" style="display:none;"></div>
+        <div class="rs-rows" id="rs-rows">
+          <div class="rs-row active" data-k="efectivo">
+            <span class="rs-sw" style="background:#34c77d"></span>
+            <span class="rs-n">Efectivo</span>
+            <span class="rs-f"><span class="rs-c">$</span><input class="rs-in zero" id="rs-inp-efectivo" inputmode="none" placeholder="0" aria-label="Monto en efectivo"></span>
+          </div>
+          <div class="rs-row" data-k="debito">
+            <span class="rs-sw" style="background:#5b8cff"></span>
+            <span class="rs-n">Débito</span>
+            <span class="rs-f"><span class="rs-c">$</span><input class="rs-in zero" id="rs-inp-debito" inputmode="none" placeholder="0" aria-label="Monto en débito"></span>
+          </div>
+          <div class="rs-row" data-k="credito">
+            <span class="rs-sw" style="background:#f7984a"></span>
+            <span class="rs-n">Crédito</span>
+            <span class="rs-f"><span class="rs-c">$</span><input class="rs-in zero" id="rs-inp-credito" inputmode="none" placeholder="0" aria-label="Monto en crédito"></span>
+          </div>
+          <div class="rs-row" data-k="qr">
+            <span class="rs-sw" style="background:#6b5fff"></span>
+            <span class="rs-n">QR / Transferencia</span>
+            <span class="rs-f"><span class="rs-c">$</span><input class="rs-in zero" id="rs-inp-qr" inputmode="none" placeholder="0" aria-label="Monto en QR o transferencia"></span>
+          </div>
+        </div>
+        <button type="button" class="rs-fill" id="rs-fill">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          Auto-completar el resto en <b id="rs-fill-method">Efectivo</b>
+        </button>
+        <div class="rs-numpad" id="rs-numpad">
+          <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button>
+          <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button>
+          <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button>
+          <button type="button" data-k="00">00</button><button type="button" data-k="0">0</button><button type="button" class="bk" data-k="back">⌫</button>
+        </div>
         <label style="display:flex;flex-direction:column;gap:6px;">
           <span class="upper-mini">Nota <span style="opacity:.6;">(opcional)</span></span>
-          <input id="reasignNota" placeholder="Ej: el cliente pagó con crédito, se marcó débito" style="width:100%;padding:11px 13px;border-radius:11px;background:rgba(255,255,255,0.6);border:1px solid rgba(255,255,255,0.85);font-size:13px;color:var(--ink-0);" />
+          <input id="reasignNota" placeholder="Ej: el cliente pagó $2.000 en efectivo y el resto con crédito" style="width:100%;padding:10px 12px;border-radius:11px;background:rgba(255,255,255,0.6);border:1px solid rgba(255,255,255,0.85);font-size:13px;color:var(--ink-0);" />
         </label>
       </div>
       <div class="modal-actions">
         <button class="btn" id="reasignCancel">Cancelar</button>
-        <button class="btn-primary" id="reasignConfirm" disabled><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Reasignar medio</button>
+        <button class="btn-primary" id="reasignConfirm" disabled><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Guardar reparto</button>
       </div>
     </div>
   </div>
@@ -1723,6 +1787,24 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
           }
           render();
           flash(fi); flash(ti);
+        },
+        // Reparto (split) de una venta entre varios medios: generaliza reassign.
+        // Aplica el delta por medio (new−old) al ESPERADO; contado intacto; efectivo
+        // sincroniza el cajón (una vez). Total invariante (Σnew=Σold=total de la venta).
+        resplit: function (oldSplit, newSplit) {
+          var efDelta = 0, changed = [];
+          Object.keys(MEDIO_IDX).forEach(function (m) {
+            var d = (Number(newSplit[m]) || 0) - (Number(oldSplit[m]) || 0);
+            if (d === 0) return;
+            setExp(MEDIO_IDX[m], d);
+            changed.push(MEDIO_IDX[m]);
+            if (m === 'efectivo') efDelta += d;
+          });
+          if (efDelta !== 0 && window.Caja && window.Caja.reclasifEfectivo) {
+            window.Caja.reclasifEfectivo(efDelta);
+          }
+          render();
+          changed.forEach(flash);
         }
       };
     })();
@@ -2050,11 +2132,13 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
   });
 })();
 
-// Reasignar el medio de pago de una venta (corrige una mala clasificación).
-// Caso real: una venta se marcó "débito" pero se cobró "crédito" → sobra en un
-// medio y falta el mismo monto en el otro. Reasignar mueve el ESPERADO entre
-// medios (contado intacto → cierra el descuadre). Delega en CajaArqueo.reassign.
-// Solo medios simples; mixto se edita por su detalle (diferido). 2da pasada.
+// Editar el pago de una venta (estilo lisCobro): reparto por medio (split).
+// Caso real: una venta se marcó "débito" pero se cobró $2.000 efectivo + $2.600
+// crédito → repartís y el arqueo mueve el ESPERADO de cada medio (contado intacto
+// → cierra el descuadre). Delega en CajaArqueo.resplit(oldSplit, newSplit).
+// Inputs tipeables (inputmode=none) + numpad + auto-completar (sigue al activo).
+// Abre solo en ventas de un solo medio; si queda "Mixto" ya no se reabre (el
+// split viejo no está modelado en el mock).
 (function(){
   var MEDIOS = {
     efectivo: { label:'Efectivo',            color:'#34c77d' },
@@ -2067,71 +2151,109 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
   var modal = document.getElementById('reasignModal');
   if(!body || !modal) return;
   var refEl = document.getElementById('reasignRef');
-  var curEl = document.getElementById('reasignActual');
-  var pick = document.getElementById('reasignPick');
-  var impact = document.getElementById('reasignImpact');
-  var noteEl = document.getElementById('reasignNota');
   var confirmBtn = document.getElementById('reasignConfirm');
-  var ctx = null;
+  var noteEl = document.getElementById('reasignNota');
+  var rowsEl = document.getElementById('rs-rows');
+  var numpad = document.getElementById('rs-numpad');
+  var fillBtn = document.getElementById('rs-fill');
+  var ctx = null;               // { row, from, saleTotal, oldSplit }
+  var active = 'efectivo';
+  var ORDER = ['efectivo','debito','credito','qr'];
 
   function parseAmt(s){ return parseInt(String(s||'').replace(/[^0-9]/g,''),10)||0; }
   function fmt(n){ return '$'+Math.abs(n).toLocaleString('es-AR'); }
+  function inpEl(k){ return document.getElementById('rs-inp-'+k); }
+  function rowEl(k){ return rowsEl.querySelector('.rs-row[data-k="'+k+'"]'); }
+  function valOf(k){ var n=parseInt((inpEl(k).value||'').replace(/[^0-9]/g,'')||'0',10); return Number.isFinite(n)?n:0; }
+  function repartido(){ return ORDER.reduce(function(s,k){ return s+valOf(k); },0); }
 
-  // Habilita la celda "medio" como control (mouse + teclado) en ventas de un
-  // solo medio. Mixto queda fuera (se editaría por su detalle).
+  // Habilita la celda "medio" como control (mouse + teclado). Mixto queda fuera
+  // (el split viejo no está modelado en el mock → no se puede reabrir un mixto).
   [].slice.call(body.querySelectorAll('tr')).forEach(function(r){
     if(r.dataset.medio === 'mixto') return;
     var td = r.querySelectorAll('td')[2];
     if(!td) return;
     td.classList.add('medio-edit');
-    td.setAttribute('role','button');
-    td.setAttribute('tabindex','0');
-    td.setAttribute('aria-label','Reasignar medio de pago de esta venta');
+    td.setAttribute('role','button'); td.setAttribute('tabindex','0');
+    td.setAttribute('aria-label','Editar el pago de esta venta');
     td.insertAdjacentHTML('beforeend', EDIT_IC);
     function openIt(){ openReasign(r); }
     td.addEventListener('click', openIt);
     td.addEventListener('keydown', function(e){ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); openIt(); } });
   });
 
-  function openReasign(row){
-    var from = row.dataset.medio;
-    var tds = row.querySelectorAll('td');
-    var amount = parseAmt(tds[3].textContent);
-    var ref = (tds[1].textContent || '').trim();
-    var hora = row.querySelector('.hora') ? row.querySelector('.hora').textContent.trim() : '';
-    ctx = { row:row, from:from, amount:amount, to:null };
-    refEl.textContent = 'Venta ' + ref + (hora ? ' · ' + hora : '') + ' · ' + fmt(amount);
-    curEl.innerHTML = 'Medio actual: <b>' + (MEDIOS[from] ? MEDIOS[from].label : from) + '</b>';
-    pick.innerHTML = '';
-    Object.keys(MEDIOS).forEach(function(m){
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'reasign-opt' + (m === from ? ' current' : '');
-      b.dataset.medio = m;
-      b.innerHTML = '<span class="reasign-sw" style="background:' + MEDIOS[m].color + '"></span>' +
-        MEDIOS[m].label + (m === from ? '<span class="reasign-cur-tag">actual</span>' : '');
-      if(m === from){ b.disabled = true; }
-      else { b.addEventListener('click', function(){ selectTarget(m); }); }
-      pick.appendChild(b);
+  // Recalcula barra/falta/botón/estado — NUNCA pisa el value de los inputs.
+  function recompute(){
+    var total = ctx ? ctx.saleTotal : 0, rep = repartido(), falta = total - rep;
+    ORDER.forEach(function(k){
+      rowEl(k).classList.toggle('active', k === active);
+      inpEl(k).classList.toggle('zero', valOf(k) === 0);
     });
-    impact.style.display = 'none'; impact.innerHTML = '';
-    noteEl.value = '';
-    confirmBtn.disabled = true;
-    modal.classList.add('open');
+    document.getElementById('rs-pagado').textContent = fmt(rep);
+    var rw = document.getElementById('rs-rem-wrap');
+    if(falta > 0){ rw.classList.remove('done'); rw.innerHTML = 'Falta <b>' + fmt(falta) + '</b>'; }
+    else if(falta < 0){ rw.classList.remove('done'); rw.innerHTML = 'Te pasaste <b>' + fmt(-falta) + '</b>'; }
+    else { rw.classList.add('done'); rw.innerHTML = 'Reparto completo <b>' + fmt(total) + '</b>'; }
+    var bf = document.getElementById('rs-bar-fill');
+    bf.style.width = Math.min(100, total ? rep/total*100 : 0) + '%';
+    bf.classList.toggle('done', total > 0 && rep >= total);
+    document.getElementById('rs-fill-method').textContent = (MEDIOS[active] ? MEDIOS[active].label : active);
+    confirmBtn.disabled = !(total > 0 && rep === total);
   }
 
-  function selectTarget(to){
-    ctx.to = to;
-    [].slice.call(pick.querySelectorAll('.reasign-opt')).forEach(function(b){
-      b.classList.toggle('sel', b.dataset.medio === to);
-    });
-    var f = MEDIOS[ctx.from], t = MEDIOS[to], a = fmt(ctx.amount);
-    impact.innerHTML =
-      '<div class="reasign-imp-h">Impacto en el arqueo</div>' +
-      '<div class="reasign-imp-row"><span><span class="reasign-sw" style="background:' + f.color + '"></span>' + f.label + ' esperado</span><b class="c-red">−' + a + '</b></div>' +
-      '<div class="reasign-imp-row"><span><span class="reasign-sw" style="background:' + t.color + '"></span>' + t.label + ' esperado</span><b class="c-green">+' + a + '</b></div>';
-    impact.style.display = 'block';
-    confirmBtn.disabled = false;
+  function sanitize(inp){
+    var n = parseInt((inp.value||'').replace(/[^0-9]/g,'') || '0', 10);
+    if(!Number.isFinite(n)) n = 0; if(n > 99999999) n = 99999999;
+    var s = n ? String(n) : ''; if(inp.value !== s) inp.value = s;
+  }
+  function applyKey(inp, key){
+    var full = inp.selectionStart === 0 && inp.selectionEnd === inp.value.length && inp.value.length > 0;
+    var s = full ? '' : inp.value;
+    if(key === 'back') s = s.slice(0, -1); else s = s + key;
+    var n = parseInt(s || '0', 10); if(!Number.isFinite(n)) n = 0; if(n > 99999999) n = 99999999;
+    inp.value = n ? String(n) : ''; inp.setSelectionRange(inp.value.length, inp.value.length);
+  }
+  function fillRest(){
+    var inp = inpEl(active), total = ctx ? ctx.saleTotal : 0, falta = total - repartido();
+    if(falta > 0){ inp.value = String(valOf(active) + falta); }
+    recompute(); inp.focus(); inp.select();
+  }
+
+  // wiring (una vez): foco→activo; teclado y numpad por el MISMO camino.
+  ORDER.forEach(function(k){
+    var inp = inpEl(k);
+    inp.addEventListener('focus', function(){ active = k; inp.select(); recompute(); });
+    inp.addEventListener('input', function(){ sanitize(inp); recompute(); });
+  });
+  rowsEl.addEventListener('mousedown', function(e){
+    if(e.target.closest('input')) return;
+    var r = e.target.closest('.rs-row'); if(!r) return;
+    e.preventDefault(); inpEl(r.dataset.k).focus();
+  });
+  numpad.addEventListener('mousedown', function(e){
+    var b = e.target.closest('button'); if(!b) return;
+    e.preventDefault();
+    var inp = inpEl(active); if(document.activeElement !== inp) inp.focus();
+    applyKey(inp, b.dataset.k); recompute();
+  });
+  fillBtn.addEventListener('click', function(e){ e.preventDefault(); fillRest(); });
+
+  function openReasign(row){
+    if(!row || row.dataset.medio === 'mixto') return;   // no se reabre un mixto (split viejo desconocido)
+    var tds = row.querySelectorAll('td');
+    var from = row.dataset.medio;
+    var saleTotal = parseAmt(tds[3].textContent);
+    var ref = (tds[1].textContent || '').trim();
+    var hora = row.querySelector('.hora') ? row.querySelector('.hora').textContent.trim() : '';
+    ctx = { row:row, from:from, saleTotal:saleTotal, oldSplit:{} };
+    ctx.oldSplit[from] = saleTotal;
+    refEl.textContent = 'Venta ' + ref + (hora ? ' · ' + hora : '') + ' · ' + fmt(saleTotal) + ' · cobrada en ' + (MEDIOS[from] ? MEDIOS[from].label : from);
+    ORDER.forEach(function(k){ inpEl(k).value = (k === from ? String(saleTotal) : ''); });
+    active = from;
+    noteEl.value = '';
+    modal.classList.add('open');
+    recompute();
+    var inp = inpEl(from); inp.focus(); inp.select();
   }
 
   function close(){ modal.classList.remove('open'); ctx = null; }
@@ -2140,20 +2262,34 @@ html[data-theme="dark"] .cl-ic:hover{ background:rgba(255,255,255,0.06); color:v
   modal.addEventListener('click', function(e){ if(e.target === modal) close(); });
 
   confirmBtn.addEventListener('click', function(){
-    if(!ctx || !ctx.to) return;
-    var from = ctx.from, to = ctx.to, amount = ctx.amount, row = ctx.row, m = MEDIOS[to];
-    // 1) arqueo: mueve el esperado entre medios (contado intacto)
-    if(window.CajaArqueo && window.CajaArqueo.reassign){ window.CajaArqueo.reassign(from, to, amount); }
-    // 2) fila de movimientos: nuevo medio + traza "corregido" (el listener del td sobrevive)
-    row.dataset.medio = to;
-    var td = row.querySelectorAll('td')[2];
-    td.innerHTML =
-      '<span class="medio-chip"><span class="medio-sw" style="background:' + m.color + '"></span>' + m.label + '</span>' +
-      '<span class="mov-corr" title="Medio reasignado por el cajero">corregido</span>' + EDIT_IC;
+    if(!ctx) return;
+    var total = ctx.saleTotal, rep = repartido();
+    if(!(total > 0 && rep === total)) return;
+    var newSplit = {}; ORDER.forEach(function(k){ newSplit[k] = valOf(k); });
+    // 1) arqueo: aplica el delta por medio (contado intacto)
+    if(window.CajaArqueo && window.CajaArqueo.resplit){ window.CajaArqueo.resplit(ctx.oldSplit, newSplit); }
+    // 2) fila: un solo medio → ese medio (sigue editable); varios → "Mixto" (ya no reeditable)
+    var used = ORDER.filter(function(k){ return newSplit[k] > 0; });
+    var row = ctx.row, td = row.querySelectorAll('td')[2], resumen;
+    if(used.length === 1){
+      var m = MEDIOS[used[0]];
+      row.dataset.medio = used[0];
+      td.innerHTML = '<span class="medio-chip"><span class="medio-sw" style="background:' + m.color + '"></span>' + m.label + '</span>' +
+        '<span class="mov-corr" title="Pago editado por el cajero">corregido</span>' + EDIT_IC;
+      resumen = m.label;
+    } else {
+      var abbr = { efectivo:'Efvo', debito:'Déb', credito:'Créd', qr:'QR' };
+      var hint = used.map(function(k){ return abbr[k]; }).join('+');
+      row.dataset.medio = 'mixto';
+      td.innerHTML = '<span class="medio-chip"><span class="medio-sw mixto"></span>Mixto<span class="medio-split">' + hint + '</span></span>' +
+        '<span class="mov-corr" title="Pago editado por el cajero">corregido</span>';
+      td.classList.remove('medio-edit'); td.removeAttribute('role'); td.removeAttribute('tabindex'); td.removeAttribute('aria-label');
+      resumen = used.map(function(k){ return MEDIOS[k].label.replace(' / Transferencia','') + ' ' + fmt(newSplit[k]); }).join(' + ');
+    }
     // 3) re-aplica el filtro activo (la fila pudo cambiar de grupo)
     if(window.CajaVentas && window.CajaVentas.apply){ window.CajaVentas.apply(); }
     // 4) feedback
-    toast('Medio reasignado: ' + MEDIOS[from].label + ' → ' + m.label + ' · ' + fmt(amount) + '. Arqueo actualizado.');
+    toast('Pago actualizado: ' + resumen + '. Arqueo actualizado.');
     close();
   });
 
