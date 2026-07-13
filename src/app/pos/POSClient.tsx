@@ -5,8 +5,12 @@
  * Server Actions ya probadas (T-POS-ACTION-01). Dawn Industrial Editorial.
  *
  * Flujo happy-path F0: click producto → (crea draft si no hay) addItem →
- * carrito + preview total → Cobrar (efectivo) → finalize con idempotency_key
- * por intento → venta cobrada → reset para la próxima.
+ * carrito + preview total → elegir medio (efectivo/débito/crédito/QR) → Cobrar
+ * → finalize con idempotency_key por intento → venta cobrada → reset.
+ *
+ * El medio elegido viaja en el pago (single-method F0). Es lo que separa el
+ * arqueo (débito/crédito por separado, A-26); el reparto multi-medio estilo
+ * lisCobro es una slice posterior.
  *
  * Money preview client-side: agrega los line_total/line_subtotal/line_tax que
  * el SERVER ya calculó por ítem (ADR-0021 — cliente muestra preview, server es
@@ -25,6 +29,15 @@ import {
   finalizeSaleAction,
 } from './actions';
 import type { SaleWithItems } from '@/lib/services/sales/sale.service';
+import type { SalePaymentMethod } from '@/lib/db/schema/_common';
+
+/** Medios que el cajero puede elegir en el cobro (single-method F0). */
+const PAY_OPTIONS: Array<{ key: SalePaymentMethod; label: string }> = [
+  { key: 'efectivo', label: 'Efectivo' },
+  { key: 'debito', label: 'Débito' },
+  { key: 'credito', label: 'Crédito' },
+  { key: 'mp_qr', label: 'QR / MP' },
+];
 
 export interface PosProductDTO {
   id: string;
@@ -77,6 +90,7 @@ export function POSClient({
   const [cart, setCart] = useState<SaleWithItems | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [payMethod, setPayMethod] = useState<SalePaymentMethod>('efectivo');
   const [pending, startTransition] = useTransition();
 
   const items = cart?.items ?? [];
@@ -149,7 +163,7 @@ export function POSClient({
     startTransition(async () => {
       const res = await finalizeSaleAction({
         sale_id: cart.sale.id,
-        payments: [{ method: 'efectivo', amount }],
+        payments: [{ method: payMethod, amount }],
         require_fiscal_invoice: false,
         idempotency_key: key,
       });
@@ -157,8 +171,10 @@ export function POSClient({
         setError(res.error);
         return;
       }
-      setToast(`Venta cobrada · ${fmt(totals.total)}`);
+      const medio = PAY_OPTIONS.find((o) => o.key === payMethod)?.label ?? '';
+      setToast(`Venta cobrada · ${medio} · ${fmt(totals.total)}`);
       setCart(null); // lista para la próxima venta
+      setPayMethod('efectivo'); // vuelve al medio más común para la próxima
     });
   }
 
@@ -357,20 +373,54 @@ export function POSClient({
                 </span>
               )}
             </div>
-            <button
-              type="button"
-              onClick={charge}
-              disabled={!hasItems || pending}
-              className="pos-focusable inline-flex items-center gap-2 rounded-xl px-6 py-3 font-bold text-white transition-[transform,opacity] active:scale-[0.99] disabled:opacity-45"
-              style={{
-                fontSize: 'var(--text-body-lg, 1.125rem)',
-                background: 'var(--dawn-500)',
-                boxShadow: '0 2px 10px oklch(60% 0.195 218 / 0.35)',
-              }}
-            >
-              {pending ? 'Procesando…' : `Cobrar ${fmt(totals.total)}`}
-              <span aria-hidden>→</span>
-            </button>
+            <div className="flex items-center gap-3">
+              <div
+                role="radiogroup"
+                aria-label="Medio de pago"
+                className="flex items-center gap-1.5"
+              >
+                {PAY_OPTIONS.map((o) => {
+                  const active = payMethod === o.key;
+                  return (
+                    <button
+                      key={o.key}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => setPayMethod(o.key)}
+                      disabled={pending}
+                      className="pos-focusable rounded-lg px-3 py-2 font-medium transition-all disabled:opacity-45"
+                      style={{
+                        fontSize: 'var(--text-caption)',
+                        background: active
+                          ? 'var(--dawn-500)'
+                          : 'var(--surface-sunken)',
+                        color: active ? '#fff' : 'var(--text-secondary)',
+                        boxShadow: active
+                          ? '0 2px 8px oklch(60% 0.195 218 / 0.3)'
+                          : 'none',
+                      }}
+                    >
+                      {o.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                onClick={charge}
+                disabled={!hasItems || pending}
+                className="pos-focusable inline-flex items-center gap-2 rounded-xl px-6 py-3 font-bold text-white transition-[transform,opacity] active:scale-[0.99] disabled:opacity-45"
+                style={{
+                  fontSize: 'var(--text-body-lg, 1.125rem)',
+                  background: 'var(--dawn-500)',
+                  boxShadow: '0 2px 10px oklch(60% 0.195 218 / 0.35)',
+                }}
+              >
+                {pending ? 'Procesando…' : `Cobrar ${fmt(totals.total)}`}
+                <span aria-hidden>→</span>
+              </button>
+            </div>
           </div>
         }
       />
