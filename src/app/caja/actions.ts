@@ -13,10 +13,16 @@
  * así que los mapeamos por `name` al envelope legible en vez de dejar que propaguen.
  */
 import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
+import { requireSessionWithCompany } from '@/lib/auth/session';
 import { DomainError, ValidationError } from '@/lib/multi_tenant/errors';
 import { openCashSession, closeCashSession } from '@/lib/cash/sessions';
 import { registerCashMovement } from '@/lib/cash/movements';
 import { reclassifySalePaymentMethod } from '@/lib/cash/reclassify';
+import {
+  createWithdrawalReason,
+  updateWithdrawalReason,
+  deactivateWithdrawalReason,
+} from '@/lib/cash/reasons';
 import type { CashMovementType, SalePaymentMethod } from '@/lib/db/schema/_common';
 
 // F0: un único punto de venta (Caja 1), igual que page.tsx / el POS.
@@ -34,6 +40,8 @@ const CASH_ERROR_NAMES = new Set([
   'MovementValidationError',
   'MovementSessionNotFoundError',
   'ReclassifyValidationError',
+  'ReasonValidationError',
+  'ReasonAuthorizationError',
 ]);
 
 async function runAction<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
@@ -114,4 +122,39 @@ export async function reclassifyPaymentAction(input: {
       reason: input.reason,
     })
   );
+}
+
+// ── Catálogo de motivos de retiro (administra SOLO el dueño) ──────────────
+// El gate owner-only se enforcea en el dominio (assertOwner con el rol de la
+// sesión). El cajero NO puede crear/renombrar/desactivar motivos.
+
+/** Crea un motivo de retiro (solo dueño). */
+export async function createReasonAction(input: {
+  label: string;
+}): Promise<ActionResult<Awaited<ReturnType<typeof createWithdrawalReason>>>> {
+  return runAction(async () => {
+    const session = await requireSessionWithCompany();
+    return createWithdrawalReason({ label: input.label }, session.app_role);
+  });
+}
+
+/** Renombra un motivo de retiro (solo dueño). */
+export async function updateReasonAction(input: {
+  id: string;
+  label: string;
+}): Promise<ActionResult<Awaited<ReturnType<typeof updateWithdrawalReason>>>> {
+  return runAction(async () => {
+    const session = await requireSessionWithCompany();
+    return updateWithdrawalReason({ id: input.id, label: input.label }, session.app_role);
+  });
+}
+
+/** Da de baja (lógica) un motivo de retiro (solo dueño). */
+export async function deactivateReasonAction(input: {
+  id: string;
+}): Promise<ActionResult<Awaited<ReturnType<typeof deactivateWithdrawalReason>>>> {
+  return runAction(async () => {
+    const session = await requireSessionWithCompany();
+    return deactivateWithdrawalReason({ id: input.id }, session.app_role);
+  });
 }

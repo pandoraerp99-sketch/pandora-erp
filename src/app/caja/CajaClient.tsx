@@ -22,6 +22,9 @@ import {
   registerMovementAction,
   closeSessionAction,
   reclassifyPaymentAction,
+  createReasonAction,
+  updateReasonAction,
+  deactivateReasonAction,
 } from './actions';
 
 export interface CajaSessionDTO {
@@ -42,12 +45,22 @@ export interface CajaMovimientoDTO {
   finalizedAtIso: string | null;
 }
 
+export interface CajaReasonDTO {
+  id: string;
+  label: string;
+}
+
 interface CajaClientProps {
   cashierName: string;
   salePointLabel: string;
   session: CajaSessionDTO | null;
   movimientos: CajaMovimientoDTO[];
+  reasons: CajaReasonDTO[];
+  isOwner: boolean;
 }
+
+/** Valor sentinela para el motivo "Otros" (aclaración libre obligatoria). */
+const OTROS_REASON = '__otros__';
 
 const MEDIOS: Record<string, { label: string; color: string }> = {
   efectivo: { label: 'Efectivo', color: '#34c77d' },
@@ -66,10 +79,12 @@ const RECLASS_OPTIONS: Array<{ key: SalePaymentMethod; label: string }> = [
   { key: 'mp_qr', label: 'QR / MP' },
 ];
 
+// Alivio (withdraw) = extracción a caja fuerte/banco, va APARTE. Retiro/Gasto
+// (provider_payment) = egreso de caja con MOTIVO del catálogo. Ingreso = deposit.
 const MOV_TYPES: Array<{ key: CashMovementType; label: string; hint: string; tone: 'green' | 'red' }> = [
   { key: 'deposit', label: 'Ingreso', hint: 'Aporte de efectivo a la caja', tone: 'green' },
-  { key: 'withdraw', label: 'Retiro', hint: 'Alivio / extracción de efectivo', tone: 'red' },
-  { key: 'provider_payment', label: 'Pago a proveedor', hint: 'Egreso de caja para pagar', tone: 'red' },
+  { key: 'withdraw', label: 'Alivio', hint: 'Extracción a caja fuerte / banco', tone: 'red' },
+  { key: 'provider_payment', label: 'Retiro / Gasto', hint: 'Pago desde caja (con motivo)', tone: 'red' },
 ];
 
 function money(raw: string): string {
@@ -95,6 +110,8 @@ export function CajaClient({
   salePointLabel,
   session,
   movimientos,
+  reasons,
+  isOwner,
 }: CajaClientProps) {
   const router = useRouter();
   const [medioFilter, setMedioFilter] = useState<string>('todos');
@@ -104,10 +121,18 @@ export function CajaClient({
   // Formulario abrir caja
   const [openAmount, setOpenAmount] = useState('');
 
-  // Formulario alivio (movimiento manual). movType null = ningún form abierto.
+  // Formulario movimiento manual. movType null = ningún form abierto.
   const [movType, setMovType] = useState<CashMovementType | null>(null);
   const [movAmount, setMovAmount] = useState('');
   const [movReason, setMovReason] = useState('');
+  // Motivo elegido para Retiro/Gasto (provider_payment): id del catálogo u OTROS.
+  const [movReasonId, setMovReasonId] = useState<string | null>(null);
+
+  // Panel de administración de motivos (solo dueño).
+  const [managing, setManaging] = useState(false);
+  const [newReasonLabel, setNewReasonLabel] = useState('');
+  const [editReasonId, setEditReasonId] = useState<string | null>(null);
+  const [editReasonLabel, setEditReasonLabel] = useState('');
 
   // Formulario cierre
   const [closing, setClosing] = useState(false);
@@ -156,22 +181,94 @@ export function CajaClient({
     }
   }
 
+  /** Reason efectivo según el tipo de movimiento (null = form incompleto). */
+  function resolveMovReason(): string | null {
+    if (movType === 'provider_payment') {
+      // Retiro/Gasto: motivo del catálogo, u "Otros" con aclaración obligatoria.
+      if (movReasonId === OTROS_REASON) {
+        const t = movReason.trim();
+        return t.length > 0 ? t : null;
+      }
+      const picked = reasons.find((r) => r.id === movReasonId);
+      return picked ? picked.label : null;
+    }
+    if (movType === 'withdraw') {
+      // Alivio: nota opcional, default "Alivio de caja".
+      return movReason.trim() || 'Alivio de caja';
+    }
+    // Ingreso: nota obligatoria.
+    const t = movReason.trim();
+    return t.length > 0 ? t : null;
+  }
+
   async function handleMovement() {
     if (busy || !session || !movType) return;
+    const reason = resolveMovReason();
+    if (reason === null) return; // form incompleto (motivo/aclaración faltante)
     setBusy(true);
     setFeedback(null);
     const res = await registerMovementAction({
       sessionId: session.id,
       type: movType,
       amount: movAmount.trim(),
-      reason: movReason.trim(),
+      reason,
     });
     setBusy(false);
     if (res.ok) {
       setMovType(null);
       setMovAmount('');
       setMovReason('');
+      setMovReasonId(null);
       setFeedback({ tone: 'ok', text: 'Movimiento registrado.' });
+      router.refresh();
+    } else {
+      setFeedback({ tone: 'err', text: res.error });
+    }
+  }
+
+  async function handleCreateReason() {
+    if (busy) return;
+    const label = newReasonLabel.trim();
+    if (label.length === 0) return;
+    setBusy(true);
+    setFeedback(null);
+    const res = await createReasonAction({ label });
+    setBusy(false);
+    if (res.ok) {
+      setNewReasonLabel('');
+      setFeedback({ tone: 'ok', text: 'Motivo agregado.' });
+      router.refresh();
+    } else {
+      setFeedback({ tone: 'err', text: res.error });
+    }
+  }
+
+  async function handleRenameReason() {
+    if (busy || !editReasonId) return;
+    const label = editReasonLabel.trim();
+    if (label.length === 0) return;
+    setBusy(true);
+    setFeedback(null);
+    const res = await updateReasonAction({ id: editReasonId, label });
+    setBusy(false);
+    if (res.ok) {
+      setEditReasonId(null);
+      setEditReasonLabel('');
+      setFeedback({ tone: 'ok', text: 'Motivo renombrado.' });
+      router.refresh();
+    } else {
+      setFeedback({ tone: 'err', text: res.error });
+    }
+  }
+
+  async function handleDeactivateReason(id: string) {
+    if (busy) return;
+    setBusy(true);
+    setFeedback(null);
+    const res = await deactivateReasonAction({ id });
+    setBusy(false);
+    if (res.ok) {
+      setFeedback({ tone: 'ok', text: 'Motivo dado de baja.' });
       router.refresh();
     } else {
       setFeedback({ tone: 'err', text: res.error });
@@ -305,20 +402,111 @@ export function CajaClient({
             <div className="ops-head">
               <h2>Operaciones de caja</h2>
               {!closing && (
-                <button
-                  className="btn ghost danger"
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    setClosing(true);
-                    setMovType(null);
-                    setFeedback(null);
-                  }}
-                >
-                  Cerrar caja
-                </button>
+                <div className="ops-head-actions">
+                  {isOwner && (
+                    <button
+                      className={'btn ghost' + (managing ? ' on' : '')}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setManaging((v) => !v);
+                        setEditReasonId(null);
+                        setFeedback(null);
+                      }}
+                    >
+                      {managing ? 'Cerrar motivos' : 'Administrar motivos'}
+                    </button>
+                  )}
+                  <button
+                    className="btn ghost danger"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setClosing(true);
+                      setMovType(null);
+                      setManaging(false);
+                      setFeedback(null);
+                    }}
+                  >
+                    Cerrar caja
+                  </button>
+                </div>
               )}
             </div>
+
+            {/* Panel de administración de motivos (solo dueño) */}
+            {isOwner && managing && !closing && (
+              <div className="op-form reasons-mgr">
+                <div className="op-form-title">Motivos de retiro / gasto</div>
+                <p className="op-form-hint">
+                  Estos motivos aparecen al registrar un Retiro / Gasto. Solo vos (dueño)
+                  podés agregarlos, renombrarlos o darlos de baja.
+                </p>
+                <ul className="reasons-list">
+                  {reasons.length === 0 && (
+                    <li className="reasons-empty">No hay motivos. Agregá el primero abajo.</li>
+                  )}
+                  {reasons.map((r) => (
+                    <li key={r.id} className="reason-item">
+                      {editReasonId === r.id ? (
+                        <>
+                          <input
+                            className="fld-in"
+                            value={editReasonLabel}
+                            onChange={(e) => setEditReasonLabel(e.target.value)}
+                          />
+                          <button className="btn primary sm" type="button" disabled={busy} onClick={handleRenameReason}>
+                            Guardar
+                          </button>
+                          <button className="btn ghost sm" type="button" disabled={busy} onClick={() => setEditReasonId(null)}>
+                            Cancelar
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="reason-label">{r.label}</span>
+                          <button
+                            className="btn ghost sm"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              setEditReasonId(r.id);
+                              setEditReasonLabel(r.label);
+                            }}
+                          >
+                            Renombrar
+                          </button>
+                          <button
+                            className="btn ghost sm danger"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => handleDeactivateReason(r.id)}
+                          >
+                            Dar de baja
+                          </button>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                <div className="reason-add">
+                  <input
+                    className="fld-in"
+                    placeholder="Nuevo motivo (ej: Pago de servicios)"
+                    value={newReasonLabel}
+                    onChange={(e) => setNewReasonLabel(e.target.value)}
+                  />
+                  <button
+                    className="btn primary sm"
+                    type="button"
+                    disabled={busy || newReasonLabel.trim().length === 0}
+                    onClick={handleCreateReason}
+                  >
+                    Agregar
+                  </button>
+                </div>
+              </div>
+            )}
 
             {closing ? (
               <div className="op-form">
@@ -368,6 +556,8 @@ export function CajaClient({
                         setMovType(movType === t.key ? null : t.key);
                         setMovAmount('');
                         setMovReason('');
+                        setMovReasonId(null);
+                        setManaging(false);
                         setFeedback(null);
                       }}
                     >
@@ -393,20 +583,68 @@ export function CajaClient({
                         onChange={(e) => setMovAmount(e.target.value)}
                       />
                     </label>
-                    <label className="fld">
-                      <span className="fld-k">Motivo (obligatorio)</span>
-                      <input
-                        className="fld-in"
-                        placeholder="Ej: pago a proveedor de golosinas"
-                        value={movReason}
-                        onChange={(e) => setMovReason(e.target.value)}
-                      />
-                    </label>
+
+                    {movType === 'provider_payment' ? (
+                      <div className="fld">
+                        <span className="fld-k">Motivo (obligatorio)</span>
+                        <div className="reclass-chips">
+                          {reasons.map((r) => (
+                            <button
+                              key={r.id}
+                              type="button"
+                              className={'reclass-chip' + (movReasonId === r.id ? ' on' : '')}
+                              disabled={busy}
+                              onClick={() => setMovReasonId(r.id)}
+                            >
+                              {r.label}
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            className={'reclass-chip' + (movReasonId === OTROS_REASON ? ' on' : '')}
+                            disabled={busy}
+                            onClick={() => setMovReasonId(OTROS_REASON)}
+                          >
+                            Otros
+                          </button>
+                        </div>
+                        {movReasonId === OTROS_REASON && (
+                          <input
+                            className="fld-in reclass-reason"
+                            placeholder="Aclará el motivo (obligatorio)"
+                            value={movReason}
+                            onChange={(e) => setMovReason(e.target.value)}
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <label className="fld">
+                        <span className="fld-k">
+                          {movType === 'withdraw' ? 'Nota (opcional)' : 'Motivo (obligatorio)'}
+                        </span>
+                        <input
+                          className="fld-in"
+                          placeholder={
+                            movType === 'withdraw'
+                              ? 'Alivio de caja'
+                              : 'Ej: aporte de cambio a la caja'
+                          }
+                          value={movReason}
+                          onChange={(e) => setMovReason(e.target.value)}
+                        />
+                      </label>
+                    )}
+
                     <div className="op-actions">
                       <button className="btn ghost" type="button" disabled={busy} onClick={() => setMovType(null)}>
                         Cancelar
                       </button>
-                      <button className="btn primary" type="button" disabled={busy} onClick={handleMovement}>
+                      <button
+                        className="btn primary"
+                        type="button"
+                        disabled={busy || movAmount.trim().length === 0 || resolveMovReason() === null}
+                        onClick={handleMovement}
+                      >
                         {busy ? 'Registrando…' : 'Registrar movimiento'}
                       </button>
                     </div>
@@ -633,6 +871,18 @@ const CAJA_CSS = `
 .btn.ghost{ background:rgba(255,255,255,0.6); border-color:rgba(13,20,36,0.12); color:#4a5570; }
 .btn.ghost:hover:not(:disabled){ border-color:rgba(107,95,255,0.35); }
 .btn.ghost.danger{ color:#c93545; border-color:rgba(201,53,69,0.3); }
+.btn.ghost.on{ background:rgba(107,95,255,0.12); border-color:#6b5fff; color:#5b50f0; }
+.btn.sm{ font-size:11.5px; padding:6px 12px; border-radius:9px; }
+.ops-head-actions{ display:flex; gap:10px; flex-wrap:wrap; }
+.reasons-mgr{ margin-top:0; margin-bottom:14px; }
+.reasons-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
+.reasons-empty{ font-size:12px; color:#7681a0; padding:4px 0; }
+.reason-item{ display:flex; align-items:center; gap:8px; padding:8px 10px; background:rgba(255,255,255,0.55);
+  border:1px solid rgba(13,20,36,0.07); border-radius:11px; }
+.reason-item .fld-in{ flex:1; }
+.reason-label{ flex:1; font-size:13px; font-weight:600; color:#1f2a44; }
+.reason-add{ display:flex; gap:8px; margin-top:4px; }
+.reason-add .fld-in{ flex:1; }
 .movimientos{ padding:20px 24px; }
 .mv-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:14px; }
 .mv-head h2{ margin:0; font-size:16px; font-weight:700; }

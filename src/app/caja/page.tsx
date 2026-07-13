@@ -18,9 +18,10 @@ import { requireSessionWithCompany } from '@/lib/auth/session';
 import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
 import { getActiveCashSession } from '@/lib/cash/sessions';
 import { getCashSessionSummary } from '@/lib/cash/queries';
+import { listWithdrawalReasons } from '@/lib/cash/reasons';
 import { listTodaySales } from '@/lib/services/sales/sale.service';
 import { CajaClient } from './CajaClient';
-import type { CajaSessionDTO, CajaMovimientoDTO } from './CajaClient';
+import type { CajaSessionDTO, CajaMovimientoDTO, CajaReasonDTO } from './CajaClient';
 
 // F0: un único punto de venta (Caja 1), igual que el POS (page.tsx).
 const SALE_POINT = 1;
@@ -33,7 +34,8 @@ export default async function CajaPage() {
       const cashSession = await getActiveCashSession(SALE_POINT);
       const summary = cashSession ? await getCashSessionSummary(cashSession.id) : null;
       const sales = await listTodaySales();
-      return { cashSession, summary, sales };
+      const reasons = await listWithdrawalReasons();
+      return { cashSession, summary, sales, reasons };
     },
     { requireAuth: true }
   );
@@ -62,12 +64,19 @@ export default async function CajaPage() {
     finalizedAtIso: s.finalized_at ? s.finalized_at.toISOString() : null,
   }));
 
+  const reasons: CajaReasonDTO[] = data.reasons.map((r) => ({
+    id: r.id,
+    label: r.label,
+  }));
+
   return (
     <CajaClient
       cashierName={session.email}
       salePointLabel={`Caja ${SALE_POINT}`}
       session={sessionDto}
       movimientos={movimientos}
+      reasons={reasons}
+      isOwner={session.app_role === 'owner'}
     />
   );
 }
