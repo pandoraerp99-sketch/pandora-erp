@@ -1,18 +1,30 @@
 'use client';
 
 /**
- * CajaClient — UI de la caja (port slice 1 del mockup a React).
+ * CajaClient — UI de la caja (port del mockup public/caja.html a React).
  *
  * Slice 1: barra de sesión (real) + "Últimos movimientos" (ventas reales del día).
- * Sólo lectura. Los medios se muestran con la taxonomía REAL del backend
- * (efectivo/tarjeta/mp_qr/mixto); la separación débito/crédito del arqueo (A-26,
- * caja/reporting no fiscal) llega al extender el enum en una slice posterior.
+ * Slice 3 (este): interacción real — abrir caja, alivios (ingreso/retiro/pago a
+ * proveedor) y cierre con descuadre, todo wireado a las server actions (actions.ts)
+ * que llaman al dominio de caja ya testeado (src/lib/cash).
+ *
+ * Los medios se muestran con la taxonomía REAL del backend
+ * (efectivo/débito/crédito/tarjeta/mp_qr/mixto); la separación débito/crédito del
+ * arqueo (A-26, caja/reporting no fiscal) ya está en el enum.
  *
  * Estilo Dawn Sky (glass sobre gradiente amanecer), coherente con el mockup.
  */
 import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import type { CashMovementType } from '@/lib/db/schema/_common';
+import {
+  openSessionAction,
+  registerMovementAction,
+  closeSessionAction,
+} from './actions';
 
 export interface CajaSessionDTO {
+  id: string;
   salePoint: number;
   openedAtIso: string | null;
   initialAmount: string;
@@ -45,6 +57,12 @@ const MEDIOS: Record<string, { label: string; color: string }> = {
   mixto: { label: 'Mixto', color: '#9088ff' },
 };
 
+const MOV_TYPES: Array<{ key: CashMovementType; label: string; hint: string; tone: 'green' | 'red' }> = [
+  { key: 'deposit', label: 'Ingreso', hint: 'Aporte de efectivo a la caja', tone: 'green' },
+  { key: 'withdraw', label: 'Retiro', hint: 'Alivio / extracción de efectivo', tone: 'red' },
+  { key: 'provider_payment', label: 'Pago a proveedor', hint: 'Egreso de caja para pagar', tone: 'red' },
+];
+
 function money(raw: string): string {
   const n = Math.round(parseFloat(raw || '0'));
   return '$ ' + (Number.isFinite(n) ? n : 0).toLocaleString('es-AR');
@@ -69,7 +87,23 @@ export function CajaClient({
   session,
   movimientos,
 }: CajaClientProps) {
+  const router = useRouter();
   const [medioFilter, setMedioFilter] = useState<string>('todos');
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
+
+  // Formulario abrir caja
+  const [openAmount, setOpenAmount] = useState('');
+
+  // Formulario alivio (movimiento manual). movType null = ningún form abierto.
+  const [movType, setMovType] = useState<CashMovementType | null>(null);
+  const [movAmount, setMovAmount] = useState('');
+  const [movReason, setMovReason] = useState('');
+
+  // Formulario cierre
+  const [closing, setClosing] = useState(false);
+  const [countedAmount, setCountedAmount] = useState('');
+  const [closeReason, setCloseReason] = useState('');
 
   const totalDia = useMemo(
     () => movimientos.reduce((acc, m) => acc + Math.round(parseFloat(m.total || '0')), 0),
@@ -93,6 +127,68 @@ export function CajaClient({
     { key: 'mixto', label: 'Mixto' },
   ];
 
+  async function handleOpen() {
+    if (busy) return;
+    setBusy(true);
+    setFeedback(null);
+    const res = await openSessionAction({ initialAmount: openAmount.trim() });
+    setBusy(false);
+    if (res.ok) {
+      setOpenAmount('');
+      setFeedback({ tone: 'ok', text: 'Caja abierta.' });
+      router.refresh();
+    } else {
+      setFeedback({ tone: 'err', text: res.error });
+    }
+  }
+
+  async function handleMovement() {
+    if (busy || !session || !movType) return;
+    setBusy(true);
+    setFeedback(null);
+    const res = await registerMovementAction({
+      sessionId: session.id,
+      type: movType,
+      amount: movAmount.trim(),
+      reason: movReason.trim(),
+    });
+    setBusy(false);
+    if (res.ok) {
+      setMovType(null);
+      setMovAmount('');
+      setMovReason('');
+      setFeedback({ tone: 'ok', text: 'Movimiento registrado.' });
+      router.refresh();
+    } else {
+      setFeedback({ tone: 'err', text: res.error });
+    }
+  }
+
+  async function handleClose() {
+    if (busy || !session) return;
+    setBusy(true);
+    setFeedback(null);
+    const res = await closeSessionAction({
+      sessionId: session.id,
+      countedAmount: countedAmount.trim(),
+      discrepancyReason: closeReason.trim() || undefined,
+    });
+    setBusy(false);
+    if (res.ok) {
+      const d = res.data;
+      setClosing(false);
+      setCountedAmount('');
+      setCloseReason('');
+      setFeedback({
+        tone: 'ok',
+        text: `Caja cerrada. Descuadre: ${money(d.descuadre)} · ${d.severity_label}.`,
+      });
+      router.refresh();
+    } else {
+      setFeedback({ tone: 'err', text: res.error });
+    }
+  }
+
   return (
     <div className="caja-root">
       <style>{CAJA_CSS}</style>
@@ -105,6 +201,10 @@ export function CajaClient({
       </header>
 
       <main className="caja-main">
+        {feedback && (
+          <div className={'caja-feedback ' + feedback.tone}>{feedback.text}</div>
+        )}
+
         {/* Barra de sesión */}
         {session ? (
           <section className="glass session-bar">
@@ -126,13 +226,148 @@ export function CajaClient({
           </section>
         ) : (
           <section className="glass session-closed">
-            <div className="sc-ic">🔒</div>
-            <div>
-              <div className="sc-title">No hay caja abierta</div>
-              <div className="sc-sub">
-                Abrí la caja con el fondo inicial para empezar a operar en {salePointLabel}.
+            <div className="sc-row">
+              <div className="sc-ic">🔒</div>
+              <div>
+                <div className="sc-title">No hay caja abierta</div>
+                <div className="sc-sub">
+                  Abrí la caja con el fondo inicial para empezar a operar en {salePointLabel}.
+                </div>
               </div>
             </div>
+            <div className="sc-form">
+              <label className="fld">
+                <span className="fld-k">Fondo inicial</span>
+                <input
+                  className="fld-in mono"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={openAmount}
+                  onChange={(e) => setOpenAmount(e.target.value)}
+                />
+              </label>
+              <button className="btn primary" type="button" disabled={busy} onClick={handleOpen}>
+                {busy ? 'Abriendo…' : 'Abrir caja'}
+              </button>
+            </div>
+          </section>
+        )}
+
+        {/* Operaciones de caja (alivios + cierre) — sólo con sesión abierta */}
+        {session && (
+          <section className="glass ops">
+            <div className="ops-head">
+              <h2>Operaciones de caja</h2>
+              {!closing && (
+                <button
+                  className="btn ghost danger"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setClosing(true);
+                    setMovType(null);
+                    setFeedback(null);
+                  }}
+                >
+                  Cerrar caja
+                </button>
+              )}
+            </div>
+
+            {closing ? (
+              <div className="op-form">
+                <div className="op-form-title">Cierre de caja</div>
+                <p className="op-form-hint">
+                  Contá el efectivo físico en el cajón. El sistema calcula lo esperado
+                  (fondo + ventas en efectivo + movimientos) y muestra el descuadre.
+                </p>
+                <label className="fld">
+                  <span className="fld-k">Efectivo contado</span>
+                  <input
+                    className="fld-in mono"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={countedAmount}
+                    onChange={(e) => setCountedAmount(e.target.value)}
+                  />
+                </label>
+                <label className="fld">
+                  <span className="fld-k">Motivo del descuadre (obligatorio si no cuadra)</span>
+                  <input
+                    className="fld-in"
+                    placeholder="Ej: faltante por vuelto mal dado"
+                    value={closeReason}
+                    onChange={(e) => setCloseReason(e.target.value)}
+                  />
+                </label>
+                <div className="op-actions">
+                  <button className="btn ghost" type="button" disabled={busy} onClick={() => setClosing(false)}>
+                    Cancelar
+                  </button>
+                  <button className="btn primary danger" type="button" disabled={busy} onClick={handleClose}>
+                    {busy ? 'Cerrando…' : 'Confirmar cierre'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="ops-btns">
+                  {MOV_TYPES.map((t) => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      className={'mov-btn' + (movType === t.key ? ' on' : '')}
+                      disabled={busy}
+                      onClick={() => {
+                        setMovType(movType === t.key ? null : t.key);
+                        setMovAmount('');
+                        setMovReason('');
+                        setFeedback(null);
+                      }}
+                    >
+                      <span className={'mov-dot ' + t.tone} />
+                      <span className="mov-l">{t.label}</span>
+                      <span className="mov-h">{t.hint}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {movType && (
+                  <div className="op-form">
+                    <div className="op-form-title">
+                      {MOV_TYPES.find((t) => t.key === movType)?.label}
+                    </div>
+                    <label className="fld">
+                      <span className="fld-k">Monto</span>
+                      <input
+                        className="fld-in mono"
+                        inputMode="decimal"
+                        placeholder="0"
+                        value={movAmount}
+                        onChange={(e) => setMovAmount(e.target.value)}
+                      />
+                    </label>
+                    <label className="fld">
+                      <span className="fld-k">Motivo (obligatorio)</span>
+                      <input
+                        className="fld-in"
+                        placeholder="Ej: pago a proveedor de golosinas"
+                        value={movReason}
+                        onChange={(e) => setMovReason(e.target.value)}
+                      />
+                    </label>
+                    <div className="op-actions">
+                      <button className="btn ghost" type="button" disabled={busy} onClick={() => setMovType(null)}>
+                        Cancelar
+                      </button>
+                      <button className="btn primary" type="button" disabled={busy} onClick={handleMovement}>
+                        {busy ? 'Registrando…' : 'Registrar movimiento'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </section>
         )}
 
@@ -197,11 +432,6 @@ export function CajaClient({
             </div>
           )}
         </section>
-
-        <p className="caja-note">
-          Datos reales del día. Alivios, cierre y el editor de reparto por medio
-          (débito/crédito) llegan en las próximas slices del port.
-        </p>
       </main>
     </div>
   );
@@ -238,6 +468,9 @@ const CAJA_CSS = `
 .caja-main{ max-width:1000px; margin:0 auto; padding:8px 20px 60px; display:flex; flex-direction:column; gap:16px; }
 .glass{ background:rgba(255,255,255,0.6); backdrop-filter:blur(24px) saturate(140%); -webkit-backdrop-filter:blur(24px) saturate(140%);
   border:1px solid rgba(255,255,255,0.85); border-radius:20px; box-shadow:0 1px 0 rgba(255,255,255,0.9) inset, 0 8px 32px rgba(54,70,120,0.1); }
+.caja-feedback{ padding:11px 16px; border-radius:14px; font-size:12.5px; font-weight:600; }
+.caja-feedback.ok{ background:rgba(52,199,125,0.14); color:#127a4b; border:1px solid rgba(52,199,125,0.3); }
+.caja-feedback.err{ background:rgba(201,53,69,0.12); color:#a8283a; border:1px solid rgba(201,53,69,0.3); }
 .session-bar{ padding:20px 24px; }
 .sb-head{ display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap; }
 .sb-title{ font-size:19px; font-weight:800; }
@@ -248,8 +481,42 @@ const CAJA_CSS = `
 .stat-v{ font-family:'JetBrains Mono',ui-monospace,monospace; font-size:15px; font-weight:600; margin-top:2px; }
 .stat-v.strong{ font-size:18px; font-weight:700; }
 .stat-v.green{ color:#1a8e5a; } .stat-v.red{ color:#c93545; }
-.session-closed{ padding:22px 24px; display:flex; align-items:center; gap:16px; }
+.session-closed{ padding:22px 24px; display:flex; flex-direction:column; gap:18px; }
+.sc-row{ display:flex; align-items:center; gap:16px; }
 .sc-ic{ font-size:26px; } .sc-title{ font-size:16px; font-weight:700; } .sc-sub{ font-size:12.5px; color:#4a5570; margin-top:3px; }
+.sc-form{ display:flex; align-items:flex-end; gap:14px; flex-wrap:wrap; }
+.ops{ padding:20px 24px; }
+.ops-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+.ops-head h2{ margin:0; font-size:16px; font-weight:700; }
+.ops-btns{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; }
+.mov-btn{ display:flex; flex-direction:column; align-items:flex-start; gap:3px; text-align:left; padding:13px 15px; cursor:pointer;
+  background:rgba(255,255,255,0.45); border:1px solid rgba(13,20,36,0.08); border-radius:14px; transition:all 150ms; }
+.mov-btn:hover{ border-color:rgba(107,95,255,0.4); background:rgba(255,255,255,0.65); }
+.mov-btn.on{ border-color:#6b5fff; background:rgba(255,255,255,0.85); box-shadow:0 2px 10px rgba(54,70,120,0.12); }
+.mov-btn:disabled{ opacity:0.5; cursor:default; }
+.mov-dot{ width:8px; height:8px; border-radius:3px; }
+.mov-dot.green{ background:#34c77d; } .mov-dot.red{ background:#c93545; }
+.mov-l{ font-size:14px; font-weight:700; color:#1f2a44; }
+.mov-h{ font-size:11px; color:#7681a0; }
+.op-form{ margin-top:14px; padding:16px; background:rgba(255,255,255,0.4); border:1px solid rgba(13,20,36,0.07);
+  border-radius:14px; display:flex; flex-direction:column; gap:12px; }
+.op-form-title{ font-size:13.5px; font-weight:700; color:#1f2a44; }
+.op-form-hint{ margin:0; font-size:11.5px; color:#7681a0; line-height:1.5; }
+.fld{ display:flex; flex-direction:column; gap:5px; flex:1; min-width:160px; }
+.fld-k{ font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:#7681a0; font-weight:600; }
+.fld-in{ font-size:14px; padding:10px 13px; border-radius:11px; border:1px solid rgba(13,20,36,0.14);
+  background:rgba(255,255,255,0.9); color:#0d1424; outline:none; transition:border-color 150ms; width:100%; }
+.fld-in:focus{ border-color:#6b5fff; }
+.op-actions{ display:flex; justify-content:flex-end; gap:10px; }
+.btn{ font-size:13px; font-weight:600; padding:10px 18px; border-radius:11px; cursor:pointer; border:1px solid transparent; transition:all 150ms; }
+.btn:disabled{ opacity:0.55; cursor:default; }
+.btn.primary{ background:#6b5fff; color:#fff; box-shadow:0 4px 14px rgba(107,95,255,0.32); }
+.btn.primary:hover:not(:disabled){ background:#5b50f0; }
+.btn.primary.danger{ background:#c93545; box-shadow:0 4px 14px rgba(201,53,69,0.3); }
+.btn.primary.danger:hover:not(:disabled){ background:#b52c3c; }
+.btn.ghost{ background:rgba(255,255,255,0.6); border-color:rgba(13,20,36,0.12); color:#4a5570; }
+.btn.ghost:hover:not(:disabled){ border-color:rgba(107,95,255,0.35); }
+.btn.ghost.danger{ color:#c93545; border-color:rgba(201,53,69,0.3); }
 .movimientos{ padding:20px 24px; }
 .mv-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:14px; }
 .mv-head h2{ margin:0; font-size:16px; font-weight:700; }
@@ -270,5 +537,4 @@ const CAJA_CSS = `
 .strong{ font-weight:600; }
 .medio{ display:inline-flex; align-items:center; gap:7px; color:#4a5570; }
 .medio .sw{ width:8px; height:8px; border-radius:2.5px; }
-.caja-note{ font-size:11px; color:#7681a0; text-align:center; margin:4px 0 0; }
 `;

@@ -40,6 +40,7 @@ export default async function CajaPage() {
 
   const sessionDto: CajaSessionDTO | null = data.cashSession
     ? {
+        id: data.cashSession.id,
         salePoint: data.cashSession.sale_point,
         openedAtIso: data.cashSession.opened_at
           ? data.cashSession.opened_at.toISOString()
