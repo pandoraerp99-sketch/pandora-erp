@@ -36,6 +36,7 @@ import {
 } from '@/lib/services/sales/sale.service';
 import { emitAfterCobro, type EmitAfterCobroResult } from '@/lib/fiscal/emit-after-cobro';
 import type { Sale } from '@/lib/db/schema/sales';
+import type { SalePaymentMethod } from '@/lib/db/schema/_common';
 
 export type ActionResult<T> =
   | { ok: true; data: T }
@@ -136,7 +137,7 @@ export async function setCustomerAction(
 export interface FinalizeSaleActionInput {
   sale_id: string;
   payments: Array<{
-    method: 'efectivo' | 'tarjeta' | 'mp_qr';
+    method: SalePaymentMethod;
     amount: string;
     mp_payment_external_id?: string;
   }>;

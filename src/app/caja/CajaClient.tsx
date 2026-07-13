@@ -38,7 +38,9 @@ interface CajaClientProps {
 
 const MEDIOS: Record<string, { label: string; color: string }> = {
   efectivo: { label: 'Efectivo', color: '#34c77d' },
-  tarjeta: { label: 'Tarjeta', color: '#5b8cff' },
+  debito: { label: 'Débito', color: '#5b8cff' },
+  credito: { label: 'Crédito', color: '#f7984a' },
+  tarjeta: { label: 'Tarjeta', color: '#7681a0' },
   mp_qr: { label: 'QR / MercadoPago', color: '#6b5fff' },
   mixto: { label: 'Mixto', color: '#9088ff' },
 };
@@ -85,7 +87,8 @@ export function CajaClient({
   const filterChips: Array<{ key: string; label: string }> = [
     { key: 'todos', label: 'Todos los medios' },
     { key: 'efectivo', label: 'Efectivo' },
-    { key: 'tarjeta', label: 'Tarjeta' },
+    { key: 'debito', label: 'Débito' },
+    { key: 'credito', label: 'Crédito' },
     { key: 'mp_qr', label: 'QR / MP' },
     { key: 'mixto', label: 'Mixto' },
   ];

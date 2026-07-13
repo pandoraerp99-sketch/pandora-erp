@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS sale_payments (
 
   -- CHECK constraints (mismo patrón _common.ts SALE_PAYMENT_METHODS)
   CONSTRAINT sale_payments_method_check
-    CHECK (method IN ('efectivo','tarjeta','mp_qr')),
+    CHECK (method IN ('efectivo','debito','credito','tarjeta','mp_qr')),
   CONSTRAINT sale_payments_amount_positive
     CHECK (amount > 0)
 );

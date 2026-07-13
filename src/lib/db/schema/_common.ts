@@ -77,7 +77,16 @@ export const FISCAL_STATUSES = [
 ] as const;
 export type FiscalStatus = (typeof FISCAL_STATUSES)[number];
 
-export const PAYMENT_METHODS = ['efectivo', 'tarjeta', 'mp_qr', 'mixto'] as const;
+// Denormalizado `sales.payment_method`: = SALE_PAYMENT_METHODS + 'mixto'.
+// débito/crédito agregados 2026-07-12 (A-26, ver SALE_PAYMENT_METHODS abajo).
+export const PAYMENT_METHODS = [
+  'efectivo',
+  'debito',
+  'credito',
+  'tarjeta',
+  'mp_qr',
+  'mixto',
+] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 /**
@@ -85,8 +94,22 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
  * NO incluye 'mixto' — ese valor solo aplica al denormalizado
  * `sales.payment_method` cuando hay 2+ sale_payments con methods distintos
  * en una misma sale. Sprint 5 ROADMAP.
+ *
+ * **débito/crédito separados (2026-07-12, A-26 resuelto por investigación):**
+ * el posnet AR liquida y concilia débito y crédito por separado (crédito incluso
+ * por plazo/cuotas), así que el arqueo los separa. Es concern de caja/conciliación,
+ * NO fiscal (la forma de pago no viaja en el CAE de B/C) → decisión de producto.
+ * `tarjeta` se retiene como genérico legacy (backward compat con ventas viejas /
+ * cajero que no discrimina). Aditivo: no rompe datos ni tests existentes.
+ * Migración: drizzle/migrations/post_initial/ (drizzle-kit generate roto por bug BigInt).
  */
-export const SALE_PAYMENT_METHODS = ['efectivo', 'tarjeta', 'mp_qr'] as const;
+export const SALE_PAYMENT_METHODS = [
+  'efectivo',
+  'debito',
+  'credito',
+  'tarjeta',
+  'mp_qr',
+] as const;
 export type SalePaymentMethod = (typeof SALE_PAYMENT_METHODS)[number];
 
 /**
