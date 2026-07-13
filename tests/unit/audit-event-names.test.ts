@@ -6,9 +6,9 @@ import {
 } from '@/lib/audit/event-names';
 
 describe('Catalogo canonico audit event names (EVENT-TAXONOMY §5 v2.0.2)', () => {
-  it('total 42 eventos auditables F0', () => {
-    expect(TOTAL_AUDIT_EVENTS_F0).toBe(42);
-    expect(AUDIT_EVENT_NAMES).toHaveLength(42);
+  it('total 43 eventos auditables F0', () => {
+    expect(TOTAL_AUDIT_EVENTS_F0).toBe(43);
+    expect(AUDIT_EVENT_NAMES).toHaveLength(43);
   });
 
   it('isAuditEventName acepta eventos canonicos', () => {

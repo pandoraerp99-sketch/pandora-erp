@@ -13,11 +13,19 @@
  * **Append-only post-INSERT** (mismo patrón stock_movements + cash_movements):
  * Cancelación de payment = INSERT inverso con amount negativo NO — el patrón
  * es void/refund vía mp_payments.status='refunded' + sale.commercial_status
- * = 'cancelada'. sale_payments NUNCA UPDATE/DELETE.
+ * = 'cancelada'. Las columnas financieras (method, amount, cash_session_id)
+ * NUNCA se hacen UPDATE.
  *
- * **Método ∈ {efectivo, tarjeta, mp_qr}** (NO incluye 'mixto' — ese valor
- * solo aplica al campo denormalizado `sales.payment_method` cuando hay 2+
- * sale_payments con methods distintos para la misma sale).
+ * **Corrección de medio (ADR-0026):** reclasificar el método de un pago mal
+ * cargado NO muta la fila original — se INSERTA una fila nueva con el método
+ * corregido y `corrects_id = <id original>`. "Activo" = fila que nadie corrige
+ * (no existe otra con corrects_id apuntándola). Cero UPDATE sobre esta tabla;
+ * solo se recomputa el denormalizado `sales.payment_method`. La derivación del
+ * cierre y el arqueo filtran superseded.
+ *
+ * **Método ∈ {efectivo, débito, crédito, tarjeta, mp_qr}** (NO incluye 'mixto'
+ * — ese valor solo aplica al campo denormalizado `sales.payment_method` cuando
+ * hay 2+ sale_payments ACTIVOS con methods distintos para la misma sale).
  */
 import { sql } from 'drizzle-orm';
 import {
@@ -26,6 +34,7 @@ import {
   numeric,
   pgTable,
   text,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { companies } from './companies.js';
@@ -71,6 +80,14 @@ export const sale_payments = pgTable(
      */
     mp_payment_external_id: text('mp_payment_external_id'),
 
+    /**
+     * Corrección de medio (ADR-0026). Si NO es null, esta fila corrige el
+     * método de la fila `corrects_id`. Una fila es "activa" (cuenta para arqueo
+     * y cierre) si NINGUNA otra fila la apunta con su `corrects_id`. FK
+     * self-ref + index se crean en la migración SQL (post_initial 0017).
+     */
+    corrects_id: uuid('corrects_id'),
+
     created_at: createdAt(),
   },
   (table) => ({
@@ -95,6 +112,15 @@ export const sale_payments = pgTable(
     mpExternalIdx: index('sale_payments_mp_external_idx')
       .on(table.tenant_id, table.mp_payment_external_id)
       .where(sql`${table.mp_payment_external_id} IS NOT NULL`),
+    /**
+     * UNIQUE partial (ADR-0026): a lo sumo UNA fila puede corregir a una dada.
+     * Garantiza ≤1 fila activa por cadena y hace que un doble-click concurrente
+     * (2 correcciones a la misma original) falle en el 2do INSERT en vez de
+     * crear ambigüedad de "activo". Sirve además como index del NOT EXISTS.
+     */
+    correctsUidx: uniqueIndex('sale_payments_corrects_uidx')
+      .on(table.corrects_id)
+      .where(sql`${table.corrects_id} IS NOT NULL`),
     methodCheck: check(
       'sale_payments_method_check',
       sql`${table.method} IN (${sql.raw(SALE_PAYMENT_METHODS.map((m) => `'${m}'`).join(','))})`

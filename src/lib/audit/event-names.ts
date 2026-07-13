@@ -37,10 +37,11 @@ export const AUDIT_EVENT_NAMES = [
   'fiscal.invoice.manual_resolution_required',
   'fiscal.invariant_violation',
 
-  // Domain: payment (3)
+  // Domain: payment (4)
   'payment.cash.received',
   'payment.mp.confirmed',
   'payment.mp.refunded',
+  'payment.method_reclassified', // ADR-0026 — corrección append-only de medio
 
   // Domain: stock (2)
   'stock.adjusted_manually',
@@ -91,7 +92,7 @@ export function isAuditEventName(value: string): value is AuditEventName {
 }
 
 /**
- * Total: 42 eventos auditables F0.
+ * Total: 43 eventos auditables F0.
  *
  * Lo que va a Pino log (NO audit_log):
  * - sale.draft.* (lifecycle items, customer set durante draft)

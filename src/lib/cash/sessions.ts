@@ -705,6 +705,10 @@ async function computeExpectedAmountFromActivity(
 
   // SUM sale_payments con method=efectivo (otros methods no afectan caja).
   // tenant_id filter es defense-in-depth (cash_session_id ya es por scope).
+  // NOT EXISTS excluye filas SUPERSEDED por una corrección de medio (ADR-0026):
+  // si un pago efectivo fue reclasificado a otro medio, deja de sumar; si otro
+  // medio fue reclasificado a efectivo, su fila corregida (con este
+  // cash_session_id) suma. Así el descuadre igual-y-opuesto se cierra solo.
   const cashSaleRows = await tx
     .select({
       total: sql<string>`COALESCE(SUM(${sale_payments.amount}), 0)`,
@@ -714,7 +718,8 @@ async function computeExpectedAmountFromActivity(
       and(
         eq(sale_payments.tenant_id, tenant_id),
         eq(sale_payments.cash_session_id, session_id),
-        eq(sale_payments.method, 'efectivo')
+        eq(sale_payments.method, 'efectivo'),
+        sql`NOT EXISTS (SELECT 1 FROM sale_payments c WHERE c.corrects_id = ${sale_payments.id})`
       )
     );
   const cashSalesInt = Math.round(parseFloat(cashSaleRows[0]?.total ?? '0') * SCALE);

@@ -39,6 +39,10 @@ CREATE TABLE IF NOT EXISTS sale_payments (
   cash_session_id uuid REFERENCES cash_sessions(id) ON DELETE SET NULL,
   mp_payment_external_id text,
 
+  -- Corrección de medio (ADR-0026): si NOT NULL, esta fila corrige el método
+  -- de la fila apuntada. "Activo" = fila que nadie apunta con su corrects_id.
+  corrects_id uuid REFERENCES sale_payments(id) ON DELETE RESTRICT,
+
   created_at timestamptz NOT NULL DEFAULT now(),
 
   -- CHECK constraints (mismo patrón _common.ts SALE_PAYMENT_METHODS)
@@ -64,6 +68,12 @@ CREATE INDEX IF NOT EXISTS sale_payments_cash_session_idx
 CREATE INDEX IF NOT EXISTS sale_payments_mp_external_idx
   ON sale_payments (tenant_id, mp_payment_external_id)
   WHERE mp_payment_external_id IS NOT NULL;
+
+-- UNIQUE partial (ADR-0026): a lo sumo UNA fila corrige a una dada → ≤1 fila
+-- activa por cadena + el 2do INSERT de un doble-click concurrente falla.
+CREATE UNIQUE INDEX IF NOT EXISTS sale_payments_corrects_uidx
+  ON sale_payments (corrects_id)
+  WHERE corrects_id IS NOT NULL;
 
 -- ─────────────────────────────────────────────────────────────
 -- (3) Triggers append-only sale_payments (mismo patrón cash_movements)

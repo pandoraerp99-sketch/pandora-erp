@@ -14,13 +14,14 @@
  *
  * Estilo Dawn Sky (glass sobre gradiente amanecer), coherente con el mockup.
  */
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { CashMovementType } from '@/lib/db/schema/_common';
+import type { CashMovementType, SalePaymentMethod } from '@/lib/db/schema/_common';
 import {
   openSessionAction,
   registerMovementAction,
   closeSessionAction,
+  reclassifyPaymentAction,
 } from './actions';
 
 export interface CajaSessionDTO {
@@ -56,6 +57,14 @@ const MEDIOS: Record<string, { label: string; color: string }> = {
   mp_qr: { label: 'QR / MercadoPago', color: '#6b5fff' },
   mixto: { label: 'Mixto', color: '#9088ff' },
 };
+
+/** Medios elegibles al reclasificar una venta mal cargada (ADR-0026). */
+const RECLASS_OPTIONS: Array<{ key: SalePaymentMethod; label: string }> = [
+  { key: 'efectivo', label: 'Efectivo' },
+  { key: 'debito', label: 'Débito' },
+  { key: 'credito', label: 'Crédito' },
+  { key: 'mp_qr', label: 'QR / MP' },
+];
 
 const MOV_TYPES: Array<{ key: CashMovementType; label: string; hint: string; tone: 'green' | 'red' }> = [
   { key: 'deposit', label: 'Ingreso', hint: 'Aporte de efectivo a la caja', tone: 'green' },
@@ -104,6 +113,11 @@ export function CajaClient({
   const [closing, setClosing] = useState(false);
   const [countedAmount, setCountedAmount] = useState('');
   const [closeReason, setCloseReason] = useState('');
+
+  // Reclasificar medio de una venta (ADR-0026). reclassSaleId = fila abierta.
+  const [reclassSaleId, setReclassSaleId] = useState<string | null>(null);
+  const [reclassMethod, setReclassMethod] = useState<SalePaymentMethod | null>(null);
+  const [reclassReason, setReclassReason] = useState('');
 
   const totalDia = useMemo(
     () => movimientos.reduce((acc, m) => acc + Math.round(parseFloat(m.total || '0')), 0),
@@ -182,6 +196,38 @@ export function CajaClient({
       setFeedback({
         tone: 'ok',
         text: `Caja cerrada. Descuadre: ${money(d.descuadre)} · ${d.severity_label}.`,
+      });
+      router.refresh();
+    } else {
+      setFeedback({ tone: 'err', text: res.error });
+    }
+  }
+
+  function openReclass(saleId: string) {
+    setReclassSaleId(saleId);
+    setReclassMethod(null);
+    setReclassReason('');
+    setFeedback(null);
+  }
+
+  async function handleReclassify() {
+    if (busy || !reclassSaleId || !reclassMethod) return;
+    setBusy(true);
+    setFeedback(null);
+    const res = await reclassifyPaymentAction({
+      saleId: reclassSaleId,
+      newMethod: reclassMethod,
+      reason: reclassReason.trim(),
+    });
+    setBusy(false);
+    if (res.ok) {
+      const d = res.data;
+      setReclassSaleId(null);
+      setReclassMethod(null);
+      setReclassReason('');
+      setFeedback({
+        tone: 'ok',
+        text: `Medio corregido: ${medioOf(d.from_method).label} → ${medioOf(d.to_method).label}.`,
       });
       router.refresh();
     } else {
@@ -408,23 +454,93 @@ export function CajaClient({
                     <th>Cliente</th>
                     <th>Medio de pago</th>
                     <th className="r">Monto</th>
+                    {session && <th className="r">Medio</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {visibles.map((m) => {
                     const md = medioOf(m.method);
+                    const editing = reclassSaleId === m.id;
+                    const colCount = session ? 5 : 4;
                     return (
-                      <tr key={m.id}>
-                        <td className="mono">{hora(m.finalizedAtIso)}</td>
-                        <td>{m.customerName || 'Consumidor final'}</td>
-                        <td>
-                          <span className="medio">
-                            <span className="sw" style={{ background: md.color }} />
-                            {md.label}
-                          </span>
-                        </td>
-                        <td className="r mono strong">{money(m.total)}</td>
-                      </tr>
+                      <Fragment key={m.id}>
+                        <tr className={editing ? 'mv-row-editing' : undefined}>
+                          <td className="mono">{hora(m.finalizedAtIso)}</td>
+                          <td>{m.customerName || 'Consumidor final'}</td>
+                          <td>
+                            <span className="medio">
+                              <span className="sw" style={{ background: md.color }} />
+                              {md.label}
+                            </span>
+                          </td>
+                          <td className="r mono strong">{money(m.total)}</td>
+                          {session && (
+                            <td className="r">
+                              <button
+                                type="button"
+                                className="mv-edit"
+                                disabled={busy}
+                                onClick={() => (editing ? setReclassSaleId(null) : openReclass(m.id))}
+                              >
+                                {editing ? 'Cerrar' : 'Cambiar'}
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                        {editing && (
+                          <tr className="mv-editor-row">
+                            <td colSpan={colCount}>
+                              <div className="reclass">
+                                <div className="reclass-title">
+                                  Corregir medio de esta venta
+                                </div>
+                                <div className="reclass-chips">
+                                  {RECLASS_OPTIONS.filter((o) => o.key !== m.method).map(
+                                    (o) => (
+                                      <button
+                                        key={o.key}
+                                        type="button"
+                                        className={
+                                          'reclass-chip' +
+                                          (reclassMethod === o.key ? ' on' : '')
+                                        }
+                                        disabled={busy}
+                                        onClick={() => setReclassMethod(o.key)}
+                                      >
+                                        {o.label}
+                                      </button>
+                                    )
+                                  )}
+                                </div>
+                                <input
+                                  className="fld-in reclass-reason"
+                                  placeholder="Motivo (obligatorio): ej. abonó en efectivo, marqué débito"
+                                  value={reclassReason}
+                                  onChange={(e) => setReclassReason(e.target.value)}
+                                />
+                                <div className="op-actions">
+                                  <button
+                                    className="btn ghost"
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={() => setReclassSaleId(null)}
+                                  >
+                                    Cancelar
+                                  </button>
+                                  <button
+                                    className="btn primary"
+                                    type="button"
+                                    disabled={busy || !reclassMethod}
+                                    onClick={handleReclassify}
+                                  >
+                                    {busy ? 'Guardando…' : 'Guardar corrección'}
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -537,4 +653,20 @@ const CAJA_CSS = `
 .strong{ font-weight:600; }
 .medio{ display:inline-flex; align-items:center; gap:7px; color:#4a5570; }
 .medio .sw{ width:8px; height:8px; border-radius:2.5px; }
+.mv-edit{ font-size:11px; font-weight:600; padding:4px 11px; border-radius:999px; cursor:pointer; color:#6b5fff;
+  background:rgba(107,95,255,0.08); border:1px solid rgba(107,95,255,0.25); transition:all 150ms; }
+.mv-edit:hover:not(:disabled){ background:rgba(107,95,255,0.16); }
+.mv-edit:disabled{ opacity:0.5; cursor:default; }
+.mv-row-editing td{ border-bottom:none; }
+.mv-editor-row td{ padding:0 0 12px; border-top:none; }
+.reclass{ padding:14px 16px; background:rgba(255,255,255,0.5); border:1px solid rgba(107,95,255,0.2);
+  border-radius:14px; display:flex; flex-direction:column; gap:11px; }
+.reclass-title{ font-size:12.5px; font-weight:700; color:#1f2a44; }
+.reclass-chips{ display:flex; flex-wrap:wrap; gap:8px; }
+.reclass-chip{ font-size:12px; font-weight:600; padding:7px 14px; border-radius:999px; cursor:pointer; color:#4a5570;
+  background:rgba(255,255,255,0.6); border:1px solid rgba(13,20,36,0.1); transition:all 150ms; }
+.reclass-chip:hover:not(:disabled){ border-color:rgba(107,95,255,0.4); }
+.reclass-chip.on{ background:#6b5fff; color:#fff; border-color:#6b5fff; }
+.reclass-chip:disabled{ opacity:0.5; cursor:default; }
+.reclass-reason{ max-width:100%; }
 `;
