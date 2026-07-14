@@ -26,7 +26,7 @@ import {
   text,
 } from 'drizzle-orm/pg-core';
 import { companies } from './companies.js';
-import { createdAt, id, tenantId, updatedAt } from './_common.js';
+import { createdAt, id, tenantId, updatedAt, BENEFICIARIO_TIPOS } from './_common.js';
 
 export const cash_withdrawal_reasons = pgTable(
   'cash_withdrawal_reasons',
@@ -36,6 +36,10 @@ export const cash_withdrawal_reasons = pgTable(
 
     // Etiqueta visible en el picker (ej: "Pago de proveedor"). Editable por owner.
     label: text('label').notNull(),
+
+    // Qué beneficiario pide este concepto: 'ninguno' | 'empleado' | 'proveedor'.
+    // Al registrar el retiro, si != 'ninguno' se muestra el picker de terceros.
+    beneficiario_tipo: text('beneficiario_tipo').notNull().default('ninguno'),
 
     // Orden de aparición en el picker (menor primero).
     sort_order: integer('sort_order').notNull().default(0),
@@ -57,6 +61,10 @@ export const cash_withdrawal_reasons = pgTable(
     labelNotEmptyCheck: check(
       'cash_withdrawal_reasons_label_not_empty',
       sql`length(trim(${table.label})) > 0`
+    ),
+    beneficiarioTipoCheck: check(
+      'cash_withdrawal_reasons_beneficiario_tipo_check',
+      sql`${table.beneficiario_tipo} IN (${sql.raw(BENEFICIARIO_TIPOS.map((t) => `'${t}'`).join(','))})`
     ),
   })
 );

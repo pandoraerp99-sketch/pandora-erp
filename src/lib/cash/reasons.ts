@@ -16,14 +16,19 @@ import {
   cash_withdrawal_reasons,
   type CashWithdrawalReason,
 } from '../db/schema/cash_withdrawal_reasons.js';
-import type { UserRole } from '../db/schema/_common.js';
+import { BENEFICIARIO_TIPOS, type BeneficiarioTipo, type UserRole } from '../db/schema/_common.js';
 import { requireTracingContext } from '../tracing/context.js';
 import { CrossTenantAccessError } from '../multi_tenant/errors.js';
 import { isValidUuid } from '../tracing/ids.js';
 
 const LABEL_MAX_LEN = 60;
 
-export type ReasonErrorCode = 'invalid_label' | 'label_too_long' | 'invalid_id' | 'reason_not_found';
+export type ReasonErrorCode =
+  | 'invalid_label'
+  | 'label_too_long'
+  | 'invalid_id'
+  | 'invalid_beneficiario_tipo'
+  | 'reason_not_found';
 
 export class ReasonValidationError extends Error {
   constructor(
@@ -65,6 +70,17 @@ function normalizeLabel(raw: string): string {
   return label;
 }
 
+function normalizeBeneficiarioTipo(raw: BeneficiarioTipo | undefined): BeneficiarioTipo {
+  const t = raw ?? 'ninguno';
+  if (!BENEFICIARIO_TIPOS.includes(t)) {
+    throw new ReasonValidationError(
+      'invalid_beneficiario_tipo',
+      `beneficiario_tipo "${t}" inválido. Valores: ${BENEFICIARIO_TIPOS.join(', ')}`
+    );
+  }
+  return t;
+}
+
 function requireTenant(): string {
   const ctx = requireTracingContext();
   if (!ctx.tenant_id) {
@@ -90,12 +106,13 @@ export async function listWithdrawalReasons(): Promise<CashWithdrawalReason[]> {
 
 /** Crea un motivo (owner). sort_order = al final. */
 export async function createWithdrawalReason(
-  input: { label: string },
+  input: { label: string; beneficiario_tipo?: BeneficiarioTipo },
   actorRole: UserRole | null | undefined
 ): Promise<CashWithdrawalReason> {
   assertOwner(actorRole);
   const tenant_id = requireTenant();
   const label = normalizeLabel(input.label);
+  const beneficiario_tipo = normalizeBeneficiarioTipo(input.beneficiario_tipo);
 
   const existing = await db
     .select({ sort_order: cash_withdrawal_reasons.sort_order })
@@ -106,14 +123,14 @@ export async function createWithdrawalReason(
 
   const inserted = await db
     .insert(cash_withdrawal_reasons)
-    .values({ tenant_id, label, sort_order: nextOrder })
+    .values({ tenant_id, label, beneficiario_tipo, sort_order: nextOrder })
     .returning();
   return inserted[0]!;
 }
 
-/** Renombra un motivo (owner). */
+/** Renombra un motivo y/o cambia su tipo de beneficiario (owner). */
 export async function updateWithdrawalReason(
-  input: { id: string; label: string },
+  input: { id: string; label: string; beneficiario_tipo?: BeneficiarioTipo },
   actorRole: UserRole | null | undefined
 ): Promise<CashWithdrawalReason> {
   assertOwner(actorRole);
@@ -122,10 +139,11 @@ export async function updateWithdrawalReason(
     throw new ReasonValidationError('invalid_id', `id no es UUID válido ("${input.id}")`);
   }
   const label = normalizeLabel(input.label);
+  const beneficiario_tipo = normalizeBeneficiarioTipo(input.beneficiario_tipo);
 
   const updated = await db
     .update(cash_withdrawal_reasons)
-    .set({ label, updated_at: new Date() })
+    .set({ label, beneficiario_tipo, updated_at: new Date() })
     .where(
       and(
         eq(cash_withdrawal_reasons.id, input.id),

@@ -23,7 +23,17 @@ import {
   updateWithdrawalReason,
   deactivateWithdrawalReason,
 } from '@/lib/cash/reasons';
-import type { CashMovementType, SalePaymentMethod } from '@/lib/db/schema/_common';
+import {
+  createTercero,
+  updateTercero,
+  deactivateTercero,
+} from '@/lib/cash/terceros';
+import type {
+  BeneficiarioTipo,
+  CashMovementType,
+  SalePaymentMethod,
+  TerceroType,
+} from '@/lib/db/schema/_common';
 
 // F0: un único punto de venta (Caja 1), igual que page.tsx / el POS.
 const SALE_POINT = 1;
@@ -42,6 +52,8 @@ const CASH_ERROR_NAMES = new Set([
   'ReclassifyValidationError',
   'ReasonValidationError',
   'ReasonAuthorizationError',
+  'TerceroValidationError',
+  'TerceroAuthorizationError',
 ]);
 
 async function runAction<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
@@ -69,12 +81,18 @@ export async function openSessionAction(input: {
   );
 }
 
-/** Registra un movimiento manual de caja (ingreso / retiro / pago a proveedor). */
+/** Registra un movimiento manual de caja (ingreso / alivio / retiro-gasto). */
 export async function registerMovementAction(input: {
   sessionId: string;
   type: CashMovementType;
   amount: string;
   reason: string;
+  // Egreso estructurado (retiro/gasto): concepto + beneficiario + notas.
+  conceptId?: string | null;
+  payeeId?: string | null;
+  payeeType?: string | null;
+  payeeName?: string | null;
+  notes?: string | null;
 }): Promise<ActionResult<Awaited<ReturnType<typeof registerCashMovement>>>> {
   return runAction(() =>
     registerCashMovement({
@@ -82,6 +100,11 @@ export async function registerMovementAction(input: {
       type: input.type,
       amount: input.amount,
       reason: input.reason,
+      concept_id: input.conceptId ?? null,
+      payee_id: input.payeeId ?? null,
+      payee_type: input.payeeType ?? null,
+      payee_name: input.payeeName ?? null,
+      notes: input.notes ?? null,
     })
   );
 }
@@ -131,21 +154,29 @@ export async function reclassifyPaymentAction(input: {
 /** Crea un motivo de retiro (solo dueño). */
 export async function createReasonAction(input: {
   label: string;
+  beneficiarioTipo?: BeneficiarioTipo;
 }): Promise<ActionResult<Awaited<ReturnType<typeof createWithdrawalReason>>>> {
   return runAction(async () => {
     const session = await requireSessionWithCompany();
-    return createWithdrawalReason({ label: input.label }, session.app_role);
+    return createWithdrawalReason(
+      { label: input.label, beneficiario_tipo: input.beneficiarioTipo },
+      session.app_role
+    );
   });
 }
 
-/** Renombra un motivo de retiro (solo dueño). */
+/** Renombra un motivo / cambia su tipo de beneficiario (solo dueño). */
 export async function updateReasonAction(input: {
   id: string;
   label: string;
+  beneficiarioTipo?: BeneficiarioTipo;
 }): Promise<ActionResult<Awaited<ReturnType<typeof updateWithdrawalReason>>>> {
   return runAction(async () => {
     const session = await requireSessionWithCompany();
-    return updateWithdrawalReason({ id: input.id, label: input.label }, session.app_role);
+    return updateWithdrawalReason(
+      { id: input.id, label: input.label, beneficiario_tipo: input.beneficiarioTipo },
+      session.app_role
+    );
   });
 }
 
@@ -156,5 +187,41 @@ export async function deactivateReasonAction(input: {
   return runAction(async () => {
     const session = await requireSessionWithCompany();
     return deactivateWithdrawalReason({ id: input.id }, session.app_role);
+  });
+}
+
+// ── Catálogo de terceros / beneficiarios (administra SOLO el dueño) ────────
+
+/** Crea un beneficiario (empleado / proveedor) — solo dueño. */
+export async function createTerceroAction(input: {
+  type: TerceroType;
+  name: string;
+  doc?: string | null;
+}): Promise<ActionResult<Awaited<ReturnType<typeof createTercero>>>> {
+  return runAction(async () => {
+    const session = await requireSessionWithCompany();
+    return createTercero({ type: input.type, name: input.name, doc: input.doc }, session.app_role);
+  });
+}
+
+/** Renombra / edita doc de un beneficiario — solo dueño. */
+export async function updateTerceroAction(input: {
+  id: string;
+  name: string;
+  doc?: string | null;
+}): Promise<ActionResult<Awaited<ReturnType<typeof updateTercero>>>> {
+  return runAction(async () => {
+    const session = await requireSessionWithCompany();
+    return updateTercero({ id: input.id, name: input.name, doc: input.doc }, session.app_role);
+  });
+}
+
+/** Da de baja (lógica) un beneficiario — solo dueño. */
+export async function deactivateTerceroAction(input: {
+  id: string;
+}): Promise<ActionResult<Awaited<ReturnType<typeof deactivateTercero>>>> {
+  return runAction(async () => {
+    const session = await requireSessionWithCompany();
+    return deactivateTercero({ id: input.id }, session.app_role);
   });
 }

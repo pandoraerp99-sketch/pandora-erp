@@ -69,6 +69,17 @@ export interface RegisterMovementInput {
   amount: string | number;
   /** Motivo obligatorio (TODOS los movimientos lo requieren — defensa contra mutable audit). */
   reason: string;
+  // ── Egreso estructurado (solo retiro/gasto = provider_payment) ──────────
+  /** Concepto del catálogo (cash_withdrawal_reasons). */
+  concept_id?: string | null;
+  /** Beneficiario del catálogo (terceros). null si el cajero eligió "Otro". */
+  payee_id?: string | null;
+  /** Tipo de beneficiario ('empleado' | 'proveedor'). */
+  payee_type?: string | null;
+  /** Nombre del beneficiario (snapshot — del catálogo o el "Otro" tipeado). */
+  payee_name?: string | null;
+  /** Notas libres opcionales. */
+  notes?: string | null;
 }
 
 // ──── Pure helpers (testeables sin DB) ─────────────────────────
@@ -130,6 +141,12 @@ export function prepareRegisterMovementValues(
     );
   }
 
+  // Egreso estructurado: solo tiene sentido en retiro/gasto (provider_payment).
+  // El payee_name se trima; el resto pasa como snapshot/FK tal cual (la app compone
+  // los valores coherentes — "Otro" => payee_id null + payee_name tipeado).
+  const payee_name = (input.payee_name ?? '').trim() || null;
+  const notes = (input.notes ?? '').trim() || null;
+
   return {
     cash_session_id: input.cash_session_id,
     type: input.type,
@@ -137,6 +154,11 @@ export function prepareRegisterMovementValues(
     reason,
     created_by,
     correlation_id: ctx.correlation_id ?? null,
+    concept_id: input.concept_id ?? null,
+    payee_id: input.payee_id ?? null,
+    payee_type: input.payee_type ?? null,
+    payee_name,
+    notes,
   };
 }
 

@@ -19,9 +19,16 @@ import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
 import { getActiveCashSession } from '@/lib/cash/sessions';
 import { getCashSessionSummary } from '@/lib/cash/queries';
 import { listWithdrawalReasons } from '@/lib/cash/reasons';
+import { listTerceros } from '@/lib/cash/terceros';
 import { listTodaySales } from '@/lib/services/sales/sale.service';
 import { CajaClient } from './CajaClient';
-import type { CajaSessionDTO, CajaMovimientoDTO, CajaReasonDTO } from './CajaClient';
+import type {
+  CajaSessionDTO,
+  CajaMovimientoDTO,
+  CajaReasonDTO,
+  CajaTerceroDTO,
+} from './CajaClient';
+import type { BeneficiarioTipo } from '@/lib/db/schema/_common';
 
 // F0: un único punto de venta (Caja 1), igual que el POS (page.tsx).
 const SALE_POINT = 1;
@@ -35,7 +42,9 @@ export default async function CajaPage() {
       const summary = cashSession ? await getCashSessionSummary(cashSession.id) : null;
       const sales = await listTodaySales();
       const reasons = await listWithdrawalReasons();
-      return { cashSession, summary, sales, reasons };
+      const empleados = await listTerceros('empleado');
+      const proveedores = await listTerceros('proveedor');
+      return { cashSession, summary, sales, reasons, empleados, proveedores };
     },
     { requireAuth: true }
   );
@@ -67,7 +76,17 @@ export default async function CajaPage() {
   const reasons: CajaReasonDTO[] = data.reasons.map((r) => ({
     id: r.id,
     label: r.label,
+    beneficiarioTipo: r.beneficiario_tipo as BeneficiarioTipo,
   }));
+
+  const toTercero = (t: (typeof data.empleados)[number]): CajaTerceroDTO => ({
+    id: t.id,
+    type: t.type as CajaTerceroDTO['type'],
+    name: t.name,
+    doc: t.doc,
+  });
+  const empleados: CajaTerceroDTO[] = data.empleados.map(toTercero);
+  const proveedores: CajaTerceroDTO[] = data.proveedores.map(toTercero);
 
   return (
     <CajaClient
@@ -76,6 +95,8 @@ export default async function CajaPage() {
       session={sessionDto}
       movimientos={movimientos}
       reasons={reasons}
+      empleados={empleados}
+      proveedores={proveedores}
       isOwner={session.app_role === 'owner'}
     />
   );

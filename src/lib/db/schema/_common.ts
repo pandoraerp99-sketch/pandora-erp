@@ -170,6 +170,16 @@ export const CASH_MOVEMENT_TYPES = [
 ] as const;
 export type CashMovementType = (typeof CASH_MOVEMENT_TYPES)[number];
 
+// Terceros = beneficiarios de un egreso de caja (comprobante de egreso).
+// F0 minimal: solo nombre (+ CUIT opcional para proveedor). NO payroll, NO
+// cuenta corriente (eso es RRHH / módulo compras F1+ = NON-GOAL en F0).
+export const TERCERO_TYPES = ['empleado', 'proveedor'] as const;
+export type TerceroType = (typeof TERCERO_TYPES)[number];
+
+// Tipo de beneficiario que pide un concepto de retiro. 'ninguno' = no pide tercero.
+export const BENEFICIARIO_TIPOS = ['ninguno', 'empleado', 'proveedor'] as const;
+export type BeneficiarioTipo = (typeof BENEFICIARIO_TIPOS)[number];
+
 /**
  * Umbral de descuadre (en ARS, scale 4) para escalar severidad de incidente:
  * - Descuadre absoluto > DESCUADRE_HIGH_THRESHOLD_ARS → S2 (OPERATIONAL-SEVERITY)

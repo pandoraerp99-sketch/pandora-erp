@@ -1,22 +1,27 @@
 'use client';
 
 /**
- * CajaClient — UI de la caja (port del mockup public/caja.html a React).
+ * CajaClient — UI de la caja (port del mockup a React).
  *
- * Slice 1: barra de sesión (real) + "Últimos movimientos" (ventas reales del día).
- * Slice 3 (este): interacción real — abrir caja, alivios (ingreso/retiro/pago a
- * proveedor) y cierre con descuadre, todo wireado a las server actions (actions.ts)
- * que llaman al dominio de caja ya testeado (src/lib/cash).
+ * - Barra de sesión + operaciones (abrir / ingreso / alivio / retiro-gasto / cierre).
+ * - **Retiro/Gasto estructurado** (comprobante de egreso): el cajero SELECCIONA el
+ *   concepto (no lo tipea) y, si el concepto pide beneficiario, elige el tercero
+ *   (empleado/proveedor) o "Otro" y escribe el nombre; las notas van aparte. El
+ *   dueño administra conceptos y beneficiarios (gate owner server-side).
+ * - **Últimos movimientos** buscable: por nombre de cliente, rango de monto y
+ *   medios (multi-select), con contador y "limpiar".
+ * - Reclasificar medio de una venta (ADR-0026).
  *
- * Los medios se muestran con la taxonomía REAL del backend
- * (efectivo/débito/crédito/tarjeta/mp_qr/mixto); la separación débito/crédito del
- * arqueo (A-26, caja/reporting no fiscal) ya está en el enum.
- *
- * Estilo Dawn Sky (glass sobre gradiente amanecer), coherente con el mockup.
+ * Estilo Dawn Sky (glass sobre gradiente amanecer).
  */
 import { Fragment, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { CashMovementType, SalePaymentMethod } from '@/lib/db/schema/_common';
+import type {
+  BeneficiarioTipo,
+  CashMovementType,
+  SalePaymentMethod,
+  TerceroType,
+} from '@/lib/db/schema/_common';
 import {
   openSessionAction,
   registerMovementAction,
@@ -25,6 +30,9 @@ import {
   createReasonAction,
   updateReasonAction,
   deactivateReasonAction,
+  createTerceroAction,
+  updateTerceroAction,
+  deactivateTerceroAction,
 } from './actions';
 
 export interface CajaSessionDTO {
@@ -48,6 +56,14 @@ export interface CajaMovimientoDTO {
 export interface CajaReasonDTO {
   id: string;
   label: string;
+  beneficiarioTipo: BeneficiarioTipo;
+}
+
+export interface CajaTerceroDTO {
+  id: string;
+  type: TerceroType;
+  name: string;
+  doc: string | null;
 }
 
 interface CajaClientProps {
@@ -56,11 +72,13 @@ interface CajaClientProps {
   session: CajaSessionDTO | null;
   movimientos: CajaMovimientoDTO[];
   reasons: CajaReasonDTO[];
+  empleados: CajaTerceroDTO[];
+  proveedores: CajaTerceroDTO[];
   isOwner: boolean;
 }
 
-/** Valor sentinela para el motivo "Otros" (aclaración libre obligatoria). */
-const OTROS_REASON = '__otros__';
+/** Sentinela: el beneficiario no está en la lista → nombre libre. */
+const OTRO_PAYEE = '__otro__';
 
 const MEDIOS: Record<string, { label: string; color: string }> = {
   efectivo: { label: 'Efectivo', color: '#34c77d' },
@@ -71,7 +89,6 @@ const MEDIOS: Record<string, { label: string; color: string }> = {
   mixto: { label: 'Mixto', color: '#9088ff' },
 };
 
-/** Medios elegibles al reclasificar una venta mal cargada (ADR-0026). */
 const RECLASS_OPTIONS: Array<{ key: SalePaymentMethod; label: string }> = [
   { key: 'efectivo', label: 'Efectivo' },
   { key: 'debito', label: 'Débito' },
@@ -79,16 +96,30 @@ const RECLASS_OPTIONS: Array<{ key: SalePaymentMethod; label: string }> = [
   { key: 'mp_qr', label: 'QR / MP' },
 ];
 
-// Alivio (withdraw) = extracción a caja fuerte/banco, va APARTE. Retiro/Gasto
-// (provider_payment) = egreso de caja con MOTIVO del catálogo. Ingreso = deposit.
+// Alivio (withdraw) = extracción a caja fuerte/banco, aparte. Retiro/Gasto
+// (provider_payment) = egreso CON concepto + beneficiario. Ingreso = deposit.
 const MOV_TYPES: Array<{ key: CashMovementType; label: string; hint: string; tone: 'green' | 'red' }> = [
   { key: 'deposit', label: 'Ingreso', hint: 'Aporte de efectivo a la caja', tone: 'green' },
   { key: 'withdraw', label: 'Alivio', hint: 'Extracción a caja fuerte / banco', tone: 'red' },
-  { key: 'provider_payment', label: 'Retiro / Gasto', hint: 'Pago desde caja (con motivo)', tone: 'red' },
+  { key: 'provider_payment', label: 'Retiro / Gasto', hint: 'Pago desde caja (concepto + a quién)', tone: 'red' },
 ];
 
-function money(raw: string): string {
-  const n = Math.round(parseFloat(raw || '0'));
+const BENEF_TIPOS: Array<{ key: BeneficiarioTipo; label: string }> = [
+  { key: 'ninguno', label: 'Sin beneficiario' },
+  { key: 'empleado', label: 'Empleado' },
+  { key: 'proveedor', label: 'Proveedor' },
+];
+
+const MEDIO_FILTERS: Array<{ key: string; label: string }> = [
+  { key: 'efectivo', label: 'Efectivo' },
+  { key: 'debito', label: 'Débito' },
+  { key: 'credito', label: 'Crédito' },
+  { key: 'mp_qr', label: 'QR / MP' },
+  { key: 'mixto', label: 'Mixto' },
+];
+
+function money(raw: string | number): string {
+  const n = Math.round(typeof raw === 'number' ? raw : parseFloat(raw || '0'));
   return '$ ' + (Number.isFinite(n) ? n : 0).toLocaleString('es-AR');
 }
 
@@ -105,174 +136,206 @@ function medioOf(m: string | null): { label: string; color: string } {
   return MEDIOS[m] ?? { label: m, color: '#7681a0' };
 }
 
+function benefLabel(t: BeneficiarioTipo): string {
+  return t === 'empleado' ? 'Empleado' : t === 'proveedor' ? 'Proveedor' : '—';
+}
+
 export function CajaClient({
   cashierName,
   salePointLabel,
   session,
   movimientos,
   reasons,
+  empleados,
+  proveedores,
   isOwner,
 }: CajaClientProps) {
   const router = useRouter();
-  const [medioFilter, setMedioFilter] = useState<string>('todos');
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
 
-  // Formulario abrir caja
+  // Abrir caja
   const [openAmount, setOpenAmount] = useState('');
 
-  // Formulario movimiento manual. movType null = ningún form abierto.
+  // Movimiento manual
   const [movType, setMovType] = useState<CashMovementType | null>(null);
   const [movAmount, setMovAmount] = useState('');
-  const [movReason, setMovReason] = useState('');
-  // Motivo elegido para Retiro/Gasto (provider_payment): id del catálogo u OTROS.
-  const [movReasonId, setMovReasonId] = useState<string | null>(null);
+  const [movNote, setMovNote] = useState(''); // nota (ingreso/alivio) o notas (retiro)
+  const [movConceptId, setMovConceptId] = useState<string | null>(null);
+  const [movPayeeId, setMovPayeeId] = useState<string | null>(null); // id | OTRO_PAYEE
+  const [movPayeeName, setMovPayeeName] = useState(''); // nombre libre para "Otro"
+  const [payeeSearch, setPayeeSearch] = useState('');
 
-  // Panel de administración de motivos (solo dueño).
-  const [managing, setManaging] = useState(false);
+  // Panel de administración (solo dueño): 'none' | 'motivos' | 'terceros'
+  const [managePanel, setManagePanel] = useState<'none' | 'motivos' | 'terceros'>('none');
+  // Motivos
   const [newReasonLabel, setNewReasonLabel] = useState('');
+  const [newReasonTipo, setNewReasonTipo] = useState<BeneficiarioTipo>('ninguno');
   const [editReasonId, setEditReasonId] = useState<string | null>(null);
   const [editReasonLabel, setEditReasonLabel] = useState('');
+  const [editReasonTipo, setEditReasonTipo] = useState<BeneficiarioTipo>('ninguno');
+  // Terceros
+  const [terceroTab, setTerceroTab] = useState<TerceroType>('empleado');
+  const [newTerceroName, setNewTerceroName] = useState('');
+  const [newTerceroDoc, setNewTerceroDoc] = useState('');
+  const [editTerceroId, setEditTerceroId] = useState<string | null>(null);
+  const [editTerceroName, setEditTerceroName] = useState('');
+  const [editTerceroDoc, setEditTerceroDoc] = useState('');
 
-  // Formulario cierre
+  // Cierre
   const [closing, setClosing] = useState(false);
   const [countedAmount, setCountedAmount] = useState('');
   const [closeReason, setCloseReason] = useState('');
 
-  // Reclasificar medio de una venta (ADR-0026). reclassSaleId = fila abierta.
+  // Reclasificar medio (ADR-0026)
   const [reclassSaleId, setReclassSaleId] = useState<string | null>(null);
   const [reclassMethod, setReclassMethod] = useState<SalePaymentMethod | null>(null);
   const [reclassReason, setReclassReason] = useState('');
 
-  const totalDia = useMemo(
-    () => movimientos.reduce((acc, m) => acc + Math.round(parseFloat(m.total || '0')), 0),
-    [movimientos]
-  );
+  // Filtros de "Últimos movimientos"
+  const [search, setSearch] = useState('');
+  const [amountMin, setAmountMin] = useState('');
+  const [amountMax, setAmountMax] = useState('');
+  const [medioSel, setMedioSel] = useState<Set<string>>(new Set());
 
-  const visibles = useMemo(
-    () =>
-      medioFilter === 'todos'
-        ? movimientos
-        : movimientos.filter((m) => (m.method ?? 'sin') === medioFilter),
-    [movimientos, medioFilter]
-  );
+  // ── Derivados del retiro/gasto ─────────────────────────────────
+  const concept = movConceptId ? reasons.find((r) => r.id === movConceptId) ?? null : null;
+  const needsPayee = !!concept && concept.beneficiarioTipo !== 'ninguno';
+  const payeeList = useMemo(() => {
+    if (!concept || concept.beneficiarioTipo === 'ninguno') return [];
+    return concept.beneficiarioTipo === 'empleado' ? empleados : proveedores;
+  }, [concept, empleados, proveedores]);
+  const payeeVisible = useMemo(() => {
+    const q = payeeSearch.trim().toLowerCase();
+    return q ? payeeList.filter((p) => p.name.toLowerCase().includes(q)) : payeeList;
+  }, [payeeList, payeeSearch]);
 
-  const filterChips: Array<{ key: string; label: string }> = [
-    { key: 'todos', label: 'Todos los medios' },
-    { key: 'efectivo', label: 'Efectivo' },
-    { key: 'debito', label: 'Débito' },
-    { key: 'credito', label: 'Crédito' },
-    { key: 'mp_qr', label: 'QR / MP' },
-    { key: 'mixto', label: 'Mixto' },
-  ];
+  /** Arma el payload del movimiento, o null si el form está incompleto. */
+  function buildMovementPayload():
+    | Parameters<typeof registerMovementAction>[0]
+    | null {
+    if (!session || !movType) return null;
+    const amount = movAmount.trim();
+    if (amount.length === 0) return null;
+    const base = { sessionId: session.id, type: movType, amount };
 
-  async function handleOpen() {
-    if (busy) return;
-    setBusy(true);
-    setFeedback(null);
-    const res = await openSessionAction({ initialAmount: openAmount.trim() });
-    setBusy(false);
-    if (res.ok) {
-      setOpenAmount('');
-      setFeedback({ tone: 'ok', text: 'Caja abierta.' });
-      router.refresh();
-    } else {
-      setFeedback({ tone: 'err', text: res.error });
-    }
-  }
-
-  /** Reason efectivo según el tipo de movimiento (null = form incompleto). */
-  function resolveMovReason(): string | null {
-    if (movType === 'provider_payment') {
-      // Retiro/Gasto: motivo del catálogo, u "Otros" con aclaración obligatoria.
-      if (movReasonId === OTROS_REASON) {
-        const t = movReason.trim();
-        return t.length > 0 ? t : null;
-      }
-      const picked = reasons.find((r) => r.id === movReasonId);
-      return picked ? picked.label : null;
+    if (movType === 'deposit') {
+      const note = movNote.trim();
+      if (note.length === 0) return null; // ingreso: nota obligatoria
+      return { ...base, reason: note };
     }
     if (movType === 'withdraw') {
-      // Alivio: nota opcional, default "Alivio de caja".
-      return movReason.trim() || 'Alivio de caja';
+      return { ...base, reason: movNote.trim() || 'Alivio de caja' };
     }
-    // Ingreso: nota obligatoria.
-    const t = movReason.trim();
-    return t.length > 0 ? t : null;
+    // provider_payment (retiro/gasto): concepto + beneficiario + notas
+    if (!concept) return null;
+    const notes = movNote.trim() || null;
+    if (!needsPayee) {
+      return { ...base, reason: concept.label, conceptId: concept.id, notes };
+    }
+    if (movPayeeId === OTRO_PAYEE) {
+      const name = movPayeeName.trim();
+      if (name.length === 0) return null; // "Otro": nombre obligatorio
+      return {
+        ...base,
+        reason: concept.label,
+        conceptId: concept.id,
+        payeeId: null,
+        payeeType: concept.beneficiarioTipo,
+        payeeName: name,
+        notes,
+      };
+    }
+    const tercero = payeeList.find((p) => p.id === movPayeeId);
+    if (!tercero) return null; // beneficiario no elegido
+    return {
+      ...base,
+      reason: concept.label,
+      conceptId: concept.id,
+      payeeId: tercero.id,
+      payeeType: tercero.type,
+      payeeName: tercero.name,
+      notes,
+    };
+  }
+  const movValid = buildMovementPayload() !== null;
+
+  function resetMovForm() {
+    setMovType(null);
+    setMovAmount('');
+    setMovNote('');
+    setMovConceptId(null);
+    setMovPayeeId(null);
+    setMovPayeeName('');
+    setPayeeSearch('');
+  }
+
+  // ── Filtro de movimientos ──────────────────────────────────────
+  const visibles = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const min = amountMin.trim() ? parseFloat(amountMin) : null;
+    const max = amountMax.trim() ? parseFloat(amountMax) : null;
+    return movimientos.filter((m) => {
+      if (q) {
+        const name = (m.customerName ?? 'consumidor final').toLowerCase();
+        if (!name.includes(q)) return false;
+      }
+      const total = parseFloat(m.total || '0');
+      if (min !== null && Number.isFinite(min) && total < min) return false;
+      if (max !== null && Number.isFinite(max) && total > max) return false;
+      if (medioSel.size > 0 && !medioSel.has(m.method ?? 'sin')) return false;
+      return true;
+    });
+  }, [movimientos, search, amountMin, amountMax, medioSel]);
+
+  const visiblesTotal = useMemo(
+    () => visibles.reduce((acc, m) => acc + Math.round(parseFloat(m.total || '0')), 0),
+    [visibles]
+  );
+  const filtersActive =
+    search.trim() !== '' || amountMin.trim() !== '' || amountMax.trim() !== '' || medioSel.size > 0;
+
+  function clearFilters() {
+    setSearch('');
+    setAmountMin('');
+    setAmountMax('');
+    setMedioSel(new Set());
+  }
+  function toggleMedio(key: string) {
+    setMedioSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  // ── Handlers ───────────────────────────────────────────────────
+  async function run(fn: () => Promise<{ ok: boolean; error?: string }>, okMsg: string) {
+    if (busy) return false;
+    setBusy(true);
+    setFeedback(null);
+    const res = await fn();
+    setBusy(false);
+    if (res.ok) {
+      setFeedback({ tone: 'ok', text: okMsg });
+      router.refresh();
+      return true;
+    }
+    setFeedback({ tone: 'err', text: res.error ?? 'Error' });
+    return false;
+  }
+
+  async function handleOpen() {
+    const ok = await run(() => openSessionAction({ initialAmount: openAmount.trim() }), 'Caja abierta.');
+    if (ok) setOpenAmount('');
   }
 
   async function handleMovement() {
-    if (busy || !session || !movType) return;
-    const reason = resolveMovReason();
-    if (reason === null) return; // form incompleto (motivo/aclaración faltante)
-    setBusy(true);
-    setFeedback(null);
-    const res = await registerMovementAction({
-      sessionId: session.id,
-      type: movType,
-      amount: movAmount.trim(),
-      reason,
-    });
-    setBusy(false);
-    if (res.ok) {
-      setMovType(null);
-      setMovAmount('');
-      setMovReason('');
-      setMovReasonId(null);
-      setFeedback({ tone: 'ok', text: 'Movimiento registrado.' });
-      router.refresh();
-    } else {
-      setFeedback({ tone: 'err', text: res.error });
-    }
-  }
-
-  async function handleCreateReason() {
-    if (busy) return;
-    const label = newReasonLabel.trim();
-    if (label.length === 0) return;
-    setBusy(true);
-    setFeedback(null);
-    const res = await createReasonAction({ label });
-    setBusy(false);
-    if (res.ok) {
-      setNewReasonLabel('');
-      setFeedback({ tone: 'ok', text: 'Motivo agregado.' });
-      router.refresh();
-    } else {
-      setFeedback({ tone: 'err', text: res.error });
-    }
-  }
-
-  async function handleRenameReason() {
-    if (busy || !editReasonId) return;
-    const label = editReasonLabel.trim();
-    if (label.length === 0) return;
-    setBusy(true);
-    setFeedback(null);
-    const res = await updateReasonAction({ id: editReasonId, label });
-    setBusy(false);
-    if (res.ok) {
-      setEditReasonId(null);
-      setEditReasonLabel('');
-      setFeedback({ tone: 'ok', text: 'Motivo renombrado.' });
-      router.refresh();
-    } else {
-      setFeedback({ tone: 'err', text: res.error });
-    }
-  }
-
-  async function handleDeactivateReason(id: string) {
-    if (busy) return;
-    setBusy(true);
-    setFeedback(null);
-    const res = await deactivateReasonAction({ id });
-    setBusy(false);
-    if (res.ok) {
-      setFeedback({ tone: 'ok', text: 'Motivo dado de baja.' });
-      router.refresh();
-    } else {
-      setFeedback({ tone: 'err', text: res.error });
-    }
+    const payload = buildMovementPayload();
+    if (!payload) return;
+    const ok = await run(() => registerMovementAction(payload), 'Movimiento registrado.');
+    if (ok) resetMovForm();
   }
 
   async function handleClose() {
@@ -286,51 +349,92 @@ export function CajaClient({
     });
     setBusy(false);
     if (res.ok) {
-      const d = res.data;
       setClosing(false);
       setCountedAmount('');
       setCloseReason('');
       setFeedback({
         tone: 'ok',
-        text: `Caja cerrada. Descuadre: ${money(d.descuadre)} · ${d.severity_label}.`,
+        text: `Caja cerrada. Descuadre: ${money(res.data.descuadre)} · ${res.data.severity_label}.`,
       });
       router.refresh();
     } else {
       setFeedback({ tone: 'err', text: res.error });
     }
-  }
-
-  function openReclass(saleId: string) {
-    setReclassSaleId(saleId);
-    setReclassMethod(null);
-    setReclassReason('');
-    setFeedback(null);
   }
 
   async function handleReclassify() {
-    if (busy || !reclassSaleId || !reclassMethod) return;
-    setBusy(true);
-    setFeedback(null);
-    const res = await reclassifyPaymentAction({
-      saleId: reclassSaleId,
-      newMethod: reclassMethod,
-      reason: reclassReason.trim(),
-    });
-    setBusy(false);
-    if (res.ok) {
-      const d = res.data;
+    if (!reclassSaleId || !reclassMethod) return;
+    const ok = await run(
+      () =>
+        reclassifyPaymentAction({
+          saleId: reclassSaleId,
+          newMethod: reclassMethod,
+          reason: reclassReason.trim(),
+        }),
+      'Medio corregido.'
+    );
+    if (ok) {
       setReclassSaleId(null);
       setReclassMethod(null);
       setReclassReason('');
-      setFeedback({
-        tone: 'ok',
-        text: `Medio corregido: ${medioOf(d.from_method).label} → ${medioOf(d.to_method).label}.`,
-      });
-      router.refresh();
-    } else {
-      setFeedback({ tone: 'err', text: res.error });
     }
   }
+
+  // Motivos (owner)
+  async function handleCreateReason() {
+    const label = newReasonLabel.trim();
+    if (label.length === 0) return;
+    const ok = await run(
+      () => createReasonAction({ label, beneficiarioTipo: newReasonTipo }),
+      'Motivo agregado.'
+    );
+    if (ok) {
+      setNewReasonLabel('');
+      setNewReasonTipo('ninguno');
+    }
+  }
+  async function handleRenameReason() {
+    if (!editReasonId) return;
+    const label = editReasonLabel.trim();
+    if (label.length === 0) return;
+    const ok = await run(
+      () => updateReasonAction({ id: editReasonId, label, beneficiarioTipo: editReasonTipo }),
+      'Motivo actualizado.'
+    );
+    if (ok) setEditReasonId(null);
+  }
+  async function handleDeactivateReason(id: string) {
+    await run(() => deactivateReasonAction({ id }), 'Motivo dado de baja.');
+  }
+
+  // Terceros (owner)
+  async function handleCreateTercero() {
+    const name = newTerceroName.trim();
+    if (name.length === 0) return;
+    const ok = await run(
+      () => createTerceroAction({ type: terceroTab, name, doc: newTerceroDoc.trim() || null }),
+      'Beneficiario agregado.'
+    );
+    if (ok) {
+      setNewTerceroName('');
+      setNewTerceroDoc('');
+    }
+  }
+  async function handleRenameTercero() {
+    if (!editTerceroId) return;
+    const name = editTerceroName.trim();
+    if (name.length === 0) return;
+    const ok = await run(
+      () => updateTerceroAction({ id: editTerceroId, name, doc: editTerceroDoc.trim() || null }),
+      'Beneficiario actualizado.'
+    );
+    if (ok) setEditTerceroId(null);
+  }
+  async function handleDeactivateTercero(id: string) {
+    await run(() => deactivateTerceroAction({ id }), 'Beneficiario dado de baja.');
+  }
+
+  const terceroList = terceroTab === 'empleado' ? empleados : proveedores;
 
   return (
     <div className="caja-root">
@@ -344,9 +448,7 @@ export function CajaClient({
       </header>
 
       <main className="caja-main">
-        {feedback && (
-          <div className={'caja-feedback ' + feedback.tone}>{feedback.text}</div>
-        )}
+        {feedback && <div className={'caja-feedback ' + feedback.tone}>{feedback.text}</div>}
 
         {/* Barra de sesión */}
         {session ? (
@@ -396,7 +498,7 @@ export function CajaClient({
           </section>
         )}
 
-        {/* Operaciones de caja (alivios + cierre) — sólo con sesión abierta */}
+        {/* Operaciones — sólo con sesión abierta */}
         {session && (
           <section className="glass ops">
             <div className="ops-head">
@@ -404,18 +506,32 @@ export function CajaClient({
               {!closing && (
                 <div className="ops-head-actions">
                   {isOwner && (
-                    <button
-                      className={'btn ghost' + (managing ? ' on' : '')}
-                      type="button"
-                      disabled={busy}
-                      onClick={() => {
-                        setManaging((v) => !v);
-                        setEditReasonId(null);
-                        setFeedback(null);
-                      }}
-                    >
-                      {managing ? 'Cerrar motivos' : 'Administrar motivos'}
-                    </button>
+                    <>
+                      <button
+                        className={'btn ghost' + (managePanel === 'motivos' ? ' on' : '')}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => {
+                          setManagePanel((p) => (p === 'motivos' ? 'none' : 'motivos'));
+                          setEditReasonId(null);
+                          setFeedback(null);
+                        }}
+                      >
+                        Motivos
+                      </button>
+                      <button
+                        className={'btn ghost' + (managePanel === 'terceros' ? ' on' : '')}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => {
+                          setManagePanel((p) => (p === 'terceros' ? 'none' : 'terceros'));
+                          setEditTerceroId(null);
+                          setFeedback(null);
+                        }}
+                      >
+                        Beneficiarios
+                      </button>
+                    </>
                   )}
                   <button
                     className="btn ghost danger"
@@ -423,8 +539,8 @@ export function CajaClient({
                     disabled={busy}
                     onClick={() => {
                       setClosing(true);
-                      setMovType(null);
-                      setManaging(false);
+                      resetMovForm();
+                      setManagePanel('none');
                       setFeedback(null);
                     }}
                   >
@@ -434,20 +550,18 @@ export function CajaClient({
               )}
             </div>
 
-            {/* Panel de administración de motivos (solo dueño) */}
-            {isOwner && managing && !closing && (
-              <div className="op-form reasons-mgr">
+            {/* Panel: administrar MOTIVOS (dueño) */}
+            {isOwner && managePanel === 'motivos' && !closing && (
+              <div className="op-form">
                 <div className="op-form-title">Motivos de retiro / gasto</div>
                 <p className="op-form-hint">
-                  Estos motivos aparecen al registrar un Retiro / Gasto. Solo vos (dueño)
-                  podés agregarlos, renombrarlos o darlos de baja.
+                  El cajero elige el concepto de esta lista. El "tipo de beneficiario" define
+                  a quién se le pide seleccionar (empleado / proveedor) al registrar el gasto.
                 </p>
-                <ul className="reasons-list">
-                  {reasons.length === 0 && (
-                    <li className="reasons-empty">No hay motivos. Agregá el primero abajo.</li>
-                  )}
+                <ul className="mgr-list">
+                  {reasons.length === 0 && <li className="mgr-empty">No hay motivos todavía.</li>}
                   {reasons.map((r) => (
-                    <li key={r.id} className="reason-item">
+                    <li key={r.id} className="mgr-item">
                       {editReasonId === r.id ? (
                         <>
                           <input
@@ -455,6 +569,15 @@ export function CajaClient({
                             value={editReasonLabel}
                             onChange={(e) => setEditReasonLabel(e.target.value)}
                           />
+                          <select
+                            className="fld-in sel"
+                            value={editReasonTipo}
+                            onChange={(e) => setEditReasonTipo(e.target.value as BeneficiarioTipo)}
+                          >
+                            {BENEF_TIPOS.map((b) => (
+                              <option key={b.key} value={b.key}>{b.label}</option>
+                            ))}
+                          </select>
                           <button className="btn primary sm" type="button" disabled={busy} onClick={handleRenameReason}>
                             Guardar
                           </button>
@@ -464,7 +587,8 @@ export function CajaClient({
                         </>
                       ) : (
                         <>
-                          <span className="reason-label">{r.label}</span>
+                          <span className="mgr-name">{r.label}</span>
+                          <span className="mgr-tag">{benefLabel(r.beneficiarioTipo)}</span>
                           <button
                             className="btn ghost sm"
                             type="button"
@@ -472,30 +596,35 @@ export function CajaClient({
                             onClick={() => {
                               setEditReasonId(r.id);
                               setEditReasonLabel(r.label);
+                              setEditReasonTipo(r.beneficiarioTipo);
                             }}
                           >
-                            Renombrar
+                            Editar
                           </button>
-                          <button
-                            className="btn ghost sm danger"
-                            type="button"
-                            disabled={busy}
-                            onClick={() => handleDeactivateReason(r.id)}
-                          >
-                            Dar de baja
+                          <button className="btn ghost sm danger" type="button" disabled={busy} onClick={() => handleDeactivateReason(r.id)}>
+                            Baja
                           </button>
                         </>
                       )}
                     </li>
                   ))}
                 </ul>
-                <div className="reason-add">
+                <div className="mgr-add">
                   <input
                     className="fld-in"
                     placeholder="Nuevo motivo (ej: Pago de servicios)"
                     value={newReasonLabel}
                     onChange={(e) => setNewReasonLabel(e.target.value)}
                   />
+                  <select
+                    className="fld-in sel"
+                    value={newReasonTipo}
+                    onChange={(e) => setNewReasonTipo(e.target.value as BeneficiarioTipo)}
+                  >
+                    {BENEF_TIPOS.map((b) => (
+                      <option key={b.key} value={b.key}>{b.label}</option>
+                    ))}
+                  </select>
                   <button
                     className="btn primary sm"
                     type="button"
@@ -508,12 +637,112 @@ export function CajaClient({
               </div>
             )}
 
+            {/* Panel: administrar BENEFICIARIOS (dueño) */}
+            {isOwner && managePanel === 'terceros' && !closing && (
+              <div className="op-form">
+                <div className="op-form-title">Beneficiarios</div>
+                <p className="op-form-hint">
+                  Empleados y proveedores a los que se les paga desde la caja. Solo una lista de
+                  nombres para atribuir el gasto (no es liquidación de sueldos ni cuenta corriente).
+                </p>
+                <div className="mgr-tabs">
+                  {(['empleado', 'proveedor'] as TerceroType[]).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      className={'mgr-tab' + (terceroTab === t ? ' on' : '')}
+                      onClick={() => {
+                        setTerceroTab(t);
+                        setEditTerceroId(null);
+                      }}
+                    >
+                      {t === 'empleado' ? 'Empleados' : 'Proveedores'}
+                    </button>
+                  ))}
+                </div>
+                <ul className="mgr-list">
+                  {terceroList.length === 0 && (
+                    <li className="mgr-empty">
+                      No hay {terceroTab === 'empleado' ? 'empleados' : 'proveedores'} todavía.
+                    </li>
+                  )}
+                  {terceroList.map((t) => (
+                    <li key={t.id} className="mgr-item">
+                      {editTerceroId === t.id ? (
+                        <>
+                          <input
+                            className="fld-in"
+                            value={editTerceroName}
+                            onChange={(e) => setEditTerceroName(e.target.value)}
+                          />
+                          <input
+                            className="fld-in"
+                            placeholder="CUIT/doc (opcional)"
+                            value={editTerceroDoc}
+                            onChange={(e) => setEditTerceroDoc(e.target.value)}
+                          />
+                          <button className="btn primary sm" type="button" disabled={busy} onClick={handleRenameTercero}>
+                            Guardar
+                          </button>
+                          <button className="btn ghost sm" type="button" disabled={busy} onClick={() => setEditTerceroId(null)}>
+                            Cancelar
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="mgr-name">{t.name}</span>
+                          {t.doc && <span className="mgr-tag">{t.doc}</span>}
+                          <button
+                            className="btn ghost sm"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              setEditTerceroId(t.id);
+                              setEditTerceroName(t.name);
+                              setEditTerceroDoc(t.doc ?? '');
+                            }}
+                          >
+                            Editar
+                          </button>
+                          <button className="btn ghost sm danger" type="button" disabled={busy} onClick={() => handleDeactivateTercero(t.id)}>
+                            Baja
+                          </button>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mgr-add">
+                  <input
+                    className="fld-in"
+                    placeholder={terceroTab === 'empleado' ? 'Nombre del empleado' : 'Nombre del proveedor'}
+                    value={newTerceroName}
+                    onChange={(e) => setNewTerceroName(e.target.value)}
+                  />
+                  <input
+                    className="fld-in"
+                    placeholder="CUIT/doc (opcional)"
+                    value={newTerceroDoc}
+                    onChange={(e) => setNewTerceroDoc(e.target.value)}
+                  />
+                  <button
+                    className="btn primary sm"
+                    type="button"
+                    disabled={busy || newTerceroName.trim().length === 0}
+                    onClick={handleCreateTercero}
+                  >
+                    Agregar
+                  </button>
+                </div>
+              </div>
+            )}
+
             {closing ? (
               <div className="op-form">
                 <div className="op-form-title">Cierre de caja</div>
                 <p className="op-form-hint">
-                  Contá el efectivo físico en el cajón. El sistema calcula lo esperado
-                  (fondo + ventas en efectivo + movimientos) y muestra el descuadre.
+                  Contá el efectivo físico en el cajón. El sistema calcula lo esperado (fondo +
+                  ventas en efectivo + movimientos) y muestra el descuadre.
                 </p>
                 <label className="fld">
                   <span className="fld-k">Efectivo contado</span>
@@ -553,11 +782,12 @@ export function CajaClient({
                       className={'mov-btn' + (movType === t.key ? ' on' : '')}
                       disabled={busy}
                       onClick={() => {
-                        setMovType(movType === t.key ? null : t.key);
-                        setMovAmount('');
-                        setMovReason('');
-                        setMovReasonId(null);
-                        setManaging(false);
+                        if (movType === t.key) resetMovForm();
+                        else {
+                          resetMovForm();
+                          setMovType(t.key);
+                        }
+                        setManagePanel('none');
                         setFeedback(null);
                       }}
                     >
@@ -570,9 +800,7 @@ export function CajaClient({
 
                 {movType && (
                   <div className="op-form">
-                    <div className="op-form-title">
-                      {MOV_TYPES.find((t) => t.key === movType)?.label}
-                    </div>
+                    <div className="op-form-title">{MOV_TYPES.find((t) => t.key === movType)?.label}</div>
                     <label className="fld">
                       <span className="fld-k">Monto</span>
                       <input
@@ -585,38 +813,95 @@ export function CajaClient({
                     </label>
 
                     {movType === 'provider_payment' ? (
-                      <div className="fld">
-                        <span className="fld-k">Motivo (obligatorio)</span>
-                        <div className="reclass-chips">
-                          {reasons.map((r) => (
-                            <button
-                              key={r.id}
-                              type="button"
-                              className={'reclass-chip' + (movReasonId === r.id ? ' on' : '')}
-                              disabled={busy}
-                              onClick={() => setMovReasonId(r.id)}
-                            >
-                              {r.label}
-                            </button>
-                          ))}
-                          <button
-                            type="button"
-                            className={'reclass-chip' + (movReasonId === OTROS_REASON ? ' on' : '')}
-                            disabled={busy}
-                            onClick={() => setMovReasonId(OTROS_REASON)}
-                          >
-                            Otros
-                          </button>
+                      <>
+                        {/* Concepto (seleccionar, no tipear) */}
+                        <div className="fld">
+                          <span className="fld-k">Concepto (obligatorio)</span>
+                          <div className="reclass-chips">
+                            {reasons.map((r) => (
+                              <button
+                                key={r.id}
+                                type="button"
+                                className={'reclass-chip' + (movConceptId === r.id ? ' on' : '')}
+                                disabled={busy}
+                                onClick={() => {
+                                  setMovConceptId(r.id);
+                                  setMovPayeeId(null);
+                                  setMovPayeeName('');
+                                  setPayeeSearch('');
+                                }}
+                              >
+                                {r.label}
+                              </button>
+                            ))}
+                            {reasons.length === 0 && (
+                              <span className="mgr-empty">
+                                No hay conceptos. {isOwner ? 'Agregalos en "Motivos".' : 'Pedile al dueño que los cargue.'}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        {movReasonId === OTROS_REASON && (
-                          <input
-                            className="fld-in reclass-reason"
-                            placeholder="Aclará el motivo (obligatorio)"
-                            value={movReason}
-                            onChange={(e) => setMovReason(e.target.value)}
-                          />
+
+                        {/* Beneficiario (si el concepto lo pide) */}
+                        {needsPayee && (
+                          <div className="fld">
+                            <span className="fld-k">
+                              {concept?.beneficiarioTipo === 'empleado' ? 'Empleado' : 'Proveedor'} (obligatorio)
+                            </span>
+                            {payeeList.length > 6 && (
+                              <input
+                                className="fld-in"
+                                placeholder="Buscar…"
+                                value={payeeSearch}
+                                onChange={(e) => setPayeeSearch(e.target.value)}
+                              />
+                            )}
+                            <div className="reclass-chips">
+                              {payeeVisible.map((p) => (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  className={'reclass-chip' + (movPayeeId === p.id ? ' on' : '')}
+                                  disabled={busy}
+                                  onClick={() => setMovPayeeId(p.id)}
+                                >
+                                  {p.name}
+                                </button>
+                              ))}
+                              <button
+                                type="button"
+                                className={'reclass-chip' + (movPayeeId === OTRO_PAYEE ? ' on' : '')}
+                                disabled={busy}
+                                onClick={() => setMovPayeeId(OTRO_PAYEE)}
+                              >
+                                Otro
+                              </button>
+                            </div>
+                            {movPayeeId === OTRO_PAYEE && (
+                              <input
+                                className="fld-in"
+                                placeholder={
+                                  concept?.beneficiarioTipo === 'empleado'
+                                    ? 'Nombre del empleado (obligatorio)'
+                                    : 'Nombre del proveedor (obligatorio)'
+                                }
+                                value={movPayeeName}
+                                onChange={(e) => setMovPayeeName(e.target.value)}
+                              />
+                            )}
+                          </div>
                         )}
-                      </div>
+
+                        <label className="fld">
+                          <span className="fld-k">Notas (opcional)</span>
+                          <input
+                            className="fld-in"
+                            placeholder="Detalle adicional"
+                            value={movNote}
+                            onChange={(e) => setMovNote(e.target.value)}
+                          />
+                        </label>
+                      </>
                     ) : (
                       <label className="fld">
                         <span className="fld-k">
@@ -624,25 +909,21 @@ export function CajaClient({
                         </span>
                         <input
                           className="fld-in"
-                          placeholder={
-                            movType === 'withdraw'
-                              ? 'Alivio de caja'
-                              : 'Ej: aporte de cambio a la caja'
-                          }
-                          value={movReason}
-                          onChange={(e) => setMovReason(e.target.value)}
+                          placeholder={movType === 'withdraw' ? 'Alivio de caja' : 'Ej: aporte de cambio a la caja'}
+                          value={movNote}
+                          onChange={(e) => setMovNote(e.target.value)}
                         />
                       </label>
                     )}
 
                     <div className="op-actions">
-                      <button className="btn ghost" type="button" disabled={busy} onClick={() => setMovType(null)}>
+                      <button className="btn ghost" type="button" disabled={busy} onClick={resetMovForm}>
                         Cancelar
                       </button>
                       <button
                         className="btn primary"
                         type="button"
-                        disabled={busy || movAmount.trim().length === 0 || resolveMovReason() === null}
+                        disabled={busy || !movValid}
                         onClick={handleMovement}
                       >
                         {busy ? 'Registrando…' : 'Registrar movimiento'}
@@ -655,22 +936,51 @@ export function CajaClient({
           </section>
         )}
 
-        {/* Últimos movimientos (ventas del día) */}
+        {/* Últimos movimientos (ventas del día) — buscable */}
         <section className="glass movimientos">
           <div className="mv-head">
             <h2>Últimos movimientos</h2>
             <span className="mv-total">
-              {movimientos.length} ventas · {money(String(totalDia))}
+              {visibles.length}
+              {filtersActive ? ` / ${movimientos.length}` : ''} ventas · {money(visiblesTotal)}
             </span>
           </div>
 
+          <div className="mv-search">
+            <input
+              className="fld-in"
+              placeholder="Buscar por cliente…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <input
+              className="fld-in mono amt"
+              inputMode="decimal"
+              placeholder="Monto mín."
+              value={amountMin}
+              onChange={(e) => setAmountMin(e.target.value)}
+            />
+            <input
+              className="fld-in mono amt"
+              inputMode="decimal"
+              placeholder="Monto máx."
+              value={amountMax}
+              onChange={(e) => setAmountMax(e.target.value)}
+            />
+            {filtersActive && (
+              <button className="btn ghost sm" type="button" onClick={clearFilters}>
+                Limpiar
+              </button>
+            )}
+          </div>
+
           <div className="mv-filters">
-            {filterChips.map((c) => (
+            {MEDIO_FILTERS.map((c) => (
               <button
                 key={c.key}
                 type="button"
-                className={'mv-chip' + (medioFilter === c.key ? ' on' : '')}
-                onClick={() => setMedioFilter(c.key)}
+                className={'mv-chip' + (medioSel.has(c.key) ? ' on' : '')}
+                onClick={() => toggleMedio(c.key)}
               >
                 {c.label}
               </button>
@@ -681,7 +991,7 @@ export function CajaClient({
             <div className="mv-empty">
               {movimientos.length === 0
                 ? 'Todavía no hay ventas registradas hoy.'
-                : 'Ninguna venta con el medio seleccionado.'}
+                : 'Ninguna venta coincide con la búsqueda.'}
             </div>
           ) : (
             <div className="mv-scroll">
@@ -718,7 +1028,7 @@ export function CajaClient({
                                 type="button"
                                 className="mv-edit"
                                 disabled={busy}
-                                onClick={() => (editing ? setReclassSaleId(null) : openReclass(m.id))}
+                                onClick={() => (editing ? setReclassSaleId(null) : setReclassSaleId(m.id))}
                               >
                                 {editing ? 'Cerrar' : 'Cambiar'}
                               </button>
@@ -729,48 +1039,31 @@ export function CajaClient({
                           <tr className="mv-editor-row">
                             <td colSpan={colCount}>
                               <div className="reclass">
-                                <div className="reclass-title">
-                                  Corregir medio de esta venta
-                                </div>
+                                <div className="reclass-title">Corregir medio de esta venta</div>
                                 <div className="reclass-chips">
-                                  {RECLASS_OPTIONS.filter((o) => o.key !== m.method).map(
-                                    (o) => (
-                                      <button
-                                        key={o.key}
-                                        type="button"
-                                        className={
-                                          'reclass-chip' +
-                                          (reclassMethod === o.key ? ' on' : '')
-                                        }
-                                        disabled={busy}
-                                        onClick={() => setReclassMethod(o.key)}
-                                      >
-                                        {o.label}
-                                      </button>
-                                    )
-                                  )}
+                                  {RECLASS_OPTIONS.filter((o) => o.key !== m.method).map((o) => (
+                                    <button
+                                      key={o.key}
+                                      type="button"
+                                      className={'reclass-chip' + (reclassMethod === o.key ? ' on' : '')}
+                                      disabled={busy}
+                                      onClick={() => setReclassMethod(o.key)}
+                                    >
+                                      {o.label}
+                                    </button>
+                                  ))}
                                 </div>
                                 <input
-                                  className="fld-in reclass-reason"
+                                  className="fld-in"
                                   placeholder="Motivo (obligatorio): ej. abonó en efectivo, marqué débito"
                                   value={reclassReason}
                                   onChange={(e) => setReclassReason(e.target.value)}
                                 />
                                 <div className="op-actions">
-                                  <button
-                                    className="btn ghost"
-                                    type="button"
-                                    disabled={busy}
-                                    onClick={() => setReclassSaleId(null)}
-                                  >
+                                  <button className="btn ghost" type="button" disabled={busy} onClick={() => setReclassSaleId(null)}>
                                     Cancelar
                                   </button>
-                                  <button
-                                    className="btn primary"
-                                    type="button"
-                                    disabled={busy || !reclassMethod}
-                                    onClick={handleReclassify}
-                                  >
+                                  <button className="btn primary" type="button" disabled={busy || !reclassMethod} onClick={handleReclassify}>
                                     {busy ? 'Guardando…' : 'Guardar corrección'}
                                   </button>
                                 </div>
@@ -840,8 +1133,9 @@ const CAJA_CSS = `
 .sc-ic{ font-size:26px; } .sc-title{ font-size:16px; font-weight:700; } .sc-sub{ font-size:12.5px; color:#4a5570; margin-top:3px; }
 .sc-form{ display:flex; align-items:flex-end; gap:14px; flex-wrap:wrap; }
 .ops{ padding:20px 24px; }
-.ops-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+.ops-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; gap:12px; flex-wrap:wrap; }
 .ops-head h2{ margin:0; font-size:16px; font-weight:700; }
+.ops-head-actions{ display:flex; gap:10px; flex-wrap:wrap; }
 .ops-btns{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; }
 .mov-btn{ display:flex; flex-direction:column; align-items:flex-start; gap:3px; text-align:left; padding:13px 15px; cursor:pointer;
   background:rgba(255,255,255,0.45); border:1px solid rgba(13,20,36,0.08); border-radius:14px; transition:all 150ms; }
@@ -861,6 +1155,7 @@ const CAJA_CSS = `
 .fld-in{ font-size:14px; padding:10px 13px; border-radius:11px; border:1px solid rgba(13,20,36,0.14);
   background:rgba(255,255,255,0.9); color:#0d1424; outline:none; transition:border-color 150ms; width:100%; }
 .fld-in:focus{ border-color:#6b5fff; }
+.fld-in.sel{ cursor:pointer; }
 .op-actions{ display:flex; justify-content:flex-end; gap:10px; }
 .btn{ font-size:13px; font-weight:600; padding:10px 18px; border-radius:11px; cursor:pointer; border:1px solid transparent; transition:all 150ms; }
 .btn:disabled{ opacity:0.55; cursor:default; }
@@ -873,20 +1168,27 @@ const CAJA_CSS = `
 .btn.ghost.danger{ color:#c93545; border-color:rgba(201,53,69,0.3); }
 .btn.ghost.on{ background:rgba(107,95,255,0.12); border-color:#6b5fff; color:#5b50f0; }
 .btn.sm{ font-size:11.5px; padding:6px 12px; border-radius:9px; }
-.ops-head-actions{ display:flex; gap:10px; flex-wrap:wrap; }
-.reasons-mgr{ margin-top:0; margin-bottom:14px; }
-.reasons-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
-.reasons-empty{ font-size:12px; color:#7681a0; padding:4px 0; }
-.reason-item{ display:flex; align-items:center; gap:8px; padding:8px 10px; background:rgba(255,255,255,0.55);
-  border:1px solid rgba(13,20,36,0.07); border-radius:11px; }
-.reason-item .fld-in{ flex:1; }
-.reason-label{ flex:1; font-size:13px; font-weight:600; color:#1f2a44; }
-.reason-add{ display:flex; gap:8px; margin-top:4px; }
-.reason-add .fld-in{ flex:1; }
+.mgr-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
+.mgr-empty{ font-size:12px; color:#7681a0; padding:4px 0; }
+.mgr-item{ display:flex; align-items:center; gap:8px; padding:8px 10px; background:rgba(255,255,255,0.55);
+  border:1px solid rgba(13,20,36,0.07); border-radius:11px; flex-wrap:wrap; }
+.mgr-item .fld-in{ flex:1; min-width:120px; }
+.mgr-name{ flex:1; font-size:13px; font-weight:600; color:#1f2a44; min-width:120px; }
+.mgr-tag{ font-size:10.5px; font-weight:600; color:#5b50f0; background:rgba(107,95,255,0.1);
+  padding:3px 9px; border-radius:999px; }
+.mgr-add{ display:flex; gap:8px; margin-top:4px; flex-wrap:wrap; }
+.mgr-add .fld-in{ flex:1; min-width:120px; }
+.mgr-tabs{ display:flex; gap:8px; }
+.mgr-tab{ font-size:12px; font-weight:600; padding:7px 14px; border-radius:999px; cursor:pointer; color:#4a5570;
+  background:rgba(255,255,255,0.5); border:1px solid rgba(13,20,36,0.1); }
+.mgr-tab.on{ background:#6b5fff; color:#fff; border-color:#6b5fff; }
 .movimientos{ padding:20px 24px; }
-.mv-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:14px; }
+.mv-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:14px; gap:12px; flex-wrap:wrap; }
 .mv-head h2{ margin:0; font-size:16px; font-weight:700; }
 .mv-total{ font-family:'JetBrains Mono',ui-monospace,monospace; font-size:12.5px; color:#4a5570; font-weight:600; }
+.mv-search{ display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+.mv-search .fld-in{ flex:1; min-width:150px; }
+.mv-search .fld-in.amt{ flex:0 0 120px; min-width:100px; }
 .mv-filters{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
 .mv-chip{ font-size:11.5px; font-weight:600; padding:6px 12px; border-radius:999px; cursor:pointer; color:#4a5570;
   background:rgba(255,255,255,0.4); border:1px solid rgba(13,20,36,0.08); transition:all 150ms; }
@@ -918,5 +1220,4 @@ const CAJA_CSS = `
 .reclass-chip:hover:not(:disabled){ border-color:rgba(107,95,255,0.4); }
 .reclass-chip.on{ background:#6b5fff; color:#fff; border-color:#6b5fff; }
 .reclass-chip:disabled{ opacity:0.5; cursor:default; }
-.reclass-reason{ max-width:100%; }
 `;

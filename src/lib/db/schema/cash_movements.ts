@@ -56,7 +56,18 @@ export const cash_movements = pgTable(
     amount: numeric('amount', { precision: 19, scale: 4 }).notNull(),
 
     // reason OBLIGATORIO siempre (CHECK constraint + service validation).
+    // Para retiro/gasto = label del concepto; para ingreso/alivio = la nota.
     reason: text('reason').notNull(),
+
+    // ── Egreso estructurado (solo provider_payment / retiro-gasto) ──────────
+    // concept_id/payee_id son FK para agregación futura ("cuánto a cada
+    // proveedor/concepto"); payee_name es snapshot (comprobante + historia
+    // estable ante renombres). payee_id NULL cuando el cajero eligió "Otro".
+    concept_id: uuid('concept_id'),
+    payee_id: uuid('payee_id'),
+    payee_type: text('payee_type'),
+    payee_name: text('payee_name'),
+    notes: text('notes'),
 
     // Quién registró el movimiento — para audit + permisos.
     created_by: uuid('created_by')

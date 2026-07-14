@@ -180,7 +180,7 @@ describe('T-CASH-09 — Schema verification smoke', () => {
   });
 
   describe('cash_movements', () => {
-    it('tabla existe + 8 columnas con tipos esperados', async () => {
+    it('tabla existe + 13 columnas con tipos esperados', async () => {
       const rows = (await db.execute(sql`
         SELECT column_name, data_type, is_nullable
         FROM information_schema.columns
@@ -192,7 +192,9 @@ describe('T-CASH-09 — Schema verification smoke', () => {
         is_nullable: string;
       }>;
 
-      expect(rows).toHaveLength(8);
+      // 8 originales + 5 de egreso estructurado (0019 caja: concept_id,
+      // payee_id, payee_type, payee_name, notes).
+      expect(rows).toHaveLength(13);
       const cols = Object.fromEntries(rows.map((r) => [r.column_name, r]));
       expect(cols['id']?.data_type).toBe('bigint');
       expect(cols['cash_session_id']?.data_type).toBe('uuid');
@@ -208,6 +210,17 @@ describe('T-CASH-09 — Schema verification smoke', () => {
       expect(cols['correlation_id']?.data_type).toBe('uuid');
       expect(cols['correlation_id']?.is_nullable).toBe('YES');
       expect(cols['created_at']?.is_nullable).toBe('NO');
+      // Egreso estructurado (retiro/gasto): todos nullables.
+      expect(cols['concept_id']?.data_type).toBe('uuid');
+      expect(cols['concept_id']?.is_nullable).toBe('YES');
+      expect(cols['payee_id']?.data_type).toBe('uuid');
+      expect(cols['payee_id']?.is_nullable).toBe('YES');
+      expect(cols['payee_type']?.data_type).toBe('text');
+      expect(cols['payee_type']?.is_nullable).toBe('YES');
+      expect(cols['payee_name']?.data_type).toBe('text');
+      expect(cols['payee_name']?.is_nullable).toBe('YES');
+      expect(cols['notes']?.data_type).toBe('text');
+      expect(cols['notes']?.is_nullable).toBe('YES');
     });
 
     it('3 CHECK constraints con nombres esperados', async () => {
@@ -270,7 +283,7 @@ describe('T-CASH-09 — Schema verification smoke', () => {
       }
     });
 
-    it('2 foreign keys (cash_session_id, created_by) → cash_sessions/users con ON DELETE RESTRICT', async () => {
+    it('4 foreign keys (cash_session_id, created_by, concept_id, payee_id) con ON DELETE RESTRICT', async () => {
       const rows = (await db.execute(sql`
         SELECT
           conname,
@@ -285,13 +298,21 @@ describe('T-CASH-09 — Schema verification smoke', () => {
         definition: string;
       }>;
 
-      expect(rows).toHaveLength(2);
+      // 2 originales + 2 de egreso estructurado (concept_id → cash_withdrawal_reasons,
+      // payee_id → terceros).
+      expect(rows).toHaveLength(4);
       const byName = Object.fromEntries(rows.map((r) => [r.conname, r]));
       expect(byName['cash_movements_cash_session_id_fkey']?.definition).toMatch(
         /REFERENCES cash_sessions\(id\)/
       );
       expect(byName['cash_movements_created_by_fkey']?.definition).toMatch(
         /REFERENCES users\(id\)/
+      );
+      expect(byName['cash_movements_concept_id_fkey']?.definition).toMatch(
+        /REFERENCES cash_withdrawal_reasons\(id\)/
+      );
+      expect(byName['cash_movements_payee_id_fkey']?.definition).toMatch(
+        /REFERENCES terceros\(id\)/
       );
       for (const r of rows) expect(r.confdeltype).toBe('r');
     });

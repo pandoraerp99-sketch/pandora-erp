@@ -17,6 +17,7 @@ export * from './stock_movements.js';
 export * from './cash_sessions.js';
 export * from './cash_movements.js';
 export * from './cash_withdrawal_reasons.js';
+export * from './terceros.js';
 export * from './sale_payments.js';
 export * from './mp_payments.js';
 export * from './padron_a5_cache.js';
