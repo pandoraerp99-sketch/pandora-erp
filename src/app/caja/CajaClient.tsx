@@ -145,6 +145,13 @@ function initials(name: string): string {
   return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || 'U';
 }
 
+function fechaLarga(iso: string | null): string {
+  const d = iso ? new Date(iso) : new Date();
+  if (Number.isNaN(d.getTime())) return '';
+  const s = d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 // Sidebar del shell (mockup). Íconos SVG verbatim del mockup (strings → innerHTML
 // para no convertir a JSX). Solo Caja está activa; el resto es navegación visual
 // (sus páginas reales llegan después).
@@ -531,23 +538,36 @@ export function CajaClient({
 
         {/* Barra de sesión */}
         {session ? (
-          <section className="glass session-bar">
-            <div className="sb-head">
-              <div>
-                <div className="sb-title">{salePointLabel}</div>
-                <div className="sb-sub">
-                  Abierta {session.openedAtIso ? `desde ${hora(session.openedAtIso)}` : ''} ·{' '}
-                  <span className="sb-live">● en curso</span>
-                </div>
-              </div>
-              <div className="sb-stats">
-                <Stat k="Fondo inicial" v={money(session.initialAmount)} />
-                <Stat k="Ingresos manuales" v={'+ ' + money(session.totalDeposits)} tone="green" />
-                <Stat k="Retiros" v={'− ' + money(session.totalWithdraws)} tone="red" />
-                <Stat k="Efectivo esperado (mov.)" v={money(session.expectedFromMovements)} strong />
-              </div>
+          <div className="session-bar glass-strong">
+            <div>
+              <div className="session-title">Caja</div>
+              <div className="session-sub">{fechaLarga(session.openedAtIso)}</div>
             </div>
-          </section>
+            <div className="session-glance">
+              <div className="sg"><span className="sg-k">Fondo inicial</span><span className="sg-v tnum">{money(session.initialAmount)}</span></div>
+              <div className="sg-div" />
+              <div className="sg"><span className="sg-k">Ingresos</span><span className="sg-v tnum" style={{ color: '#1a8e5a' }}>+ {money(session.totalDeposits)}</span></div>
+              <div className="sg-div" />
+              <div className="sg"><span className="sg-k">Retiros</span><span className="sg-v tnum" style={{ color: '#c93545' }}>− {money(session.totalWithdraws)}</span></div>
+              <div className="sg-div" />
+              <div className="sg"><span className="sg-k">Efectivo esperado</span><span className="sg-v tnum">{money(session.expectedFromMovements)}</span></div>
+            </div>
+            <div className="session-meta">
+              <div className="meta-cell">
+                <span className="meta-k">Cajero</span>
+                <span className="meta-v"><span className="mini-ava">{initials(cashierName)}</span>{cashierName}</span>
+              </div>
+              <div className="meta-cell">
+                <span className="meta-k">Punto de venta</span>
+                <span className="meta-v">{salePointLabel}</span>
+              </div>
+              <div className="meta-cell">
+                <span className="meta-k">Apertura</span>
+                <span className="meta-v mono tnum">{hora(session.openedAtIso)}</span>
+              </div>
+              <div className="pill-open"><span className="live-dot" />Abierta</div>
+            </div>
+          </div>
         ) : (
           <section className="glass session-closed">
             <div className="sc-row">
@@ -1344,4 +1364,22 @@ const CAJA_CSS = `
 .user-name{ font-size:12.5px; font-weight:600; line-height:1.25; color:var(--ink-0); }
 .user-role{ font-size:10.5px; color:var(--ink-3); }
 .shell-main{ margin-left:228px; margin-right:auto; max-width:1180px; padding:14px 10px 44px; }
+.tnum{ font-variant-numeric:tabular-nums; }
+.session-bar{ display:flex; align-items:center; gap:24px; padding:16px 22px; margin-bottom:0; flex-wrap:wrap; }
+.session-title{ font-size:24px; font-weight:700; letter-spacing:-0.03em; color:var(--ink-0); }
+.session-sub{ font-size:12.5px; color:var(--ink-3); margin-top:2px; }
+.session-glance{ margin:0 auto; display:flex; align-items:center; gap:22px; flex-wrap:wrap; }
+.sg{ display:flex; flex-direction:column; gap:3px; }
+.sg-k{ font-size:9.5px; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.07em; font-family:'JetBrains Mono',monospace; font-weight:500; }
+.sg-v{ font-size:16px; font-weight:600; color:var(--ink-0); font-family:'JetBrains Mono',monospace; letter-spacing:-0.01em; }
+.sg-div{ width:1px; height:26px; background:rgba(13,20,36,0.08); }
+.session-meta{ display:flex; align-items:center; gap:26px; flex-wrap:wrap; }
+.meta-cell{ display:flex; flex-direction:column; gap:3px; }
+.meta-k{ font-size:10px; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.08em; font-family:'JetBrains Mono',monospace; font-weight:500; }
+.meta-v{ font-size:13.5px; font-weight:600; color:var(--ink-1); display:flex; align-items:center; gap:7px; }
+.pill-open{ display:inline-flex; align-items:center; gap:7px; padding:7px 13px; border-radius:999px; background:rgba(52,199,125,0.13); color:#1a8e5a; font-size:12.5px; font-weight:600; }
+.mini-ava{ width:30px; height:30px; border-radius:999px; background:linear-gradient(135deg,var(--purple),var(--blue)); display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px; font-weight:600; border:2px solid rgba(255,255,255,0.85); flex-shrink:0; }
+.live-dot{ width:8px; height:8px; border-radius:999px; background:var(--green); position:relative; display:inline-block; flex-shrink:0; }
+.live-dot::after{ content:''; position:absolute; inset:-4px; border-radius:999px; background:var(--green); opacity:0.4; animation:liveRing 1.8s cubic-bezier(.2,.7,.2,1) infinite; }
+@keyframes liveRing{ 0%{ transform:scale(0.8); opacity:0.6; } 100%{ transform:scale(2.2); opacity:0; } }
 `;
