@@ -1102,8 +1102,8 @@ export function CajaClient({
 
         {/* Últimos movimientos (ventas del día) — buscable */}
         <section className="glass movimientos">
-          <div className="mv-head">
-            <h2>Últimos movimientos</h2>
+          <div className="card-title">
+            <h3>Últimos movimientos</h3>
             <span className="mv-total">
               {visibles.length}
               {filtersActive ? ` / ${movimientos.length}` : ''} ventas · {money(visiblesTotal)}
@@ -1138,14 +1138,16 @@ export function CajaClient({
             )}
           </div>
 
-          <div className="mv-filters">
+          <div className="mov-filters">
             {MEDIO_FILTERS.map((c) => (
               <button
                 key={c.key}
                 type="button"
-                className={'mv-chip' + (medioSel.has(c.key) ? ' on' : '')}
+                className="mov-fchip"
+                aria-pressed={medioSel.has(c.key)}
                 onClick={() => toggleMedio(c.key)}
               >
+                <span className="fsw" style={{ background: MEDIOS[c.key]?.color ?? '#7681a0' }} />
                 {c.label}
               </button>
             ))}
@@ -1159,10 +1161,10 @@ export function CajaClient({
             </div>
           ) : (
             <div className="mv-scroll">
-              <table className="mv-table">
+              <table className="tbl">
                 <thead>
                   <tr>
-                    <th>Hora</th>
+                    <th style={{ width: 56 }}>Hora</th>
                     <th>Cliente</th>
                     <th>Medio de pago</th>
                     <th className="r">Monto</th>
@@ -1177,15 +1179,15 @@ export function CajaClient({
                     return (
                       <Fragment key={m.id}>
                         <tr className={editing ? 'mv-row-editing' : undefined}>
-                          <td className="mono">{hora(m.finalizedAtIso)}</td>
+                          <td className="hora">{hora(m.finalizedAtIso)}</td>
                           <td>{m.customerName || 'Consumidor final'}</td>
                           <td>
-                            <span className="medio">
-                              <span className="sw" style={{ background: md.color }} />
+                            <span className="medio-chip">
+                              <span className="medio-sw" style={{ background: md.color }} />
                               {md.label}
                             </span>
                           </td>
-                          <td className="r mono strong">{money(m.total)}</td>
+                          <td className="r amt">{money(m.total)}</td>
                           {session && (
                             <td className="r">
                               <button
@@ -1457,4 +1459,20 @@ const CAJA_CSS = `
 .cash-btn{ display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:10px 16px; border-radius:11px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid var(--glass-border); background:var(--glass-bg-2); color:var(--ink-1); transition:all 180ms; box-shadow:0 1px 0 rgba(255,255,255,0.7) inset, 0 2px 6px rgba(54,70,120,0.05); }
 .cash-btn:hover:not(:disabled){ transform:translateY(-1px); color:var(--ink-0); }
 .cash-btn:disabled{ opacity:0.5; cursor:default; }
+.card-title{ display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; gap:12px; flex-wrap:wrap; }
+.card-title h3{ margin:0; font-size:14.5px; font-weight:600; color:var(--ink-0); letter-spacing:-0.01em; }
+.tbl{ width:100%; border-collapse:collapse; }
+.tbl th{ text-align:left; font-size:10px; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.08em; font-family:'JetBrains Mono',monospace; font-weight:500; padding:0 0 11px; border-bottom:1px solid rgba(13,20,36,0.07); }
+.tbl th.r, .tbl td.r{ text-align:right; }
+.tbl td{ padding:12px 0; border-top:1px solid rgba(13,20,36,0.05); font-size:13px; color:var(--ink-1); vertical-align:middle; }
+.tbl .hora{ font-family:'JetBrains Mono',monospace; font-size:12.5px; color:var(--ink-2); }
+.tbl .amt{ font-family:'JetBrains Mono',monospace; font-size:13.5px; font-weight:500; }
+.medio-chip{ display:inline-flex; align-items:center; gap:7px; font-size:12.5px; color:var(--ink-2); }
+.medio-sw{ width:8px; height:8px; border-radius:2.5px; flex-shrink:0; }
+.mov-filters{ display:flex; flex-wrap:wrap; gap:7px; margin:2px 0 14px; }
+.mov-fchip{ display:inline-flex; align-items:center; gap:7px; font-size:11.5px; font-weight:600; padding:6px 12px; border-radius:999px; cursor:pointer; background:rgba(255,255,255,0.30); border:1px solid rgba(13,20,36,0.07); color:var(--ink-3); transition:all 160ms; }
+.mov-fchip .fsw{ width:8px; height:8px; border-radius:2.5px; opacity:0.4; transition:opacity 160ms; }
+.mov-fchip:hover{ transform:translateY(-1px); border-color:rgba(107,95,255,0.28); color:var(--ink-2); }
+.mov-fchip[aria-pressed="true"]{ background:var(--glass-bg-2); border-color:rgba(107,95,255,0.32); color:var(--ink-1); box-shadow:inset 0 1px 0 rgba(255,255,255,0.8), 0 3px 10px rgba(54,70,120,0.10); }
+.mov-fchip[aria-pressed="true"] .fsw{ opacity:1; }
 `;
