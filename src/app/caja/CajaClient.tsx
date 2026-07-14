@@ -140,6 +140,25 @@ function benefLabel(t: BeneficiarioTipo): string {
   return t === 'empleado' ? 'Empleado' : t === 'proveedor' ? 'Proveedor' : '—';
 }
 
+function initials(name: string): string {
+  const parts = name.replace(/@.*/, '').split(/[.\s_-]+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || 'U';
+}
+
+// Sidebar del shell (mockup). Íconos SVG verbatim del mockup (strings → innerHTML
+// para no convertir a JSX). Solo Caja está activa; el resto es navegación visual
+// (sus páginas reales llegan después).
+const NAV_ITEMS: Array<{ label: string; active?: boolean; icon: string }> = [
+  { label: 'Panel', icon: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="10" rx="2"/><rect x="13" y="3" width="8" height="6" rx="2"/><rect x="3" y="15" width="8" height="6" rx="2"/><rect x="13" y="11" width="8" height="10" rx="2"/></svg>' },
+  { label: 'Venta', icon: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>' },
+  { label: 'Caja', active: true, icon: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01"/><path d="M18 12h.01"/></svg>' },
+  { label: 'Productos', icon: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.58a2 2 0 0 1 0 2.83z"/><circle cx="7" cy="7" r="1.5"/></svg>' },
+  { label: 'Clientes', icon: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>' },
+  { label: 'Stock', icon: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>' },
+  { label: 'Facturas', icon: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h4"/></svg>' },
+  { label: 'Reportes', icon: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15v-3"/><path d="M12 15V8"/><path d="M16 15v-5"/></svg>' },
+];
+
 export function CajaClient({
   cashierName,
   salePointLabel,
@@ -440,14 +459,74 @@ export function CajaClient({
     <div className="caja-root">
       <style>{CAJA_CSS}</style>
 
-      <header className="caja-topbar">
-        <div className="caja-brand">
-          <span className="caja-logo">◆</span> Pandora <span className="caja-sep">·</span> Caja
+      <aside className="side glass-strong">
+        <div className="logo-row">
+          <svg viewBox="0 0 32 32" width="26" height="26">
+            <defs>
+              <linearGradient id="lg1" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#6b5fff" />
+                <stop offset="100%" stopColor="#5b8cff" />
+              </linearGradient>
+            </defs>
+            <g fill="url(#lg1)">
+              <path d="M16 2 L18 14 L30 16 L18 18 L16 30 L14 18 L2 16 L14 14 Z" />
+            </g>
+          </svg>
+          <span className="logo-text">Pandora</span>
         </div>
-        <div className="caja-user">{cashierName}</div>
-      </header>
+        <nav className="nav">
+          {NAV_ITEMS.map((n) => (
+            <div key={n.label} className={'nav-item' + (n.active ? ' active' : '')}>
+              <div className="nav-icon-box" dangerouslySetInnerHTML={{ __html: n.icon }} />
+              <span>{n.label}</span>
+            </div>
+          ))}
+        </nav>
+        <div className="side-foot">
+          <div className="afip">
+            <div className="afip-top">
+              <span className="afip-dot" />
+              <span className="afip-name">AFIP conectado</span>
+              <span className="afip-live">LIVE</span>
+            </div>
+            <div className="afip-sub">WSFEv1 · homologación</div>
+          </div>
+          <div className="cashier">
+            <span className="avatar-ring">
+              <span className="cashier-av">{initials(cashierName)}</span>
+            </span>
+            <div>
+              <div className="cashier-name">{cashierName}</div>
+              <div className="cashier-role">{isOwner ? 'Dueño' : 'Cajero'}</div>
+            </div>
+            <span className="cashier-live" />
+          </div>
+        </div>
+      </aside>
 
-      <main className="caja-main">
+      <main className="caja-main shell-main">
+        <div className="topbar">
+          <div className="search glass">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            <input placeholder="Buscar movimiento, ticket o monto…" />
+            <span className="kbd">⌘K</span>
+          </div>
+          <div className="top-tools">
+            <div className="user-chip glass">
+              <span className="avatar-ring">
+                <span className="cashier-av">{initials(cashierName)}</span>
+              </span>
+              <div>
+                <div className="user-name">{cashierName}</div>
+                <div className="user-role">{isOwner ? 'Dueño' : 'Cajero'}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {feedback && <div className={'caja-feedback ' + feedback.tone}>{feedback.text}</div>}
 
         {/* Barra de sesión */}
@@ -1220,4 +1299,49 @@ const CAJA_CSS = `
 .reclass-chip:hover:not(:disabled){ border-color:rgba(107,95,255,0.4); }
 .reclass-chip.on{ background:#6b5fff; color:#fff; border-color:#6b5fff; }
 .reclass-chip:disabled{ opacity:0.5; cursor:default; }
+
+/* ===== Shell (sidebar + topbar) — diseño del mockup (verbatim) ===== */
+:root{ --ink-0:#0d1424; --ink-1:#1f2a44; --ink-2:#4a5570; --ink-3:#7681a0; --ink-4:#a8b0c5;
+  --glass-bg:rgba(255,255,255,0.58); --glass-bg-2:rgba(255,255,255,0.72); --glass-border:rgba(255,255,255,0.85);
+  --glass-shadow:0 1px 0 rgba(255,255,255,0.9) inset, 0 8px 32px rgba(54,70,120,0.10), 0 2px 8px rgba(54,70,120,0.06);
+  --purple:#6b5fff; --purple-2:#9088ff; --blue:#5b8cff; --green:#34c77d; --pink:#ee6a8e; }
+.glass-strong{ background:var(--glass-bg-2); backdrop-filter:blur(32px) saturate(150%); -webkit-backdrop-filter:blur(32px) saturate(150%);
+  border:1px solid var(--glass-border); border-radius:20px; box-shadow:var(--glass-shadow); position:relative; }
+.side{ position:fixed; left:10px; top:10px; bottom:10px; width:210px; padding:22px 14px 18px; display:flex; flex-direction:column; z-index:10; border-radius:20px; }
+.logo-row{ display:flex; align-items:center; gap:10px; padding:0 8px 22px; }
+.logo-text{ font-size:19px; font-weight:700; letter-spacing:-0.025em; background:linear-gradient(135deg,#2a3454 0%,#4a5878 100%);
+  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+.nav{ display:flex; flex-direction:column; gap:3px; flex:1; overflow-y:auto; min-height:0; padding-right:4px; margin-right:-4px; }
+.nav-item{ display:flex; align-items:center; gap:11px; padding:10px 11px; border-radius:12px; color:var(--ink-2); font-size:13.5px; font-weight:500; cursor:pointer; transition:all 200ms cubic-bezier(.4,0,.2,1); }
+.nav-item:hover{ color:var(--ink-0); background:rgba(255,255,255,0.4); }
+.nav-item.active{ background:rgba(255,255,255,0.92); color:var(--ink-0); box-shadow:0 1px 2px rgba(54,70,120,0.06), 0 4px 12px rgba(54,70,120,0.08); }
+.nav-item.active .nav-icon-box{ background:var(--purple); color:#fff; box-shadow:0 4px 10px rgba(107,95,255,0.4); }
+.nav-icon-box{ width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:7px; color:var(--ink-2); transition:all 200ms; flex-shrink:0; }
+.side-foot{ margin-top:auto; padding-top:12px; display:flex; flex-direction:column; gap:9px; }
+.afip{ padding:10px 11px; border-radius:13px; background:rgba(52,199,125,0.08); border:1px solid rgba(52,199,125,0.20); }
+.afip-top{ display:flex; align-items:center; gap:7px; }
+.afip-dot{ width:7px; height:7px; border-radius:50%; background:var(--green); flex:0 0 auto; animation:pg 2.4s ease-in-out infinite; }
+.afip-name{ font-size:11.5px; font-weight:700; color:#177a4a; }
+.afip-live{ margin-left:auto; font-size:8.5px; font-weight:800; letter-spacing:0.06em; color:var(--green); }
+.afip-sub{ font-size:10px; color:#5a9b78; padding-left:14px; margin-top:2px; }
+@keyframes pg{ 0%,100%{box-shadow:0 0 0 2px rgba(52,199,125,0.22)} 50%{box-shadow:0 0 0 5px rgba(52,199,125,0)} }
+.cashier{ display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:13px; background:rgba(255,255,255,0.66); border:1px solid rgba(255,255,255,0.9); box-shadow:inset 0 1px 0 rgba(255,255,255,0.9); }
+.cashier-av{ width:32px; height:32px; flex:0 0 auto; border-radius:50%; background:linear-gradient(135deg,var(--purple),var(--blue)); display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px; font-weight:700; }
+.avatar-ring{ padding:2px; border-radius:50%; flex:0 0 auto; display:flex; background:conic-gradient(from 0deg,#6b5fff,#5b8cff,#34c77d,#f7984a,#ee6a8e,#6b5fff); animation:spinRing 6s linear infinite; }
+.avatar-ring > .cashier-av{ animation:spinRing 6s linear infinite reverse; border:2px solid rgba(255,255,255,0.9); }
+@keyframes spinRing{ to{ transform:rotate(360deg); } }
+.cashier-name{ font-size:12px; font-weight:600; line-height:1.2; }
+.cashier-role{ font-size:10px; color:var(--ink-3); }
+.cashier-live{ width:7px; height:7px; border-radius:50%; background:var(--green); margin-left:auto; flex:0 0 auto; animation:pg 2.4s ease-in-out infinite; }
+.topbar{ display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+.search{ position:relative; flex:1; display:flex; align-items:center; height:42px; border-radius:14px; padding:0 14px 0 40px; }
+.search > svg{ position:absolute; left:14px; width:16px; height:16px; color:var(--ink-3); }
+.search input{ flex:1; font-size:13px; background:none; border:none; outline:none; color:var(--ink-0); }
+.search input::placeholder{ color:var(--ink-3); }
+.search .kbd{ font-size:10px; font-family:'JetBrains Mono',monospace; color:var(--ink-3); background:rgba(13,20,36,0.05); padding:3px 7px; border-radius:6px; margin-left:8px; }
+.top-tools{ display:flex; align-items:center; gap:8px; }
+.user-chip{ display:flex; align-items:center; gap:9px; padding:5px 14px 5px 5px; border-radius:999px; }
+.user-name{ font-size:12.5px; font-weight:600; line-height:1.25; color:var(--ink-0); }
+.user-role{ font-size:10.5px; color:var(--ink-3); }
+.shell-main{ margin-left:228px; margin-right:auto; max-width:1180px; padding:14px 10px 44px; }
 `;
