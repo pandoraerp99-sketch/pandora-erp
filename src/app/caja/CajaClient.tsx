@@ -462,6 +462,28 @@ export function CajaClient({
 
   const terceroList = terceroTab === 'empleado' ? empleados : proveedores;
 
+  // Derivados para la card "Efectivo en caja" + glance de la sesión.
+  const ventasHoy = movimientos.reduce((a, m) => a + Math.round(parseFloat(m.total || '0')), 0);
+  const ticketsHoy = movimientos.length;
+  const ticketProm = ticketsHoy > 0 ? Math.round(ventasHoy / ticketsHoy) : 0;
+  const ventasEfectivo = movimientos
+    .filter((m) => m.method === 'efectivo')
+    .reduce((a, m) => a + parseFloat(m.total || '0'), 0);
+  const ingEgr = session
+    ? parseFloat(session.totalDeposits || '0') - parseFloat(session.totalWithdraws || '0')
+    : 0;
+  const efectivoEsperado = session
+    ? parseFloat(session.initialAmount || '0') + ventasEfectivo + ingEgr
+    : 0;
+
+  function openMov(t: CashMovementType) {
+    resetMovForm();
+    setMovType(t);
+    setManagePanel('none');
+    setClosing(false);
+    setFeedback(null);
+  }
+
   return (
     <div className="caja-root">
       <style>{CAJA_CSS}</style>
@@ -544,13 +566,11 @@ export function CajaClient({
               <div className="session-sub">{fechaLarga(session.openedAtIso)}</div>
             </div>
             <div className="session-glance">
-              <div className="sg"><span className="sg-k">Fondo inicial</span><span className="sg-v tnum">{money(session.initialAmount)}</span></div>
+              <div className="sg"><span className="sg-k">Ventas hoy</span><span className="sg-v tnum">{money(ventasHoy)}</span></div>
               <div className="sg-div" />
-              <div className="sg"><span className="sg-k">Ingresos</span><span className="sg-v tnum" style={{ color: '#1a8e5a' }}>+ {money(session.totalDeposits)}</span></div>
+              <div className="sg"><span className="sg-k">Tickets</span><span className="sg-v tnum">{ticketsHoy}</span></div>
               <div className="sg-div" />
-              <div className="sg"><span className="sg-k">Retiros</span><span className="sg-v tnum" style={{ color: '#c93545' }}>− {money(session.totalWithdraws)}</span></div>
-              <div className="sg-div" />
-              <div className="sg"><span className="sg-k">Efectivo esperado</span><span className="sg-v tnum">{money(session.expectedFromMovements)}</span></div>
+              <div className="sg"><span className="sg-k">Ticket prom.</span><span className="sg-v tnum">{money(ticketProm)}</span></div>
             </div>
             <div className="session-meta">
               <div className="meta-cell">
@@ -592,6 +612,51 @@ export function CajaClient({
               </label>
               <button className="btn primary" type="button" disabled={busy} onClick={handleOpen}>
                 {busy ? 'Abriendo…' : 'Abrir caja'}
+              </button>
+            </div>
+          </section>
+        )}
+
+        {/* Efectivo en caja (card centerpiece del mockup) */}
+        {session && (
+          <section className="glass-strong cash-card">
+            <span className="upper-mini">Efectivo en caja · esperado</span>
+            <div className="cash-num tnum">{money(efectivoEsperado)}</div>
+            <div className="cash-sub">
+              <div>
+                <div className="k">Fondo inicial</div>
+                <div className="v tnum">{money(session.initialAmount)}</div>
+              </div>
+              <div>
+                <div className="k">Ventas en efectivo</div>
+                <div className="v tnum">{money(ventasEfectivo)}</div>
+              </div>
+              <div>
+                <div className="k">Ingresos − Egresos</div>
+                <div className="v tnum">
+                  {(ingEgr < 0 ? '− ' : ingEgr > 0 ? '+ ' : '') + money(Math.abs(ingEgr))}
+                </div>
+              </div>
+            </div>
+            <div className="cash-actions">
+              <button className="cash-btn" type="button" disabled={busy} onClick={() => openMov('deposit')}>
+                + Ingreso
+              </button>
+              <button className="cash-btn" type="button" disabled={busy} onClick={() => openMov('provider_payment')}>
+                − Retiro / Gasto
+              </button>
+              <button
+                className="cash-btn"
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setClosing(true);
+                  resetMovForm();
+                  setManagePanel('none');
+                  setFeedback(null);
+                }}
+              >
+                Arqueo
               </button>
             </div>
           </section>
@@ -1382,4 +1447,14 @@ const CAJA_CSS = `
 .live-dot{ width:8px; height:8px; border-radius:999px; background:var(--green); position:relative; display:inline-block; flex-shrink:0; }
 .live-dot::after{ content:''; position:absolute; inset:-4px; border-radius:999px; background:var(--green); opacity:0.4; animation:liveRing 1.8s cubic-bezier(.2,.7,.2,1) infinite; }
 @keyframes liveRing{ 0%{ transform:scale(0.8); opacity:0.6; } 100%{ transform:scale(2.2); opacity:0; } }
+.upper-mini{ font-size:10.5px; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.08em; font-family:'JetBrains Mono',monospace; font-weight:500; }
+.cash-card{ padding:24px 26px; overflow:hidden; }
+.cash-num{ font-family:'JetBrains Mono',monospace; font-size:52px; font-weight:600; letter-spacing:-0.02em; line-height:1; color:var(--ink-0); margin:6px 0 0; }
+.cash-sub{ display:flex; gap:28px; margin-top:18px; flex-wrap:wrap; }
+.cash-sub .k{ font-size:11px; color:var(--ink-3); font-weight:500; }
+.cash-sub .v{ font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:500; color:var(--ink-1); margin-top:3px; }
+.cash-actions{ display:flex; gap:9px; margin-top:22px; flex-wrap:wrap; }
+.cash-btn{ display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:10px 16px; border-radius:11px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid var(--glass-border); background:var(--glass-bg-2); color:var(--ink-1); transition:all 180ms; box-shadow:0 1px 0 rgba(255,255,255,0.7) inset, 0 2px 6px rgba(54,70,120,0.05); }
+.cash-btn:hover:not(:disabled){ transform:translateY(-1px); color:var(--ink-0); }
+.cash-btn:disabled{ opacity:0.5; cursor:default; }
 `;
