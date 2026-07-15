@@ -96,7 +96,15 @@ const IC = {
   arqueo: '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M4 12h16"/></svg>',
   search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>',
   lock: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="13" rx="2"/><path d="M8 8V6a4 4 0 0 1 8 0v2"/></svg>',
+  eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>',
+  bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 7 3 9H3c0-2 3-2 3-9z"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>',
+  gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.7 1.7 0 0 0-2.8 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.8-1.2 2 2 0 1 1-2.8-2.8A1.7 1.7 0 0 0 4.6 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.8 2 2 0 1 1 2.8-2.8A1.7 1.7 0 0 0 11 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.8 1.2 2 2 0 1 1 2.8 2.8A1.7 1.7 0 0 0 19.4 11a2 2 0 1 1 0 4z"/></svg>',
+  config: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  cashsm: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/></svg>',
 };
+// Sparkline representativa de la maqueta (visual — pendiente datos reales).
+const SPARK =
+  '<svg class="cash-spark" viewBox="0 0 334 96" preserveAspectRatio="none"><defs><linearGradient id="cashFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(107,95,255,0.30)"/><stop offset="100%" stop-color="rgba(107,95,255,0)"/></linearGradient></defs><path d="M 0 96 L 0 83.5 L 27.8 77.8 L 55.7 70.5 L 83.5 63.1 L 111.3 66.5 L 139.2 56.3 L 167 47.3 L 194.8 39.4 L 222.7 43.9 L 250.5 31.5 L 278.3 23 L 306.2 17.3 L 334 14.6 L 334 96 Z" fill="url(#cashFill)"/><path d="M 0 83.5 L 27.8 77.8 L 55.7 70.5 L 83.5 63.1 L 111.3 66.5 L 139.2 56.3 L 167 47.3 L 194.8 39.4 L 222.7 43.9 L 250.5 31.5 L 278.3 23 L 306.2 17.3 L 334 14.6" fill="none" stroke="#6b5fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>';
 const NAV = [
   { k: 'Panel', ic: IC.panel },
   { k: 'Venta', ic: IC.venta },
@@ -106,6 +114,7 @@ const NAV = [
   { k: 'Stock', ic: IC.stock },
   { k: 'Facturas', ic: IC.fact },
   { k: 'Reportes', ic: IC.rep },
+  { k: 'Configuración', ic: IC.config },
 ];
 
 const ARS = new Intl.NumberFormat('es-AR');
@@ -189,6 +198,7 @@ export function CajaClient({
   const ventasEfectivo = movimientos.filter((m) => m.method === 'efectivo').reduce((a, m) => a + parseFloat(m.total || '0'), 0);
   const ingEgr = session ? parseFloat(session.totalDeposits || '0') - parseFloat(session.totalWithdraws || '0') : 0;
   const efectivoEsperado = session ? parseFloat(session.initialAmount || '0') + ventasEfectivo + ingEgr : 0;
+  const efDiff = countedAmount.trim() !== '' ? Math.round(parseFloat(countedAmount) || 0) - Math.round(efectivoEsperado) : null;
 
   const breakdown = useMemo(() => {
     const acc: Record<string, { amount: number; count: number }> = {};
@@ -397,12 +407,17 @@ export function CajaClient({
         <div className="topbar">
           <div className="search glass">
             <Icon html={IC.search} />
-            <input placeholder="Buscar por cliente…" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input placeholder="Buscar por cliente, ticket o monto…" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <span className="kbd">⌘K</span>
           </div>
+          <button className="lecturax glass" type="button" onClick={() => setFeedback({ tone: 'ok', text: 'Lectura X — reporte de control (pendiente de implementar).' })}>
+            <Icon html={IC.eye} />Lectura X
+          </button>
           <div className="top-tools">
+            <button className="iconbtn glass" type="button" title="Notificaciones"><Icon html={IC.bell} /></button>
             {isOwner && (
-              <button className="lecturax glass" type="button" onClick={() => setAdminOpen(true)}>
-                Motivos y beneficiarios
+              <button className="iconbtn glass" type="button" title="Motivos y beneficiarios" onClick={() => setAdminOpen(true)}>
+                <Icon html={IC.gear} />
               </button>
             )}
             <div className="user-chip glass">
@@ -500,10 +515,11 @@ export function CajaClient({
                     </div>
                   </div>
                   <div className="cash-right">
-                    <div className="cash-right-head"><span className="upper-mini">Evolución · hoy</span></div>
-                    <div className="cash-chart" style={{ alignItems: 'center', justifyContent: 'center', color: 'var(--ink-4)', fontSize: 11, textAlign: 'center' }}>
-                      Gráfico de evolución<br />(visual · pendiente datos)
+                    <div className="cash-right-head">
+                      <span className="upper-mini">Evolución · hoy</span>
+                      <div className="cash-icon"><Icon html={IC.cashsm} /></div>
                     </div>
+                    <div className="cash-chart" dangerouslySetInnerHTML={{ __html: SPARK }} />
                     <div className="cash-right-foot">
                       <span>{hora(session.openedAtIso)} · apertura</span>
                       <span className="now tnum">{money(efectivoEsperado)} · ahora</span>
@@ -614,14 +630,22 @@ export function CajaClient({
             <div className="col">
               <section className="glass-strong arqueo">
                 <div className="card-title"><h3><Icon html={IC.arqueo} /> Arqueo y cierre</h3></div>
-                <div className="arq-cap">Contá el efectivo y cerrá la caja.</div>
+                <div className="arq-cap">Contá el efectivo y cerrá el posnet de cada medio.</div>
                 <div className="recon-methods">
                   <div className="rm">
                     <div className="rm-top">
                       <span className="rm-name"><span className="rm-dot" style={{ background: '#34c77d' }} />Efectivo</span>
                       <span className="rm-exp">esperado <b className="tnum">{money(efectivoEsperado)}</b></span>
                     </div>
-                    <div className="rm-bot"><div className="rm-inp"><span>$</span><input className="rm-input tnum" inputMode="numeric" placeholder="0" value={countedAmount} onChange={(e) => setCountedAmount(e.target.value)} /></div></div>
+                    <div className="rm-bot">
+                      <div className="rm-inp"><span>$</span><input className="rm-input tnum" inputMode="numeric" placeholder="0" value={countedAmount} onChange={(e) => setCountedAmount(e.target.value)} /></div>
+                      <span className={'rm-diff tnum ' + (efDiff === null ? '' : efDiff < 0 ? 'c-red' : efDiff > 0 ? 'c-green' : 'c-ink')}>
+                        {efDiff === null ? '—' : (efDiff > 0 ? '+' : efDiff < 0 ? '−' : '') + money(Math.abs(efDiff))}
+                      </span>
+                    </div>
+                    <button className="denom-btn" type="button" onClick={() => setFeedback({ tone: 'ok', text: 'Contar por denominación — pendiente de implementar.' })}>
+                      Contar por denominación
+                    </button>
                   </div>
                   {breakdown.filter((b) => b.key !== 'efectivo' && b.key !== 'sin').map((b) => (
                     <div className="rm" key={b.key}>
@@ -629,9 +653,20 @@ export function CajaClient({
                         <span className="rm-name"><span className="rm-dot" style={{ background: b.color }} />{b.label}</span>
                         <span className="rm-exp">esperado <b className="tnum">{money(b.amount)}</b></span>
                       </div>
-                      <div className="rm-bot"><div className="rm-inp"><span>$</span><input className="rm-input tnum" inputMode="numeric" defaultValue={ARS.format(Math.round(b.amount))} /></div></div>
+                      <div className="rm-bot">
+                        <div className="rm-inp"><span>$</span><input className="rm-input tnum" inputMode="numeric" defaultValue={ARS.format(Math.round(b.amount))} /></div>
+                        <span className="rm-diff tnum c-ink">$0</span>
+                      </div>
                     </div>
                   ))}
+                </div>
+                <div className={'diff-box ' + (efDiff === null || efDiff === 0 ? 'ok' : efDiff < 0 ? 'faltante' : 'sobrante')}>
+                  <span className={'diff-k ' + (efDiff && efDiff < 0 ? 'c-red' : 'c-green')}>
+                    Diferencia total{efDiff && efDiff < 0 ? ' · faltante' : efDiff && efDiff > 0 ? ' · sobrante' : ''}
+                  </span>
+                  <span className={'diff-v tnum ' + (efDiff && efDiff < 0 ? 'c-red' : 'c-green')}>
+                    {efDiff === null || efDiff === 0 ? '$0' : (efDiff > 0 ? '+' : '−') + money(Math.abs(efDiff))}
+                  </span>
                 </div>
                 <div className="motivo-lbl">Motivo del descuadre <span className="req">si no cuadra</span></div>
                 <textarea className="motivo-input" placeholder="Detallá el motivo de la diferencia…" value={closeReason} onChange={(e) => setCloseReason(e.target.value)} />
