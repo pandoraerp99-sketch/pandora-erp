@@ -1300,7 +1300,7 @@ const CAJA_CSS = `
 .sc-form{ display:flex; align-items:flex-end; gap:14px; flex-wrap:wrap; }
 .ops{ padding:20px 24px; }
 .ops-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; gap:12px; flex-wrap:wrap; }
-.ops-head h2{ margin:0; font-size:16px; font-weight:700; }
+.ops-head h2{ margin:0; font-size:14.5px; font-weight:600; color:var(--ink-0); letter-spacing:-0.01em; }
 .ops-head-actions{ display:flex; gap:10px; flex-wrap:wrap; }
 .ops-btns{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; }
 .mov-btn{ display:flex; flex-direction:column; align-items:flex-start; gap:3px; text-align:left; padding:13px 15px; cursor:pointer;
@@ -1314,7 +1314,7 @@ const CAJA_CSS = `
 .mov-h{ font-size:11px; color:#7681a0; }
 .op-form{ margin-top:14px; padding:16px; background:rgba(255,255,255,0.4); border:1px solid rgba(13,20,36,0.07);
   border-radius:14px; display:flex; flex-direction:column; gap:12px; }
-.op-form-title{ font-size:13.5px; font-weight:700; color:#1f2a44; }
+.op-form-title{ font-size:14.5px; font-weight:600; color:var(--ink-0); letter-spacing:-0.01em; }
 .op-form-hint{ margin:0; font-size:11.5px; color:#7681a0; line-height:1.5; }
 .fld{ display:flex; flex-direction:column; gap:5px; flex:1; min-width:160px; }
 .fld-k{ font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:#7681a0; font-weight:600; }
