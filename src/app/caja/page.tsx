@@ -14,7 +14,8 @@
  * (arqueo separa débito/crédito — A-26 RESUELTO por investigación 2026-07-12, es
  * caja/reporting NO fiscal) se implementa extendiendo el enum en una slice aparte.
  */
-import { requireSessionWithCompany } from '@/lib/auth/session';
+import { redirect } from 'next/navigation';
+import { getCurrentSession } from '@/lib/auth/session';
 import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
 import { getActiveCashSession } from '@/lib/cash/sessions';
 import { getCashSessionSummary } from '@/lib/cash/queries';
@@ -34,7 +35,12 @@ import type { BeneficiarioTipo } from '@/lib/db/schema/_common';
 const SALE_POINT = 1;
 
 export default async function CajaPage() {
-  const session = await requireSessionWithCompany();
+  // Si la sesión venció / no hay login, redirigimos al login (en vez de tirar
+  // un UnauthorizedError crudo en pantalla).
+  const session = await getCurrentSession();
+  if (!session?.active_company_id) {
+    redirect('/login');
+  }
 
   const data = await withServerActionTracing(
     async () => {
