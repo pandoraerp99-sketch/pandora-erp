@@ -449,7 +449,7 @@ export function CajaClient({
         <div className="session-bar glass-strong">
           <div>
             <div className="session-title">Caja</div>
-            <div className="session-sub">{session ? fechaLarga(session.openedAtIso) : 'Cerrada'}</div>
+            <div className="session-sub">{session ? `Sesión abierta · ${fechaLarga(session.openedAtIso)}` : 'Caja cerrada'}</div>
           </div>
           <div className="session-glance">
             <div className="sg"><span className="sg-k">Ventas hoy</span><span className="sg-v tnum">{money(ventasHoy)}</span></div>
@@ -691,7 +691,7 @@ export function CajaClient({
 
       {movMode && (
         <div className="modal-ov open" onClick={(e) => { if (e.target === e.currentTarget) setMovMode(null); }}>
-          <div className="modal-card glass-strong" style={{ maxWidth: 440 }}>
+          <div className="modal-card glass-strong" style={{ maxWidth: movMode === 'retiro' ? 440 : 400 }}>
             <div className="modal-head">
               <div>
                 <div className="modal-title">
