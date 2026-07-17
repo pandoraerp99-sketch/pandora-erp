@@ -28,6 +28,7 @@ import type {
   CajaMovimientoDTO,
   CajaReasonDTO,
   CajaTerceroDTO,
+  CajaMovManualDTO,
 } from './CajaClient';
 import type { BeneficiarioTipo } from '@/lib/db/schema/_common';
 
@@ -94,12 +95,22 @@ export default async function CajaPage() {
   const empleados: CajaTerceroDTO[] = data.empleados.map(toTercero);
   const proveedores: CajaTerceroDTO[] = data.proveedores.map(toTercero);
 
+  const manuales: CajaMovManualDTO[] = (data.summary?.movements ?? []).map((m) => ({
+    id: String(m.id),
+    type: m.type,
+    amount: m.amount,
+    reason: m.reason,
+    payeeName: m.payee_name ?? null,
+    timeIso: m.created_at ? m.created_at.toISOString() : null,
+  }));
+
   return (
     <CajaClient
       cashierName={session.email}
       salePointLabel={`Caja ${SALE_POINT}`}
       session={sessionDto}
       movimientos={movimientos}
+      movimientosManuales={manuales}
       reasons={reasons}
       empleados={empleados}
       proveedores={proveedores}

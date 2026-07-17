@@ -47,6 +47,14 @@ export interface CajaMovimientoDTO {
   customerName: string | null;
   finalizedAtIso: string | null;
 }
+export interface CajaMovManualDTO {
+  id: string;
+  type: string; // deposit | withdraw | provider_payment
+  amount: string;
+  reason: string;
+  payeeName: string | null;
+  timeIso: string | null;
+}
 export interface CajaReasonDTO {
   id: string;
   label: string;
@@ -63,6 +71,7 @@ interface CajaClientProps {
   salePointLabel: string;
   session: CajaSessionDTO | null;
   movimientos: CajaMovimientoDTO[];
+  movimientosManuales: CajaMovManualDTO[];
   reasons: CajaReasonDTO[];
   empleados: CajaTerceroDTO[];
   proveedores: CajaTerceroDTO[];
@@ -151,6 +160,7 @@ export function CajaClient({
   salePointLabel,
   session,
   movimientos,
+  movimientosManuales,
   reasons,
   empleados,
   proveedores,
@@ -199,6 +209,11 @@ export function CajaClient({
   const ingEgr = session ? parseFloat(session.totalDeposits || '0') - parseFloat(session.totalWithdraws || '0') : 0;
   const efectivoEsperado = session ? parseFloat(session.initialAmount || '0') + ventasEfectivo + ingEgr : 0;
   const efDiff = countedAmount.trim() !== '' ? Math.round(parseFloat(countedAmount) || 0) - Math.round(efectivoEsperado) : null;
+
+  const ingresosMan = movimientosManuales.filter((m) => m.type === 'deposit');
+  const egresosMan = movimientosManuales.filter((m) => m.type !== 'deposit');
+  const ingresosSum = ingresosMan.reduce((a, m) => a + parseFloat(m.amount || '0'), 0);
+  const egresosSum = egresosMan.reduce((a, m) => a + parseFloat(m.amount || '0'), 0);
 
   const breakdown = useMemo(() => {
     const acc: Record<string, { amount: number; count: number }> = {};
@@ -557,6 +572,47 @@ export function CajaClient({
                   </div>
                 )}
               </section>
+
+              {movimientosManuales.length > 0 && (
+                <section className="glass" style={{ padding: '22px 24px' }}>
+                  <div className="mov-cols">
+                    <div>
+                      <div className="mov-head">
+                        <span className="t"><span style={{ width: 7, height: 7, borderRadius: 2, background: 'var(--green)', display: 'inline-block' }} />Ingresos manuales</span>
+                        <span className="sum c-green">+{money(ingresosSum)}</span>
+                      </div>
+                      {ingresosMan.length === 0 ? (
+                        <div className="mov-h" style={{ padding: '8px 0' }}>Sin ingresos</div>
+                      ) : (
+                        ingresosMan.map((m) => (
+                          <div key={m.id} className="mov-item">
+                            <div className="mov-ic" style={{ background: 'rgba(52,199,125,0.12)', color: '#1a8e5a' }} dangerouslySetInnerHTML={{ __html: IC.plus }} />
+                            <div className="mov-txt"><div className="mov-r">{m.reason}</div><div className="mov-h">{hora(m.timeIso)}</div></div>
+                            <div className="mov-v c-green">+{money(m.amount)}</div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div>
+                      <div className="mov-head">
+                        <span className="t"><span style={{ width: 7, height: 7, borderRadius: 2, background: 'var(--red)', display: 'inline-block' }} />Egresos / Retiros</span>
+                        <span className="sum c-red">−{money(egresosSum)}</span>
+                      </div>
+                      {egresosMan.length === 0 ? (
+                        <div className="mov-h" style={{ padding: '8px 0' }}>Sin egresos</div>
+                      ) : (
+                        egresosMan.map((m) => (
+                          <div key={m.id} className="mov-item">
+                            <div className="mov-ic" style={{ background: 'rgba(239,93,106,0.12)', color: 'var(--red)' }} dangerouslySetInnerHTML={{ __html: IC.minus }} />
+                            <div className="mov-txt"><div className="mov-r">{m.payeeName ? `${m.reason} · ${m.payeeName}` : m.reason}</div><div className="mov-h">{hora(m.timeIso)}</div></div>
+                            <div className="mov-v c-red">−{money(m.amount)}</div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </section>
+              )}
 
               <section className="glass" style={{ padding: '22px 24px' }}>
                 <div className="card-title">
