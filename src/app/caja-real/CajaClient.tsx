@@ -11,7 +11,7 @@
  * Lo que anda de verdad: abrir/cerrar caja, ingreso, retiro (concepto+beneficiario),
  * alivio, búsqueda de movimientos, arqueo del efectivo, reclasificar medio.
  */
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type {
   BeneficiarioTipo,
@@ -110,6 +110,9 @@ const IC = {
   gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.7 1.7 0 0 0-2.8 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.8-1.2 2 2 0 1 1-2.8-2.8A1.7 1.7 0 0 0 4.6 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.8 2 2 0 1 1 2.8-2.8A1.7 1.7 0 0 0 11 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.8 1.2 2 2 0 1 1 2.8 2.8A1.7 1.7 0 0 0 19.4 11a2 2 0 1 1 0 4z"/></svg>',
   config: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
   cashsm: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/></svg>',
+  msg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
+  sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>',
 };
 // Sparkline representativa de la maqueta (visual — pendiente datos reales).
 const SPARK =
@@ -169,6 +172,27 @@ export function CajaClient({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
+
+  // Modo claro/oscuro (mockup: data-theme en <html> + persistencia).
+  const [dark, setDark] = useState(false);
+  useEffect(() => {
+    const saved = typeof window !== 'undefined' ? window.localStorage.getItem('pandora-theme') : null;
+    const isDark = saved === 'dark';
+    setDark(isDark);
+    document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+  }, []);
+  function toggleTheme() {
+    setDark((prev) => {
+      const next = !prev;
+      document.documentElement.dataset.theme = next ? 'dark' : 'light';
+      try {
+        window.localStorage.setItem('pandora-theme', next ? 'dark' : 'light');
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
 
   const [openAmount, setOpenAmount] = useState('');
 
@@ -429,7 +453,11 @@ export function CajaClient({
             <Icon html={IC.eye} />Lectura X
           </button>
           <div className="top-tools">
-            <button className="iconbtn glass" type="button" title="Notificaciones"><Icon html={IC.bell} /></button>
+            <button className="iconbtn glass" type="button" title="Cambiar tema claro/oscuro" onClick={toggleTheme}>
+              <Icon html={dark ? IC.sun : IC.moon} />
+            </button>
+            <button className="iconbtn glass" type="button" title="Notificaciones"><Icon html={IC.bell} /><span className="ndot">3</span></button>
+            <button className="iconbtn glass" type="button" title="Mensajes"><Icon html={IC.msg} /><span className="ndot">7</span></button>
             {isOwner && (
               <button className="iconbtn glass" type="button" title="Motivos y beneficiarios" onClick={() => setAdminOpen(true)}>
                 <Icon html={IC.gear} />
