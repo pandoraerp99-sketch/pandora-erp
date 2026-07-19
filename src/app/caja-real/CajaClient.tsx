@@ -89,6 +89,7 @@ const MEDIOS: Record<string, { label: string; color: string }> = {
   mixto: { label: 'Mixto', color: '#9088ff' },
 };
 const MEDIO_FILTERS = ['efectivo', 'debito', 'credito', 'mp_qr', 'mixto'];
+const DENOMS = [20000, 10000, 2000, 1000, 500, 200, 100, 50, 20, 10];
 const RECLASS_OPTIONS: SalePaymentMethod[] = ['efectivo', 'debito', 'credito', 'mp_qr'];
 
 const IC = {
@@ -205,6 +206,9 @@ export function CajaClient({
 
   const [countedAmount, setCountedAmount] = useState('');
   const [closeReason, setCloseReason] = useState('');
+  const [denomOpen, setDenomOpen] = useState(false);
+  const [denomCounts, setDenomCounts] = useState<Record<number, string>>({});
+  const [lecturaOpen, setLecturaOpen] = useState(false);
 
   const [reclassSaleId, setReclassSaleId] = useState<string | null>(null);
   const [reclassMethod, setReclassMethod] = useState<SalePaymentMethod | null>(null);
@@ -238,6 +242,7 @@ export function CajaClient({
   const egresosMan = movimientosManuales.filter((m) => m.type !== 'deposit');
   const ingresosSum = ingresosMan.reduce((a, m) => a + parseFloat(m.amount || '0'), 0);
   const egresosSum = egresosMan.reduce((a, m) => a + parseFloat(m.amount || '0'), 0);
+  const denomTotal = DENOMS.reduce((a, d) => a + d * (parseInt(denomCounts[d] || '0', 10) || 0), 0);
 
   const breakdown = useMemo(() => {
     const acc: Record<string, { amount: number; count: number }> = {};
@@ -449,7 +454,7 @@ export function CajaClient({
             <input placeholder="Buscar por cliente, ticket o monto…" value={search} onChange={(e) => setSearch(e.target.value)} />
             <span className="kbd">⌘K</span>
           </div>
-          <button className="lecturax glass" type="button" onClick={() => setFeedback({ tone: 'ok', text: 'Lectura X — reporte de control (pendiente de implementar).' })}>
+          <button className="lecturax glass" type="button" onClick={() => setLecturaOpen(true)}>
             <Icon html={IC.eye} />Lectura X
           </button>
           <div className="top-tools">
@@ -737,7 +742,7 @@ export function CajaClient({
                         {efDiff === null ? '—' : (efDiff > 0 ? '+' : efDiff < 0 ? '−' : '') + money(Math.abs(efDiff))}
                       </span>
                     </div>
-                    <button className="denom-btn" type="button" onClick={() => setFeedback({ tone: 'ok', text: 'Contar por denominación — pendiente de implementar.' })}>
+                    <button className="denom-btn" type="button" onClick={() => setDenomOpen(true)}>
                       Contar por denominación
                     </button>
                   </div>
@@ -908,6 +913,73 @@ export function CajaClient({
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {denomOpen && (
+        <div className="modal-ov open" onClick={(e) => { if (e.target === e.currentTarget) setDenomOpen(false); }}>
+          <div className="modal-card glass-strong" style={{ maxWidth: 470 }}>
+            <div className="modal-head">
+              <div>
+                <div className="modal-title"><Icon html={IC.cashsm} />Contar efectivo por denominación</div>
+                <div className="modal-sub">{salePointLabel}</div>
+              </div>
+              <button className="modal-x" onClick={() => setDenomOpen(false)}>×</button>
+            </div>
+            <div className="denom-grid">
+              <div className="denom-hd"><span>Denominación</span><span>Cantidad</span><span>Subtotal</span></div>
+              {DENOMS.map((d) => {
+                const c = parseInt(denomCounts[d] || '0', 10) || 0;
+                return (
+                  <div className="denom-row" key={d}>
+                    <span className="dv">{money(d)}</span>
+                    <input className="dq tnum" inputMode="numeric" value={denomCounts[d] ?? ''} placeholder="0" onChange={(e) => setDenomCounts((p) => ({ ...p, [d]: e.target.value }))} />
+                    <span className="ds tnum">{money(d * c)}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="denom-foot"><span>Total contado</span><span className="denom-total tnum">{money(denomTotal)}</span></div>
+            <div className="modal-actions">
+              <button className="btn" onClick={() => setDenomOpen(false)}>Cancelar</button>
+              <button className="btn-primary" style={{ width: 'auto', flex: 2 }} onClick={() => { setCountedAmount(String(denomTotal)); setDenomOpen(false); }}>Aplicar al arqueo</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {lecturaOpen && (
+        <div className="modal-ov open" onClick={(e) => { if (e.target === e.currentTarget) setLecturaOpen(false); }}>
+          <div className="modal-card glass-strong" style={{ maxWidth: 440 }}>
+            <div className="modal-head">
+              <div>
+                <div className="modal-title"><Icon html={IC.eye} />Lectura X<span className="lx-badge">control</span></div>
+                <div className="modal-sub">Reporte de control · no cierra la caja</div>
+              </div>
+              <button className="modal-x" onClick={() => setLecturaOpen(false)}>×</button>
+            </div>
+            <div className="lx-body">
+              <div className="lx-meta">
+                <div><div className="k">Cajero</div><div className="v">{cashierName.replace(/@.*/, '')}</div></div>
+                <div><div className="k">Punto de venta</div><div className="v">{salePointLabel}</div></div>
+                <div><div className="k">Apertura</div><div className="v">{session ? hora(session.openedAtIso) : '—'}</div></div>
+                <div><div className="k">Fondo inicial</div><div className="v">{session ? money(session.initialAmount) : '—'}</div></div>
+              </div>
+              <div>
+                <div className="lx-sec-h">Ventas por medio</div>
+                {breakdown.length === 0 ? (
+                  <div className="lx-line sub">Sin ventas todavía.</div>
+                ) : (
+                  breakdown.map((b) => (
+                    <div className="lx-pago" key={b.key}><span className="d" style={{ background: b.color }} /><span className="nm">{b.label}</span><span className="tk">{b.count}</span><span className="am tnum">{money(b.amount)}</span></div>
+                  ))
+                )}
+                <div className="lx-line total"><span>Total ventas</span><b className="tnum">{money(ventasHoy)}</b></div>
+              </div>
+              <div className="lx-note">Es una <b>lectura de control</b>: muestra el estado actual de la caja sin cerrarla.</div>
+            </div>
+            <div className="modal-actions"><button className="btn-primary" onClick={() => setLecturaOpen(false)}>Cerrar</button></div>
           </div>
         </div>
       )}
