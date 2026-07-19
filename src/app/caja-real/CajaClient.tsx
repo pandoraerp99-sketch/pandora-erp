@@ -138,7 +138,9 @@ const money = (v: string | number) => {
 const hora = (iso: string | null) => {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  return Number.isNaN(d.getTime())
+    ? '—'
+    : d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
 };
 const fechaLarga = (iso: string | null) => {
   const d = iso ? new Date(iso) : new Date();
