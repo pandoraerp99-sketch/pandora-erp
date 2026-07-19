@@ -681,6 +681,16 @@ export function CajaClient({
                   </div>
                 )}
               </section>
+
+              <section className="glass" style={{ padding: '22px 24px' }}>
+                <div className="card-title"><h3>Alivios de caja</h3><span className="upper-mini">Retiros a caja fuerte</span></div>
+                <div className="mov-empty">Sin alivios pendientes. Registrá un Alivio desde la card de Efectivo.</div>
+              </section>
+
+              <section className="glass" style={{ padding: '22px 24px' }}>
+                <div className="card-title"><h3>Historial de cierres</h3><span className="upper-mini">Últimos días</span></div>
+                <div className="mov-empty">Todavía no hay cierres registrados.</div>
+              </section>
             </div>
 
             <div className="col">
@@ -739,6 +749,11 @@ export function CajaClient({
                   <div className="res-cell"><div className="res-k">Ticket promedio</div><div className="res-v tnum">{money(ticketProm)}</div></div>
                   <div className="res-cell"><div className="res-k">Apertura</div><div className="res-v tnum">{hora(session.openedAtIso)}</div></div>
                 </div>
+              </section>
+
+              <section className="glass" style={{ padding: '22px 24px' }}>
+                <div className="card-title"><h3>Comprobantes emitidos</h3><span className="upper-mini">Hoy</span></div>
+                <div className="mov-empty">Sin comprobantes emitidos todavía.</div>
               </section>
             </div>
           </div>
