@@ -213,4 +213,70 @@ describe('T-FISCAL-SCHEMA-01 — fiscal_snapshots_immutable trigger', () => {
     expect(err.code).toBe('23514');
     expect(err.message).toMatch(/INSERT-only/);
   });
+
+  // ── T1.5/T1.6 — campos de ADR-0023 (migration 0021) ─────────────────────
+  // La auditoría 2026-09-02 encontró que ADR-0023 figuraba *Aprobado*
+  // declarando campos que el schema real NUNCA tuvo (la migration
+  // 0006_fiscal_snapshot_v2.sql que el ADR menciona jamás se creó). Estos dos
+  // casos fijan el schema contra el ADR para que ese drift no vuelva en silencio.
+
+  it('T1.5: el schema tiene los campos que ADR-0023 declara', async () => {
+    const filas = (await db.execute(sql`
+      SELECT column_name, is_nullable, column_default
+      FROM information_schema.columns
+      WHERE table_name = 'fiscal_snapshots'
+    `)) as unknown as Array<{
+      column_name: string;
+      is_nullable: string;
+      column_default: string | null;
+    }>;
+
+    const porNombre = new Map(filas.map((f) => [f.column_name, f]));
+
+    // Decisión 1 (RG 5616) · Decisión 2 (QR RG 4892) · Decisión 4 (CAE/CAEA)
+    for (const col of [
+      'condicion_iva_receptor_id',
+      'condicion_iva_receptor_desc_at_emission',
+      'qr_version',
+      'qr_payload_json',
+      'qr_url_base_at_emission',
+      'authorization_code_type',
+      'wsfe_manual_revision',
+    ]) {
+      expect(porNombre.has(col), `falta la columna ${col} (ADR-0023)`).toBe(true);
+    }
+
+    // NULLABLE a propósito: CondicionIVAReceptorId sigue siendo OPCIONAL en
+    // WSFEv1 al 2026-07 (Manual COMPG v4.5, A-23.a verificada). Si algún día
+    // pasa a NOT NULL debe ser por decisión explícita, no por descuido.
+    expect(porNombre.get('condicion_iva_receptor_id')?.is_nullable).toBe('YES');
+
+    // NOT NULL con default CAE — F0 es CAE-online; CAEA entra en F0.5.
+    expect(porNombre.get('authorization_code_type')?.is_nullable).toBe('NO');
+    expect(porNombre.get('authorization_code_type')?.column_default).toContain('CAE');
+  });
+
+  it('T1.6: authorization_code_type sólo acepta CAE o CAEA', async () => {
+    let caught: unknown;
+    try {
+      await db.execute(sql`
+        INSERT INTO fiscal_snapshots (
+          tenant_id, sale_id, calculation_engine_version, tax_policy_version,
+          rounding_mode, rounding_stage, iva_rates_applied, currency_code,
+          jurisdiction_context, fiscal_breakdown, wsfe_version,
+          authorization_code_type
+        ) VALUES (
+          ${tenantId}, ${saleId}, 'v1.0.0', 'ar-2026-07-v1',
+          'HALF_EVEN', 'PER_LINE', '[]'::jsonb, 'ARS',
+          '{}'::jsonb, '{}'::jsonb, 'WSFEv1',
+          'CAEX'
+        )
+      `);
+    } catch (e) {
+      caught = e;
+    }
+
+    expect(caught, 'un tipo de autorización inválido debe rechazarse').toBeDefined();
+    expect(unwrapPgError(caught).code).toBe('23514'); // check_violation
+  });
 });
