@@ -1,6 +1,13 @@
 /**
  * ProductService — operaciones sobre el catalogo de productos.
  *
+ * ⚠️ MÓDULO NO WIREADO (verificado 2026-09-02). Nadie importa este servicio,
+ * ni siquiera un test — el módulo de productos vivo es `src/lib/inventory/`
+ * (el POS usa `listProductsPaginated` de `inventory/queries.ts`).
+ * NO borrar: acá viven `updateProduct` y `softDeleteProduct`, que `inventory/`
+ * todavía no tiene. Consolidar con `inventory/` cuando se porte la pantalla
+ * Productos. Ver QUEUE.md (SRS).
+ *
  * REGLAS:
  * - Toda operacion requiere tenant_id en tracing context (requireTenantId()).
  * - Mutaciones fiscalmente sensibles escriben audit_log (EVENT-TAXONOMY §5 v2.0.2):

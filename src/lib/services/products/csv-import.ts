@@ -1,6 +1,11 @@
 /**
  * CSV bulk import de productos.
  *
+ * ⚠️ MÓDULO NO WIREADO (verificado 2026-09-02): nadie llama a
+ * `importProductsFromCsv` — el módulo de productos vivo es `src/lib/inventory/`,
+ * que NO tiene import CSV. NO borrar: esta capacidad se consolida en
+ * `inventory/` cuando se porte la pantalla Productos. Ver QUEUE.md (SRS).
+ *
  * Resuelve el dolor confirmado del owner: "comerciante TDF tiene Excel con
  * 200-2000 productos, ¿como los entra a Pandora?".
  *

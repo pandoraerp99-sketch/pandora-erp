@@ -1,3 +1,10 @@
+/**
+ * ⚠️ MÓDULO NO WIREADO (verificado 2026-09-02). Nadie importa este barrel —
+ * el módulo de productos vivo es `src/lib/inventory/`, que es el que usa el POS.
+ * NO borrar: acá se re-exportan `updateProduct`, `softDeleteProduct` e
+ * `importProductsFromCsv`, que `inventory/` todavía no tiene.
+ * Consolidar con `inventory/` cuando se porte la pantalla Productos. Ver QUEUE.md (SRS).
+ */
 export {
   createProduct,
   updateProduct,

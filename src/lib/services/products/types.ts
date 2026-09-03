@@ -1,6 +1,12 @@
 /**
  * Input/output types para ProductService.
  * Schemas Zod en boundary, types inferidos.
+ *
+ * ⚠️ MÓDULO NO WIREADO (verificado 2026-09-02): ningún código de producción
+ * importa `services/products/` — el módulo vivo es `src/lib/inventory/`.
+ * NO borrar: estos schemas Zod (Create/Update/Search/StockAdjustment) no
+ * existen en `inventory/`. Consolidar cuando se porte la pantalla Productos.
+ * Ver QUEUE.md (SRS).
  */
 import { z } from 'zod';
 import { UNIT_TYPES } from '../../db/schema/products.js';
