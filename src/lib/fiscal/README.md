@@ -105,6 +105,12 @@ Tests: `T-FISCAL-EMIT-02` (4 integración). **Aditivo:** el POS hoy pasa `requir
 6. **Adaptadores reales del cliente** (en `getCaeRequester`): TraSigner CMS (node-forge, firma con el cert),
    transports fetch (WSAA `LoginCms` + WSFEv1), `AfipAuthProvider` (WsaaClient + cuit de la company),
    `WsaaTokenCache` sobre la tabla `wsaa_tokens`. Con esto `getCaeRequester` deja de devolver `null`.
+
+   > ⚠️ **REQUISITO TLS de los transports** (CLAUDE.md §11.4, no negociable): TLS mínimo 1.2
+   > (`minVersion: 'TLSv1.2'`) + `rejectUnauthorized: true`. El bypass de validación TLS está
+   > **PROHIBIDO explícitamente** — por este canal viajan el cert X.509 y el token WSAA del tenant.
+   > Al implementarlo, escribir el test **T-SEC-06** (catálogo CLAUDE.md §18.3), hoy faltante
+   > porque el transporte no existe.
 7. **POS UI**: pasar `require_fiscal_invoice=true` (o según cliente) + mostrar `data.fiscal` (CAE / "en proceso").
 8. **Homologación live**: primera factura de prueba de punta a punta. Recién con el cert.
 
