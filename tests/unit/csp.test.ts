@@ -91,6 +91,32 @@ describe('buildCspHeader directives', () => {
     expect(scriptDirective).not.toContain("'unsafe-inline'");
   });
 
+  // ── 'unsafe-eval': SOLO dev ──────────────────────────────────────────────
+  // Bug 2026-09-03: sin 'unsafe-eval' en dev, el runtime de React Refresh tira
+  // EvalError, la pagina NO HIDRATA y el POS queda visible pero sin responder a
+  // los clicks. La relajacion es necesaria en dev y PROHIBIDA en prod.
+
+  it('script-src NO tiene unsafe-eval por default (prod)', () => {
+    const scriptDirective = header.split(';').find((d) => d.trim().startsWith('script-src'));
+    expect(scriptDirective).not.toContain("'unsafe-eval'");
+  });
+
+  it('script-src NO tiene unsafe-eval con dev:false explicito', () => {
+    const prod = buildCspHeader(nonce, { dev: false });
+    const scriptDirective = prod.split(';').find((d) => d.trim().startsWith('script-src'));
+    expect(scriptDirective).not.toContain("'unsafe-eval'");
+  });
+
+  it('script-src SI tiene unsafe-eval con dev:true (React Refresh necesita eval)', () => {
+    const dev = buildCspHeader(nonce, { dev: true });
+    const scriptDirective = dev.split(';').find((d) => d.trim().startsWith('script-src'));
+    expect(scriptDirective).toContain("'unsafe-eval'");
+    // dev sigue conservando nonce + self: la relajacion es SOLO eval.
+    expect(scriptDirective).toContain(`'nonce-${nonce}'`);
+    expect(scriptDirective).toContain("'self'");
+    expect(scriptDirective).not.toContain("'unsafe-inline'");
+  });
+
   it('style-src tiene unsafe-inline (deuda intencional ADR-0019)', () => {
     const styleDirective = header.split(';').find((d) => d.trim().startsWith('style-src'));
     expect(styleDirective).toContain("'unsafe-inline'");

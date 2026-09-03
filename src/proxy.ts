@@ -65,7 +65,12 @@ function isTracingExempt(pathname: string): boolean {
  */
 function applySecurityHeaders(req: NextRequest, response: NextResponse): void {
   const nonce = generateCspNonce();
-  const securityHeaders = buildSecurityHeaders(nonce);
+  // En dev, React Refresh de Next necesita 'unsafe-eval' o la pagina NO HIDRATA
+  // (bug 2026-09-03: el POS se veia bien pero no respondia a ningun click).
+  // En produccion NO se relaja: 'unsafe-eval' nunca sale a prod.
+  const securityHeaders = buildSecurityHeaders(nonce, {
+    dev: process.env.NODE_ENV !== 'production',
+  });
 
   for (const [key, value] of Object.entries(securityHeaders)) {
     response.headers.set(key, value);

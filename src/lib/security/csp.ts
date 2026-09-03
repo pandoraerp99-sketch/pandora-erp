@@ -73,6 +73,20 @@ export interface BuildCspOptions {
    * el endpoint /api/security/csp-report).
    */
   reportUri?: string;
+  /**
+   * Modo desarrollo: agrega `'unsafe-eval'` a script-src.
+   *
+   * POR QUE (bug encontrado 2026-09-03): React Refresh de Next usa `eval` para
+   * el hot reload. Con el CSP de produccion, el runtime de react-refresh tira
+   * `EvalError` al cargar, **la pagina NUNCA HIDRATA**, y como consecuencia
+   * ningun onClick queda conectado: el POS se veia bien pero no respondia a
+   * los clicks. Sintoma tipico: "toco un producto y no pasa nada".
+   *
+   * SOLO desarrollo. En produccion NO se pasa y `'unsafe-eval'` NO aparece —
+   * es una relajacion de XSS que no debe salir nunca a prod (CLAUDE.md §11.1).
+   * El test T-SEC-01 verifica ambos lados.
+   */
+  dev?: boolean;
 }
 
 /**
@@ -117,7 +131,14 @@ export function buildCspHeader(
   const directives: Array<readonly [string, readonly string[]]> = [
     ['default-src', ["'self'"]],
     // NO 'strict-dynamic' F0 — ver comment del bloque header de buildCspHeader.
-    ['script-src', ["'self'", `'nonce-${nonce}'`]],
+    // 'unsafe-eval' SOLO en dev: lo exige React Refresh de Next para hidratar.
+    // Sin esto la pagina renderiza pero queda muerta (ver BuildCspOptions.dev).
+    [
+      'script-src',
+      options.dev
+        ? ["'self'", `'nonce-${nonce}'`, "'unsafe-eval'"]
+        : ["'self'", `'nonce-${nonce}'`],
+    ],
     ['style-src', ["'self'", "'unsafe-inline'"]],
     ['img-src', DEFAULT_IMG_SRC],
     ['font-src', ["'self'", 'data:']],
