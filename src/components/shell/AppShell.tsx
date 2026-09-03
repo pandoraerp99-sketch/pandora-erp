@@ -40,6 +40,22 @@ export interface AppShellProps {
   /** Estado de AFIP en el pie del sidebar. */
   afipConnected?: boolean;
   afipDetail?: string;
+  /**
+   * Modelo de scroll. Las dos maquetas usan modelos DISTINTOS y hay que
+   * respetar cada uno:
+   *
+   * - `'fijo'` (default, POS): `.shell` mide 100dvh y el `body` no scrollea;
+   *   lo que scrollea es el catálogo por dentro. Es una pantalla de operación:
+   *   el cajero nunca debería tener que scrollear para llegar a "Cobrar".
+   *
+   * - `'pagina'` (Caja): scrollea la página entera, como cualquier documento.
+   *   Caja es una pantalla de lectura y cierre, con más contenido que alto de
+   *   viewport (arqueo, movimientos, alivios, historial).
+   *
+   * Aplicarle `'fijo'` a Caja deja contenido inalcanzable: fue un bug real
+   * (2026-09-03) — no se podía scrollear y quedaban secciones invisibles.
+   */
+  scroll?: 'fijo' | 'pagina';
 }
 
 function initials(name: string): string {
@@ -59,6 +75,7 @@ export function AppShell({
   userRole = 'Cajero',
   afipConnected = false,
   afipDetail = 'WSFEv1',
+  scroll = 'fijo',
 }: AppShellProps) {
   const pathname = usePathname();
 
@@ -93,6 +110,17 @@ export function AppShell({
   return (
     <>
       <style>{SHELL_CSS}</style>
+
+      {/* El CSS del shell viene del mockup del POS, que es de pantalla fija
+          (body sin scroll). Para las pantallas de documento hay que soltarlo,
+          o queda contenido inalcanzable. */}
+      {scroll === 'pagina' && (
+        <style>{`
+          html, body { height:auto; overflow:auto; }
+          .shell { height:auto; min-height:100dvh; }
+          .main { min-height:0; overflow:visible; padding-bottom:44px; }
+        `}</style>
+      )}
 
       {/* Atmósfera dawn: gradiente base + glows radiales. Va fixed detrás de
           todo (z-index -10). Sin esto el glass queda sobre blanco y se ve

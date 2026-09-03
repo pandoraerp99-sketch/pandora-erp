@@ -26,6 +26,22 @@ export const CAJA_CSS = `
   --glass-shadow:0 1px 0 rgba(255,255,255,0.9) inset, 0 8px 32px rgba(54,70,120,0.10), 0 2px 8px rgba(54,70,120,0.06);
 }
 
+/* ── Radio de los bordes en el glass ──────────────────────────────────────
+   La .glass del POS NO define border-radius: allá cada componente pone el
+   suyo (.card 16px, .catalog 20px, .cart 20px). La .glass de la maqueta de
+   CAJA sí lo traía (var(--r-lg)), y las cards de esta pantalla dependen de
+   eso. Al unificar el shell esa regla se perdió y quedaba TODO CUADRADO
+   (bug 2026-09-03).
+
+   Sólo aplica mientras Caja está montada: la hoja de estilos vive dentro del
+   componente, así que no le toca el radio a ninguna otra pantalla.
+
+   OJO al editar este archivo: NO escribir la etiqueta de estilo literal en los
+   comentarios. React la escapa al serializar en el servidor (para que el
+   navegador no cierre la etiqueta antes de tiempo) y en el cliente queda cruda
+   → error de hidratación por texto que no coincide. Pasó de verdad. */
+.glass, .glass-strong { border-radius:var(--r-lg); }
+
 .tnum { font-variant-numeric:tabular-nums; }
 
 .mono { font-family:var(--mono); }

@@ -142,17 +142,44 @@ const money = (v: string | number) => {
   const n = Math.round(typeof v === 'number' ? v : parseFloat(v || '0'));
   return '$' + (Number.isFinite(n) ? n : 0).toLocaleString('es-AR');
 };
+/**
+ * Zona horaria FIJA para mostrar fechas y horas.
+ *
+ * Sin `timeZone` explícito, toLocale*String usa la del runtime: el server
+ * (Node en WSL) corre en UTC y el navegador del cajero en Argentina → el
+ * mismo dato se renderiza con texto distinto y React tira un error de
+ * hidratación ("server rendered text didn't match the client"). Bug real,
+ * 2026-09-03.
+ *
+ * Además de arreglar la hidratación, esto es lo correcto de fondo: CLAUDE.md
+ * §22.16 fija America/Argentina/Ushuaia para los timestamps que ve el usuario.
+ * Una hora de apertura de caja tiene que leerse igual en el server, en el
+ * navegador del cajero y en el del contador, sin importar dónde esté cada uno.
+ */
+const TZ = 'America/Argentina/Ushuaia';
+
 const hora = (iso: string | null) => {
   if (!iso) return '—';
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? '—'
-    : d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    : d.toLocaleTimeString('es-AR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: TZ,
+      });
 };
 const fechaLarga = (iso: string | null) => {
   const d = iso ? new Date(iso) : new Date();
   if (Number.isNaN(d.getTime())) return '';
-  const s = d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const s = d.toLocaleDateString('es-AR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: TZ,
+  });
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
 const inits = (name: string) => {
@@ -429,6 +456,9 @@ export function CajaClient({
 
   return (
     <AppShell
+      // Caja scrollea como documento: tiene más contenido que alto de pantalla
+      // (arqueo, movimientos, alivios, historial). El default 'fijo' es del POS.
+      scroll="pagina"
       userName={cashierName.replace(/@.*/, '')}
       userRole={isOwner ? 'Dueño' : 'Cajero'}
       afipConnected={false}
