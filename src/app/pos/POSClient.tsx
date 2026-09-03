@@ -1,16 +1,22 @@
 'use client';
 
 /**
- * POSClient — el POS funcional (Slice 5). Carrito interactivo que llama las
- * Server Actions ya probadas (T-POS-ACTION-01). Dawn Industrial Editorial.
+ * POSClient — el POS funcional. Carrito interactivo que llama las Server
+ * Actions ya probadas (T-POS-ACTION-01).
+ *
+ * VISUAL (2026-09-03): montado sobre <AppShell> y usando las clases de la
+ * MAQUETA (`pos-preview/checkpoint-v19-top-tools.html`) — `.catalog`, `.grid`,
+ * `.card`, `.cart`, `.item`, `.summary`, `.total`, `.cobrar`. Antes seguía
+ * `docs/POS-DESIGN-V1.1-DIRECTION.md` y quedaba sin sidebar ni topbar: el owner
+ * entró y no reconoció el producto. La maqueta es la autoridad visual; el doc
+ * del repo NO.
+ *
+ * La LÓGICA no cambió en este reskin: mismo flujo, mismas actions, mismos
+ * cálculos de preview.
  *
  * Flujo happy-path F0: click producto → (crea draft si no hay) addItem →
  * carrito + preview total → elegir medio (efectivo/débito/crédito/QR) → Cobrar
  * → finalize con idempotency_key por intento → venta cobrada → reset.
- *
- * El medio elegido viaja en el pago (single-method F0). Es lo que separa el
- * arqueo (débito/crédito por separado, A-26); el reparto multi-medio estilo
- * lisCobro es una slice posterior.
  *
  * Money preview client-side: agrega los line_total/line_subtotal/line_tax que
  * el SERVER ya calculó por ítem (ADR-0021 — cliente muestra preview, server es
@@ -18,10 +24,7 @@
  */
 import { useMemo, useState, useTransition } from 'react';
 import Decimal from 'decimal.js';
-import { POSLayout } from '@/components/pos/POSLayout';
-import { StatusBar } from '@/components/pos/StatusBar';
-import { CartRail } from '@/components/pos/CartRail';
-import { CartTotal } from '@/components/pos/CartTotal';
+import { AppShell } from '@/components/shell/AppShell';
 import {
   startSaleAction,
   addItemAction,
@@ -62,30 +65,10 @@ const ARS = new Intl.NumberFormat('es-AR', {
 });
 const fmt = (v: Decimal | string) => ARS.format(new Decimal(v).toNumber());
 
-function stockColor(stock: number): { bg: string; text: string } {
-  if (stock <= 0)
-    return { bg: 'oklch(96.8% 0.008 238)', text: 'var(--text-muted)' };
-  if (stock < 10)
-    return {
-      bg: 'color-mix(in oklch, var(--semantic-error) 10%, transparent)',
-      text: 'var(--semantic-error)',
-    };
-  if (stock < 20)
-    return {
-      bg: 'color-mix(in oklch, var(--semantic-warning) 14%, transparent)',
-      text: 'oklch(45% 0.13 70)',
-    };
-  return {
-    bg: 'color-mix(in oklch, var(--semantic-success) 10%, transparent)',
-    text: 'oklch(40% 0.12 148)',
-  };
-}
-
 export function POSClient({
   products,
   cashierName,
   salePointLabel,
-  serverTimeIso,
 }: POSClientProps) {
   const [cart, setCart] = useState<SaleWithItems | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -178,252 +161,241 @@ export function POSClient({
     });
   }
 
-  return (
-    <>
-      <POSLayout
-        statusBar={
-          <StatusBar
-            salePointLabel={salePointLabel}
-            cashierName={cashierName}
-            afipStatus="ok"
-            afipLatencyMs={1240}
-            cashBalanceFormatted={fmt(totals.total)}
-            serverTimeIso={serverTimeIso}
-          />
-        }
-        cartRail={
-          <CartRail
-            customerLabel="Consumidor final"
-            hasItems={hasItems}
-            footer={
-              <CartTotal
-                hasItems={hasItems}
-                subtotalFormatted={fmt(totals.neto)}
-                ivaLabel="IVA (21%)"
-                ivaFormatted={fmt(totals.iva)}
-                otherTaxesFormatted={fmt(new Decimal(0))}
-                exemptFormatted={fmt(totals.exento)}
-                totalFormatted={fmt(totals.total)}
-              />
-            }
+  // ════════════ CARRITO (columna derecha del shell) ════════════
+  const carrito = (
+    <aside className="cart glass">
+      <div className="cart-head">
+        <span className="cart-title">Venta actual</span>
+        <span className="cart-count">
+          {items.length === 1 ? '1 ítem' : `${items.length} ítems`}
+        </span>
+      </div>
+
+      <div className="cust">
+        <div className="cust-av">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           >
-            {items.map((it) => (
-              <li
-                key={it.id}
-                className="pos-anim-pop group flex flex-col gap-1 p-2.5 rounded-md hover:bg-[color:var(--surface-sunken)] transition-colors"
-              >
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-[color:var(--text-primary)] font-medium leading-tight">
-                    {it.product_name_snapshot}
-                  </span>
-                  <span
-                    className="pos-data text-[color:var(--text-secondary)] shrink-0"
-                    style={{ fontSize: 'var(--text-caption)' }}
-                  >
-                    x{new Decimal(it.quantity).toNumber()}
-                  </span>
-                </div>
-                <div className="flex items-baseline justify-between">
+            <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+        </div>
+        <div>
+          <div className="cust-name">Consumidor final</div>
+          <div className="cust-sub">Sin identificar · Ticket</div>
+        </div>
+      </div>
+
+      <div className="items">
+        {!hasItems ? (
+          <div
+            style={{
+              padding: '28px 12px',
+              textAlign: 'center',
+              color: 'var(--ink-4)',
+              fontSize: '12px',
+              lineHeight: 1.6,
+            }}
+          >
+            Carrito vacío
+            <br />
+            Tocá un producto para empezar.
+          </div>
+        ) : (
+          items.map((it) => (
+            <div className="item" key={it.id}>
+              <div className="item-info">
+                <div className="item-name">
+                  {it.product_name_snapshot}
+                  {/* Acá NO se puede usar .tag-tdf: es position:absolute y se
+                      saldría de la fila. Chip inline con el mismo color. */}
                   {it.tdf_exempt ? (
                     <span
-                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[color:var(--fiscal-tdf)]"
                       style={{
-                        fontSize: 'var(--text-micro)',
-                        background:
-                          'color-mix(in oklch, var(--fiscal-tdf) 10%, transparent)',
+                        marginLeft: 6,
+                        padding: '1px 5px',
+                        borderRadius: 5,
+                        fontSize: 8,
+                        fontWeight: 800,
+                        letterSpacing: '0.02em',
+                        color: 'var(--tdf)',
+                        background: 'rgba(20,150,120,0.10)',
+                        whiteSpace: 'nowrap',
                       }}
                     >
-                      <span
-                        aria-hidden
-                        className="w-1 h-1 rounded-full"
-                        style={{ background: 'var(--fiscal-tdf)' }}
-                      />
-                      Ley 19.640
+                      19.640
                     </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => removeItem(it.id)}
-                      disabled={pending}
-                      className="pos-focusable opacity-0 group-hover:opacity-100 transition-opacity text-[color:var(--text-muted)] hover:text-[color:var(--semantic-error)]"
-                      style={{ fontSize: 'var(--text-micro)' }}
-                      aria-label={`Quitar ${it.product_name_snapshot}`}
-                    >
-                      Quitar
-                    </button>
-                  )}
-                  <span
-                    className="pos-data text-[color:var(--text-primary)]"
-                    style={{ fontSize: 'var(--text-body)' }}
-                  >
-                    {fmt(it.line_total)}
-                  </span>
+                  ) : null}
                 </div>
-              </li>
-            ))}
-          </CartRail>
-        }
-        catalog={
-          <div className="flex flex-col h-full">
-            {error ? (
-              <div
-                role="alert"
-                className="mb-3 rounded-lg px-3.5 py-2.5 text-[color:var(--semantic-error)]"
-                style={{
-                  fontSize: 'var(--text-caption)',
-                  background:
-                    'color-mix(in oklch, var(--semantic-error) 9%, transparent)',
-                  border:
-                    '1px solid color-mix(in oklch, var(--semantic-error) 30%, transparent)',
-                }}
-              >
-                {error}
+                <div className="item-sub">
+                  {new Decimal(it.quantity).toNumber()} × {fmt(it.unit_price)}
+                </div>
               </div>
-            ) : null}
-            <div
-              className="flex-1 overflow-y-auto pr-1"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
-                gap: '12px',
-                alignContent: 'start',
-              }}
-            >
-              {products.map((p) => {
-                const stock = new Decimal(p.stock_current).toNumber();
-                const sc = stockColor(stock);
-                const soldOut = stock <= 0;
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => addProduct(p.id)}
-                    disabled={pending || soldOut}
-                    className="pos-focusable pos-surface-operational rounded-lg p-3 flex flex-col gap-2 text-left transition-all hover:translate-y-[-1px] hover:shadow-[0_4px_12px_oklch(20%_0.04_240/0.08)] disabled:opacity-50 relative"
-                  >
+              <div className="item-right">
+                <span className="qty">{fmt(it.line_total)}</span>
+                <button
+                  type="button"
+                  className="del"
+                  onClick={() => removeItem(it.id)}
+                  disabled={pending}
+                  aria-label={`Quitar ${it.product_name_snapshot}`}
+                  title="Quitar"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="summary">
+        <div className="srow">
+          <span className="slabel">Subtotal</span>
+          <span className="sval">{fmt(totals.neto)}</span>
+        </div>
+        <div className="srow">
+          <span className="slabel">IVA contenido</span>
+          <span className="sval">{fmt(totals.iva)}</span>
+        </div>
+        {totals.exento.greaterThan(0) ? (
+          <div className="srow">
+            <span className="slabel">Exento · Ley 19.640</span>
+            <span className="sval">{fmt(totals.exento)}</span>
+          </div>
+        ) : null}
+        <div className="total">
+          <span className="total-label">Total</span>
+          <span className="total-amt">{fmt(totals.total)}</span>
+        </div>
+      </div>
+
+      {/* Selector de medio (single-method F0). El reparto multi-medio estilo
+          lisCobro es una slice posterior. */}
+      <div className="cats" style={{ padding: '0 14px 10px', flexWrap: 'wrap' }}>
+        {PAY_OPTIONS.map((op) => (
+          <button
+            type="button"
+            key={op.key}
+            className={payMethod === op.key ? 'cat active' : 'cat'}
+            onClick={() => setPayMethod(op.key)}
+            disabled={pending}
+          >
+            {op.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="pay">
+        <button
+          type="button"
+          className="cobrar"
+          onClick={charge}
+          disabled={!hasItems || pending}
+        >
+          {pending ? 'Procesando…' : `Cobrar ${fmt(totals.total)}`}
+        </button>
+      </div>
+    </aside>
+  );
+
+  // ════════════ CATÁLOGO (columna del medio) ════════════
+  return (
+    <AppShell
+      aside={carrito}
+      storeName={salePointLabel}
+      userName={cashierName}
+      userRole="Cajero"
+      afipConnected={false}
+      afipDetail="WSFEv1 · sin certificado"
+    >
+      {(error || toast) && (
+        <div
+          className="glass"
+          style={{
+            flex: '0 0 auto',
+            padding: '10px 14px',
+            borderRadius: 14,
+            fontSize: 12.5,
+            color: error ? '#c0384a' : '#1f7a4d',
+          }}
+          role="status"
+        >
+          {error ?? toast}
+        </div>
+      )}
+
+      <div className="cats">
+        <button type="button" className="cat active">
+          Todos
+        </button>
+      </div>
+
+      <div className="catalog glass">
+        <div className="stage stage-prod">
+          <div className="grid">
+            {products.map((p) => {
+              const stock = new Decimal(p.stock_current).toNumber();
+              const sinStock = stock <= 0;
+              return (
+                <button
+                  type="button"
+                  className="card"
+                  key={p.id}
+                  onClick={() => addProduct(p.id)}
+                  disabled={pending || sinStock}
+                  style={
+                    sinStock
+                      ? { opacity: 0.45, cursor: 'not-allowed' }
+                      : undefined
+                  }
+                >
+                  <div className="card-img">
+                    <span
+                      aria-hidden
+                      style={{
+                        fontSize: 34,
+                        fontWeight: 700,
+                        color: 'rgba(13,20,36,0.13)',
+                        letterSpacing: '-0.03em',
+                      }}
+                    >
+                      {p.name.slice(0, 2).toUpperCase()}
+                    </span>
+                    {/* .tag-tdf ya trae position:absolute + top/left en el CSS
+                        de la maqueta. NO agregarle posicionamiento inline: si
+                        se le pasa `right` además del `left` del CSS, el chip se
+                        estira de lado a lado. */}
                     {p.tdf_exempt ? (
-                      <span
-                        aria-label="Exento Ley 19.640"
-                        className="absolute top-2 right-2 inline-flex items-center justify-center w-5 h-5 rounded-full"
-                        style={{
-                          background:
-                            'color-mix(in oklch, var(--fiscal-tdf) 14%, transparent)',
-                        }}
-                      >
-                        <span
-                          aria-hidden
-                          className="w-1.5 h-1.5 rounded-full"
-                          style={{ background: 'var(--fiscal-tdf)' }}
-                        />
+                      <span className="tag-tdf">
+                        <span className="d" />
+                        19.640
                       </span>
                     ) : null}
-                    <div className="flex flex-col gap-0.5 mt-1">
+                  </div>
+                  <div className="card-body">
+                    <div className="card-name">{p.name}</div>
+                    <div className="card-sku">{p.sku ?? '—'}</div>
+                    <div className="card-foot">
+                      <span className="card-price">{fmt(p.price)}</span>
                       <span
-                        className="text-[color:var(--text-primary)] font-medium leading-tight line-clamp-2"
-                        style={{ fontSize: 'var(--text-caption)' }}
+                        className={stock < 10 ? 'card-stock low' : 'card-stock'}
                       >
-                        {p.name}
-                      </span>
-                      <span
-                        className="pos-data text-[color:var(--text-primary)]"
-                        style={{ fontSize: 'var(--text-body)' }}
-                      >
-                        {fmt(p.price)}
+                        {stock} u
                       </span>
                     </div>
-                    <div className="flex items-center justify-between mt-auto pt-1">
-                      <span
-                        className="pos-data px-1.5 py-0.5 rounded"
-                        style={{
-                          fontSize: 'var(--text-micro)',
-                          background: sc.bg,
-                          color: sc.text,
-                        }}
-                      >
-                        {soldOut ? 'agotado' : `${stock} u`}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
-        }
-        actionBar={
-          <div className="pos-surface-action flex items-center justify-between gap-4 px-5 py-3">
-            <div className="flex items-center gap-3">
-              {toast ? (
-                <span
-                  className="pos-anim-pop inline-flex items-center gap-2 px-3 py-1.5 rounded-lg font-semibold text-white"
-                  style={{
-                    fontSize: 'var(--text-caption)',
-                    background: 'var(--semantic-success)',
-                  }}
-                >
-                  ✓ {toast}
-                </span>
-              ) : (
-                <span
-                  className="text-[color:var(--text-muted)]"
-                  style={{ fontSize: 'var(--text-caption)' }}
-                >
-                  {hasItems
-                    ? `${items.length} ítem${items.length === 1 ? '' : 's'} en el carrito`
-                    : 'Tocá un producto para empezar'}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-3">
-              <div
-                role="radiogroup"
-                aria-label="Medio de pago"
-                className="flex items-center gap-1.5"
-              >
-                {PAY_OPTIONS.map((o) => {
-                  const active = payMethod === o.key;
-                  return (
-                    <button
-                      key={o.key}
-                      type="button"
-                      role="radio"
-                      aria-checked={active}
-                      onClick={() => setPayMethod(o.key)}
-                      disabled={pending}
-                      className="pos-focusable rounded-lg px-3 py-2 font-medium transition-all disabled:opacity-45"
-                      style={{
-                        fontSize: 'var(--text-caption)',
-                        background: active
-                          ? 'var(--dawn-500)'
-                          : 'var(--surface-sunken)',
-                        color: active ? '#fff' : 'var(--text-secondary)',
-                        boxShadow: active
-                          ? '0 2px 8px oklch(60% 0.195 218 / 0.3)'
-                          : 'none',
-                      }}
-                    >
-                      {o.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <button
-                type="button"
-                onClick={charge}
-                disabled={!hasItems || pending}
-                className="pos-focusable inline-flex items-center gap-2 rounded-xl px-6 py-3 font-bold text-white transition-[transform,opacity] active:scale-[0.99] disabled:opacity-45"
-                style={{
-                  fontSize: 'var(--text-body-lg, 1.125rem)',
-                  background: 'var(--dawn-500)',
-                  boxShadow: '0 2px 10px oklch(60% 0.195 218 / 0.35)',
-                }}
-              >
-                {pending ? 'Procesando…' : `Cobrar ${fmt(totals.total)}`}
-                <span aria-hidden>→</span>
-              </button>
-            </div>
-          </div>
-        }
-      />
-    </>
+        </div>
+      </div>
+    </AppShell>
   );
 }

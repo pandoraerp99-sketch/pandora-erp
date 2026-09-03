@@ -1,8 +1,27 @@
 # POS Design Direction v1.1 — Dawn Industrial Editorial
 
+> # ⛔ SUPERADO — NO IMPLEMENTAR DESDE ACÁ (2026-09-03)
+>
+> **La autoridad visual son los mockups**, no este documento:
+> `SRS/pos-preview/checkpoint-v19-top-tools.html` para el POS.
+>
+> **Qué pasó:** el POS se construyó siguiendo este doc en vez de la maqueta y
+> quedó **sin sidebar y sin topbar**, con un sistema de tokens propio
+> (`pos-surface-operational`, `--surface-*`) distinto al de la maqueta
+> (`.glass`, `--glass-bg`). El owner entró a la app y no reconoció el producto.
+> Es la **segunda vez** que se comete el mismo error.
+>
+> **Cómo se hace ahora:** el CSS se extrae LITERAL del `<style>` del mockup con
+> script (`src/components/shell/shellCss.ts`) y las pantallas se montan sobre
+> `<AppShell>` (`src/components/shell/AppShell.tsx`). Nada se reinterpreta ni se
+> retipea a mano.
+>
+> Este doc queda como registro histórico de la exploración tipográfica y de
+> composición. **No derivar implementación de acá.**
+
 **Fecha:** 2026-06-13
 **Versión:** 1.1 (extiende v1.0)
-**Estado:** dirección visual COMPROMETIDA (no múltiples opciones — una decisión)
+**Estado:** ⛔ SUPERADO por los mockups (ver aviso arriba)
 **Documento padre:** [POS-DESIGN-V1.md](POS-DESIGN-V1.md)
 
 ---
