@@ -1,10 +1,24 @@
 'use client';
 
 /**
- * CajaClient (caja-real) — reconstrucción FIEL de la maqueta public/caja.html a
- * React, cableada a la app real. Reusa el CSS de la maqueta VERBATIM (mockupCss.ts)
- * y reproduce su estructura; los datos y acciones son reales (sesión, movimientos,
- * retiro con concepto+beneficiario, cierre, reclasificar medio).
+ * CajaClient — la pantalla de Caja, reconstrucción fiel de la maqueta con datos
+ * y acciones reales (sesión, movimientos, retiro con concepto+beneficiario,
+ * cierre, reclasificar medio).
+ *
+ * ── Fork triple resuelto (2026-09-03) ──────────────────────────────────────
+ * Hasta hoy Caja existía en TRES versiones divergentes: el mockup del SRS
+ * (`caja-editorial.html`), la maqueta que se servía en `/caja`
+ * (`public/caja.html`, que había evolucionado sola en el repo y no coincidía
+ * con ninguna del SRS), y este React en `/caja-real`.
+ *
+ * Ahora hay una sola: este componente ES `/caja`. Se monta sobre <AppShell>
+ * — el mismo sidebar, topbar y atmósfera que el POS — y sólo aporta el CSS
+ * propio de la pantalla (`cajaCss.ts`: alivios, denominación, arqueo por medio,
+ * Lectura X, modales). La maqueta quedó archivada en `public/_maquetas/`
+ * como referencia visual.
+ *
+ * La topbar se pasa como prop porque Caja tiene botones propios (Lectura X y
+ * el panel de motivos/beneficiarios) que el resto de las pantallas no necesita.
  *
  * "De adorno" por ahora (sin backend, marcado): gráfico de evolución, comprobantes,
  * contar por denominación, Lectura X, alivios a caja fuerte, historial.
@@ -29,7 +43,8 @@ import {
   createTerceroAction,
   deactivateTerceroAction,
 } from './actions';
-import { MOCKUP_CSS } from './mockupCss';
+import { AppShell } from '@/components/shell/AppShell';
+import { CAJA_CSS } from './cajaCss';
 
 export interface CajaSessionDTO {
   id: string;
@@ -118,17 +133,9 @@ const IC = {
 // Sparkline representativa de la maqueta (visual — pendiente datos reales).
 const SPARK =
   '<svg class="cash-spark" viewBox="0 0 334 96" preserveAspectRatio="none"><defs><linearGradient id="cashFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(107,95,255,0.30)"/><stop offset="100%" stop-color="rgba(107,95,255,0)"/></linearGradient></defs><path d="M 0 96 L 0 83.5 L 27.8 77.8 L 55.7 70.5 L 83.5 63.1 L 111.3 66.5 L 139.2 56.3 L 167 47.3 L 194.8 39.4 L 222.7 43.9 L 250.5 31.5 L 278.3 23 L 306.2 17.3 L 334 14.6 L 334 96 Z" fill="url(#cashFill)"/><path d="M 0 83.5 L 27.8 77.8 L 55.7 70.5 L 83.5 63.1 L 111.3 66.5 L 139.2 56.3 L 167 47.3 L 194.8 39.4 L 222.7 43.9 L 250.5 31.5 L 278.3 23 L 306.2 17.3 L 334 14.6" fill="none" stroke="#6b5fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>';
-const NAV = [
-  { k: 'Panel', ic: IC.panel },
-  { k: 'Venta', ic: IC.venta },
-  { k: 'Caja', ic: IC.caja, active: true },
-  { k: 'Productos', ic: IC.prod },
-  { k: 'Clientes', ic: IC.cli },
-  { k: 'Stock', ic: IC.stock },
-  { k: 'Facturas', ic: IC.fact },
-  { k: 'Reportes', ic: IC.rep },
-  { k: 'Configuración', ic: IC.config },
-];
+// La navegación dejó de vivir acá: ahora la provee <AppShell> desde
+// src/components/shell/navItems.ts, compartida con el POS y con todas las
+// pantallas que vengan. Una sola fuente de verdad para el sidebar.
 
 const ARS = new Intl.NumberFormat('es-AR');
 const money = (v: string | number) => {
@@ -403,53 +410,12 @@ export function CajaClient({
   }
 
   return (
-    <div className="caja-real-root">
-      <style>{MOCKUP_CSS}</style>
-
-      <aside className="side glass-strong">
-        <div className="logo-row">
-          <svg viewBox="0 0 32 32" width="26" height="26">
-            <defs>
-              <linearGradient id="lg1" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#6b5fff" />
-                <stop offset="100%" stopColor="#5b8cff" />
-              </linearGradient>
-            </defs>
-            <g fill="url(#lg1)">
-              <path d="M16 2 L18 14 L30 16 L18 18 L16 30 L14 18 L2 16 L14 14 Z" />
-            </g>
-          </svg>
-          <span className="logo-text">Pandora</span>
-        </div>
-        <nav className="nav">
-          {NAV.map((n) => (
-            <div key={n.k} className={'nav-item' + (n.active ? ' active' : '')}>
-              <Icon html={n.ic} cls="nav-icon-box" />
-              <span>{n.k}</span>
-            </div>
-          ))}
-        </nav>
-        <div className="side-foot">
-          <div className="afip">
-            <div className="afip-top">
-              <span className="afip-dot" />
-              <span className="afip-name">AFIP conectado</span>
-              <span className="afip-live">LIVE</span>
-            </div>
-            <div className="afip-sub">WSFEv1 · homologación</div>
-          </div>
-          <div className="cashier">
-            <span className="avatar-ring"><span className="cashier-av">{inits(cashierName)}</span></span>
-            <div>
-              <div className="cashier-name">{cashierName.replace(/@.*/, '')}</div>
-              <div className="cashier-role">{isOwner ? 'Dueño' : 'Cajero'}</div>
-            </div>
-            <span className="cashier-live" />
-          </div>
-        </div>
-      </aside>
-
-      <main className="main">
+    <AppShell
+      userName={cashierName.replace(/@.*/, '')}
+      userRole={isOwner ? 'Dueño' : 'Cajero'}
+      afipConnected={false}
+      afipDetail="WSFEv1 · sin certificado"
+      topbar={
         <div className="topbar">
           <div className="search glass">
             <Icon html={IC.search} />
@@ -479,8 +445,11 @@ export function CajaClient({
             </div>
           </div>
         </div>
+      }
+    >
+      <style>{CAJA_CSS}</style>
 
-        {feedback && (
+      {feedback && (
           <div
             className="glass"
             style={{
@@ -793,8 +762,9 @@ export function CajaClient({
             </div>
           </div>
         )}
-      </main>
 
+      {/* Los modales son position:fixed (.modal-ov), así que quedan bien
+          aunque ahora cuelguen del <section className="main"> del AppShell. */}
       {movMode && (
         <div className="modal-ov open" onClick={(e) => { if (e.target === e.currentTarget) setMovMode(null); }}>
           <div className="modal-card glass-strong" style={{ maxWidth: movMode === 'retiro' ? 440 : 400 }}>
@@ -985,6 +955,6 @@ export function CajaClient({
           </div>
         </div>
       )}
-    </div>
+    </AppShell>
   );
 }

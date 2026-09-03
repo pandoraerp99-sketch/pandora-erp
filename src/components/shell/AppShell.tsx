@@ -62,7 +62,7 @@ export function AppShell({
 }: AppShellProps) {
   const pathname = usePathname();
 
-  // Tema claro/oscuro — mismo mecanismo que los mockups y que /caja-real:
+  // Tema claro/oscuro — mismo mecanismo que los mockups y que /caja:
   // localStorage['pandora-theme'] + data-theme en <html>.
   const [dark, setDark] = useState(false);
   useEffect(() => {

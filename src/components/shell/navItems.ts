@@ -17,7 +17,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { label: "Panel", href: "/panel", icon: "<svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"8\" height=\"10\" rx=\"2\"/><rect x=\"13\" y=\"3\" width=\"8\" height=\"6\" rx=\"2\"/><rect x=\"3\" y=\"15\" width=\"8\" height=\"6\" rx=\"2\"/><rect x=\"13\" y=\"11\" width=\"8\" height=\"10\" rx=\"2\"/></svg>" },
   { label: "Venta", href: "/pos", icon: "<svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8\" cy=\"21\" r=\"1\"/><circle cx=\"19\" cy=\"21\" r=\"1\"/><path d=\"M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12\"/></svg>" },
-  { label: "Caja", href: "/caja-real", icon: "<svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"6\" width=\"20\" height=\"12\" rx=\"2\"/><circle cx=\"12\" cy=\"12\" r=\"2.5\"/><path d=\"M6 12h.01\"/><path d=\"M18 12h.01\"/></svg>" },
+  { label: "Caja", href: "/caja", icon: "<svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"6\" width=\"20\" height=\"12\" rx=\"2\"/><circle cx=\"12\" cy=\"12\" r=\"2.5\"/><path d=\"M6 12h.01\"/><path d=\"M18 12h.01\"/></svg>" },
   { label: "Productos", href: "/productos", icon: "<svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.58a2 2 0 0 1 0 2.83z\"/><circle cx=\"7\" cy=\"7\" r=\"1.5\"/></svg>" },
   { label: "Clientes", href: "/clientes", icon: "<svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M4 21c0-4 4-7 8-7s8 3 8 7\"/></svg>" },
   { label: "Stock", href: "/stock", icon: "<svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z\"/><path d=\"m3.3 7 8.7 5 8.7-5\"/><path d=\"M12 22V12\"/></svg>" },
@@ -28,4 +28,4 @@ export const NAV_ITEMS: NavItem[] = [
 ];
 
 /** Rutas que ya existen en la app. El resto se pinta pero no navega. */
-export const IMPLEMENTED_ROUTES = new Set(['/panel', '/pos', '/caja-real']);
+export const IMPLEMENTED_ROUTES = new Set(['/panel', '/pos', '/caja']);

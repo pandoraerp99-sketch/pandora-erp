@@ -9,9 +9,10 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       { source: "/panel", destination: "/panel.html" },
-      // /caja sirve la MAQUETA linda (public/caja.html), tal cual, que es lo que
-      // el owner quiere ver. La versión React (en construcción) quedó en /caja-real.
-      { source: "/caja", destination: "/caja.html" },
+      // /caja YA NO tiene rewrite (2026-09-03): sirve el React de
+      // src/app/caja/, montado sobre <AppShell> igual que el POS. La maqueta
+      // que se servía acá quedó archivada en public/_maquetas/caja.html como
+      // referencia visual — fuera del alcance de los rewrites.
     ];
   },
 
