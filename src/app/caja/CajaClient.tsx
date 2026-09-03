@@ -267,6 +267,24 @@ export function CajaClient({
       .map((k) => ({ key: k, ...medioMeta(k === 'sin' ? null : k), amount: acc[k]!.amount, count: acc[k]!.count }));
   }, [movimientos]);
 
+  /**
+   * Medios del ARQUEO — siempre los cuatro, tuvieran ventas o no.
+   *
+   * `breakdown` sólo trae los medios CON movimientos, que es lo correcto para
+   * el donut y la lista de "Movimientos por medio de pago". Pero el arqueo es
+   * otra cosa: el cajero tiene que cerrar el posnet de cada medio aunque hoy no
+   * haya vendido por ahí — si el medio no aparece, no puede declarar que contó
+   * y le da cero, y un descuadre queda invisible. La maqueta los muestra
+   * siempre; acá se replica.
+   */
+  const mediosArqueo = useMemo(() => {
+    const porKey = new Map(breakdown.map((b) => [b.key, b]));
+    return ['mp_qr', 'debito', 'credito'].map((k) => {
+      const conVentas = porKey.get(k);
+      return conVentas ?? { key: k, ...medioMeta(k), amount: 0, count: 0 };
+    });
+  }, [breakdown]);
+
   const donut = useMemo(() => {
     const C = 2 * Math.PI * 62;
     const total = breakdown.reduce((a, b) => a + b.amount, 0) || 1;
@@ -717,7 +735,7 @@ export function CajaClient({
                       Contar por denominación
                     </button>
                   </div>
-                  {breakdown.filter((b) => b.key !== 'efectivo' && b.key !== 'sin').map((b) => (
+                  {mediosArqueo.map((b) => (
                     <div className="rm" key={b.key}>
                       <div className="rm-top">
                         <span className="rm-name"><span className="rm-dot" style={{ background: b.color }} />{b.label}</span>

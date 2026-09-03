@@ -106,23 +106,20 @@ export function AppShell({
         {/* ════ SIDEBAR ════ */}
         <aside className="sidebar glass-strong">
           <div className="logo-row">
+            {/* Estrella de 4 puntas con degradado violeta→azul, sin caja.
+                Copiada literal de la maqueta (public/_maquetas/caja.html:688).
+                Antes era un cuadrado redondeado con una "P" — invento mío. */}
             <span className="logo-mark">
-              <svg viewBox="0 0 32 32">
+              <svg viewBox="0 0 32 32" width="26" height="26">
                 <defs>
                   <linearGradient id="pandora-logo" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0%" stopColor="#6b5fff" />
                     <stop offset="100%" stopColor="#5b8cff" />
                   </linearGradient>
                 </defs>
-                <rect width="32" height="32" rx="9" fill="url(#pandora-logo)" />
-                <path
-                  d="M11 22V10h5a4 4 0 0 1 0 8h-5"
-                  fill="none"
-                  stroke="#fff"
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
+                <g fill="url(#pandora-logo)">
+                  <path d="M16 2 L18 14 L30 16 L18 18 L16 30 L14 18 L2 16 L14 14 Z" />
+                </g>
               </svg>
             </span>
             <span className="logo-text">Pandora</span>
