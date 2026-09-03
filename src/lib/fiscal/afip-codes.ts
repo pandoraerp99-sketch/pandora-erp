@@ -6,6 +6,27 @@
  *
  * NO inventar códigos: si aparece una alícuota/condición sin código acá, es
  * fail-closed (FiscalIntegrityError) — antes que enviar un payload inválido.
+ *
+ * ── Por qué esto está HARDCODEADO y no se consulta en runtime (2026-09-03) ──
+ *
+ * ADR-0025 especifica traer los catálogos de ARCA en runtime (FEParam* + cache
+ * + validación al boot). Ese ADR sigue vigente, pero su **implementación quedó
+ * diferida a F1+**: este archivo es una decisión deliberada, NO un incumplimiento.
+ *
+ * Evidencia que lo justifica: la RG 5762/2025 eliminó la clase de comprobante
+ * "M" ENTERA (01/12/2025) — cambio normativo mayor — y aun así el código interno
+ * siguió siendo `0051`. ARCA cambia nombres, leyendas y condiciones, pero
+ * preserva los códigos numéricos por retrocompatibilidad con los clientes de
+ * webservice. El riesgo que motivó ADR-0025 es menor al asumido en 2026-06.
+ *
+ * Entonces este archivo es una **fotografía versionada** de los catálogos: la
+ * reproducibilidad histórica la da el par (este archivo, `tax_policy_version`
+ * persistido en el snapshot fiscal), que es el objetivo de fondo del ADR.
+ *
+ * DISPARADOR para construir `catalogs/` runtime: ARCA agrega un código que
+ * necesitemos, o modifica uno existente. Se detecta al re-extraer el Manual
+ * COMPG en cada bump de `tax_policy_version` — que es el momento en que este
+ * archivo debe revisarse SIEMPRE.
  */
 import { FiscalIntegrityError } from '../multi_tenant/errors.js';
 
