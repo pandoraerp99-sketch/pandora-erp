@@ -8,9 +8,12 @@
  * NO tiene lógica de negocio: el POSClient llama las Server Actions (actions.ts)
  * que orquestan el service de ventas. Dawn Industrial Editorial.
  */
+import { eq } from 'drizzle-orm';
 import { requireSessionWithCompany } from '@/lib/auth/session';
 import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
 import { listProductsPaginated } from '@/lib/inventory/queries';
+import { db } from '@/lib/db/client';
+import { companies } from '@/lib/db/schema/companies';
 import { POSClient, type PosProductDTO } from './POSClient';
 
 export default async function POSPage() {
@@ -22,6 +25,15 @@ export default async function POSPage() {
     () => listProductsPaginated({ limit: 200 }),
     { requireAuth: true }
   );
+
+  // Nombre del comercio para el pill de la topbar (la maqueta muestra el
+  // comercio, no la caja). Se lee por id de la sesión, así que no hace falta
+  // el tracing context.
+  const [company] = await db
+    .select({ name: companies.name })
+    .from(companies)
+    .where(eq(companies.id, session.active_company_id))
+    .limit(1);
 
   const productDtos: PosProductDTO[] = products.map((p) => ({
     id: p.id,
@@ -39,8 +51,13 @@ export default async function POSPage() {
   return (
     <POSClient
       products={productDtos}
-      cashierName={session.email}
-      salePointLabel="Punto de venta · Caja 1"
+      // Sólo la parte antes del @: el chip de la topbar muestra un NOMBRE,
+      // como en la maqueta. Mandar el email entero lo desbalanceaba (Caja ya
+      // lo recortaba y el POS no).
+      cashierName={session.email.replace(/@.*/, '')}
+      // La maqueta muestra el NOMBRE DEL COMERCIO en la topbar ("Tienda
+      // Ushuaia"), no la caja. La caja ya se ve en la barra de sesión de /caja.
+      salePointLabel={company?.name ?? 'Mi comercio'}
       serverTimeIso={new Date().toISOString()}
     />
   );

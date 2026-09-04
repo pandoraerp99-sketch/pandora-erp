@@ -105,6 +105,27 @@ export function AppShell({
     }
   };
 
+  /**
+   * Conectividad. El cliente es AUTORIDAD de su propio estado de red
+   * (AUTHORITY-MAP: "connectivity es decisión local del cliente"), así que se
+   * lee de navigator.onLine — nunca del server.
+   *
+   * Arranca en `true` a propósito: en SSR no existe `navigator`, y si el valor
+   * inicial difiere del que calcula el cliente, React tira mismatch de
+   * hidratación. El efecto lo corrige apenas monta.
+   */
+  const [enLinea, setEnLinea] = useState(true);
+  useEffect(() => {
+    const sync = () => setEnLinea(navigator.onLine);
+    sync();
+    window.addEventListener('online', sync);
+    window.addEventListener('offline', sync);
+    return () => {
+      window.removeEventListener('online', sync);
+      window.removeEventListener('offline', sync);
+    };
+  }, []);
+
   const gridColumns = aside ? '210px 1fr 280px' : '210px 1fr';
 
   return (
@@ -252,6 +273,24 @@ export function AppShell({
                   <path d="m21 21-4.3-4.3" />
                 </svg>
                 <input placeholder="Buscar producto, cliente o comprobante…" />
+                {/* Igual que la maqueta: el lector de códigos avisa que está
+                    listo, y el atajo va a la vista (keyboard-first, §14.9). */}
+                <span className="search-right">
+                  <span className="barcode">LISTO</span>
+                  <span className="kbd">⌘K</span>
+                </span>
+              </div>
+
+              {/* Conectividad. Es decisión LOCAL del cliente (AUTHORITY-MAP):
+                  el navegador sabe si tiene red; el server no decide esto.
+                  OJO: `.online` es la PÍLDORA entera (38px de alto), no el
+                  punto — el punto es `.gd` (6px) adentro. */}
+              <div className="online glass">
+                <span
+                  className="gd"
+                  style={enLinea ? undefined : { background: 'var(--red)' }}
+                />
+                {enLinea ? 'Online' : 'Sin conexión'}
               </div>
 
               <div className="store-pill glass">

@@ -101,6 +101,8 @@ export function POSClient({
    */
   const [modoConsulta, setModoConsulta] = useState(false);
   const [consultado, setConsultado] = useState<PosProductDTO | null>(null);
+  /** Hoja de selección de medio de pago (la abre la fila `.paysel`). */
+  const [paySheetOpen, setPaySheetOpen] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -302,7 +304,11 @@ export function POSClient({
           <span className="sval">{fmt(totals.neto)}</span>
         </div>
         <div className="srow">
-          <span className="slabel">IVA contenido</span>
+          {/* En el POS el label lleva la alícuota, como la maqueta. Ojo: el
+              "IVA Contenido" sin alícuota es el label OFICIAL del bloque de
+              Transparencia Fiscal en el COMPROBANTE IMPRESO (RG 5614 Art. 2
+              inc. 7) — son dos cosas distintas y no hay que mezclarlas. */}
+          <span className="slabel">IVA (21%)</span>
           <span className="sval">{fmt(totals.iva)}</span>
         </div>
         {totals.exento.greaterThan(0) ? (
@@ -317,23 +323,74 @@ export function POSClient({
         </div>
       </div>
 
-      {/* Selector de medio (single-method F0). El reparto multi-medio estilo
-          lisCobro es una slice posterior. */}
-      <div className="cats" style={{ padding: '0 14px 10px', flexWrap: 'wrap' }}>
-        {PAY_OPTIONS.map((op) => (
-          <button
-            type="button"
-            key={op.key}
-            className={payMethod === op.key ? 'cat active' : 'cat'}
-            onClick={() => setPayMethod(op.key)}
-            disabled={pending}
-          >
-            {op.label}
-          </button>
-        ))}
-      </div>
+      {/* Método de pago — fila desplegable como en la maqueta, no chips
+          sueltos. Al tocarla se abre una hoja con los 4 medios.
+          Single-method F0: el reparto multi-medio (estilo lisCobro) es F1+. */}
+      {paySheetOpen && (
+        <>
+          <div className="paysheet-backdrop" onClick={() => setPaySheetOpen(false)} />
+          <div className="paysheet" data-m={payMethod}>
+            <div className="paysheet-grip" />
+            <div className="paysheet-head">
+              <span className="t">Cobrar</span>
+              <span className="paysheet-total">{fmt(totals.total)}</span>
+              <button
+                type="button"
+                className="paysheet-close"
+                onClick={() => setPaySheetOpen(false)}
+                aria-label="Cerrar"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="paysheet-grid">
+              {PAY_OPTIONS.map((op) => (
+                <button
+                  type="button"
+                  key={op.key}
+                  className={payMethod === op.key ? 'pm active' : 'pm'}
+                  onClick={() => {
+                    setPayMethod(op.key);
+                    setPaySheetOpen(false);
+                  }}
+                  disabled={pending}
+                >
+                  {op.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="pay">
+        <button
+          type="button"
+          className="paysel"
+          onClick={() => setPaySheetOpen(true)}
+          disabled={pending}
+        >
+          <span className="pic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="6" width="20" height="12" rx="2" />
+              <path d="M2 10h20" />
+            </svg>
+          </span>
+          <span className="ptx">
+            <span className="pl">Método de pago</span>
+            <span className="pv">
+              {PAY_OPTIONS.find((o) => o.key === payMethod)?.label}
+            </span>
+          </span>
+          <span className="pchev">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </span>
+        </button>
+
         <button
           type="button"
           className="cobrar"
