@@ -22,7 +22,7 @@
  * el SERVER ya calculó por ítem (ADR-0021 — cliente muestra preview, server es
  * autoridad). Usa Decimal.js para las sumas (nunca Number en money).
  */
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import Decimal from 'decimal.js';
 import { AppShell } from '@/components/shell/AppShell';
 import {
@@ -50,6 +50,12 @@ export interface PosProductDTO {
   tax_rate: string;
   tdf_exempt: boolean;
   stock_current: string;
+  /**
+   * Umbral de reposición por producto — alimenta el badge "STOCK BAJO".
+   * NULLABLE: un producto puede no tener mínimo definido, y en ese caso no
+   * corresponde avisar nada (no es "stock bajo", es "sin umbral").
+   */
+  stock_minimum: string | null;
 }
 
 interface POSClientProps {
@@ -75,6 +81,42 @@ export function POSClient({
   const [toast, setToast] = useState<string | null>(null);
   const [payMethod, setPayMethod] = useState<SalePaymentMethod>('efectivo');
   const [pending, startTransition] = useTransition();
+
+  /**
+   * MODO CONSULTA (F2) — tocar un producto muestra precio y stock SIN meterlo
+   * al carrito.
+   *
+   * El hueco que tapa: hoy, si un cliente pregunta "¿cuánto sale esto?", el
+   * cajero escanea y el producto ENTRA a la venta; después tiene que acordarse
+   * de sacarlo. Con cola de gente eso es fricción y ventas mal cobradas.
+   *
+   * La idea salió de ver Tango Facturador en un comercio real (2026-09-03):
+   * le dedica una pantalla entera con atajo propio. Que el estándar del
+   * mercado la tenga aparte confirma que es un flujo diario.
+   *
+   * Decisión de diseño: acá NO es una pantalla aparte sino un modo del POS.
+   * El cajero no debería perder de vista la venta en curso para responder una
+   * pregunta de mostrador. Por eso el carrito queda intacto y el modo se ve
+   * distinto (banda ámbar) para que sea imposible confundirlo con vender.
+   */
+  const [modoConsulta, setModoConsulta] = useState(false);
+  const [consultado, setConsultado] = useState<PosProductDTO | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'F2') {
+        e.preventDefault();
+        setModoConsulta((v) => !v);
+        setConsultado(null);
+      }
+      if (e.key === 'Escape' && modoConsulta) {
+        setModoConsulta(false);
+        setConsultado(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [modoConsulta]);
 
   const items = cart?.items ?? [];
   const hasItems = items.length > 0;
@@ -298,7 +340,23 @@ export function POSClient({
           onClick={charge}
           disabled={!hasItems || pending}
         >
-          {pending ? 'Procesando…' : `Cobrar ${fmt(totals.total)}`}
+          {pending ? (
+            'Procesando…'
+          ) : (
+            <>
+              <svg
+                viewBox="0 0 24 24"
+                width="15"
+                height="15"
+                fill="currentColor"
+                aria-hidden
+                style={{ marginRight: 6, verticalAlign: '-2px' }}
+              >
+                <path d="M13 2 3 14h7l-1 8 10-12h-7z" />
+              </svg>
+              Cobrar {fmt(totals.total)}
+            </>
+          )}
         </button>
       </div>
     </aside>
@@ -331,24 +389,108 @@ export function POSClient({
       )}
 
       <div className="cats">
-        <button type="button" className="cat active">
+        <button
+          type="button"
+          className={modoConsulta ? 'cat' : 'cat active'}
+          onClick={() => {
+            setModoConsulta(false);
+            setConsultado(null);
+          }}
+        >
           Todos
         </button>
+
+        {/* Modo consulta — el atajo va DIBUJADO en el botón (patrón que usa
+            Tango: la tecla visible sobre la acción). CLAUDE.md §14.9 pide
+            keyboard-first pero los atajos no se veían en ningún lado; que el
+            cajero nuevo los aprenda solo es gratis. */}
+        <button
+          type="button"
+          className={modoConsulta ? 'cat active' : 'cat'}
+          onClick={() => {
+            setModoConsulta((v) => !v);
+            setConsultado(null);
+          }}
+          title="Ver precio y stock sin agregar al carrito"
+        >
+          Consultar precio <span className="kbd">F2</span>
+        </button>
       </div>
+
+      {/* Banda del modo consulta. Tiene que ser IMPOSIBLE confundirla con el
+          modo venta: si el cajero no distingue en cuál está, el remedio sale
+          peor que la enfermedad. */}
+      {modoConsulta && (
+        <div
+          className="glass"
+          style={{
+            flex: '0 0 auto',
+            padding: '10px 14px',
+            borderRadius: 14,
+            border: '1px solid rgba(247,152,74,0.5)',
+            background: 'rgba(247,152,74,0.10)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            fontSize: 12.5,
+          }}
+          role="status"
+        >
+          <strong style={{ color: '#a2560f' }}>Modo consulta</strong>
+          {consultado ? (
+            <span style={{ display: 'flex', gap: 14, alignItems: 'baseline', flexWrap: 'wrap' }}>
+              <b>{consultado.name}</b>
+              <span className="pos-data">{consultado.sku ?? 'sin código'}</span>
+              <b className="pos-data" style={{ fontSize: 15 }}>{fmt(consultado.price)}</b>
+              <span className="pos-data">
+                {new Decimal(consultado.stock_current).toNumber()} uds en stock
+              </span>
+              {consultado.tdf_exempt && (
+                <span style={{ color: 'var(--tdf)', fontWeight: 700, fontSize: 10 }}>
+                  EXENTO · LEY 19.640
+                </span>
+              )}
+            </span>
+          ) : (
+            <span style={{ color: 'var(--ink-3)' }}>
+              Tocá un producto para ver precio y stock. No se agrega a la venta.
+            </span>
+          )}
+          <button
+            type="button"
+            className="cat"
+            style={{ marginLeft: 'auto' }}
+            onClick={() => {
+              setModoConsulta(false);
+              setConsultado(null);
+            }}
+          >
+            Salir <span className="kbd">Esc</span>
+          </button>
+        </div>
+      )}
 
       <div className="catalog glass">
         <div className="stage stage-prod">
           <div className="grid">
             {products.map((p) => {
               const stock = new Decimal(p.stock_current).toNumber();
+              const minimo = new Decimal(p.stock_minimum || '0').toNumber();
               const sinStock = stock <= 0;
+              // "STOCK BAJO" usa el umbral REAL del producto (stock_minimum),
+              // no un número fijo: para un kiosco 5 unidades de yerba es poco
+              // y 5 de lavandina puede estar bien. El dato ya existía en la
+              // base, sólo no viajaba al cliente.
+              const stockBajo = !sinStock && minimo > 0 && stock <= minimo;
               return (
                 <button
                   type="button"
                   className="card"
                   key={p.id}
-                  onClick={() => addProduct(p.id)}
-                  disabled={pending || sinStock}
+                  onClick={() => (modoConsulta ? setConsultado(p) : addProduct(p.id))}
+                  // En consulta se puede tocar cualquier producto, incluso sin
+                  // stock: justamente sirve para responder "¿tenés esto?".
+                  disabled={pending || (!modoConsulta && sinStock)}
                   style={
                     sinStock
                       ? { opacity: 0.45, cursor: 'not-allowed' }
@@ -371,7 +513,9 @@ export function POSClient({
                         de la maqueta. NO agregarle posicionamiento inline: si
                         se le pasa `right` además del `left` del CSS, el chip se
                         estira de lado a lado. */}
-                    {p.tdf_exempt ? (
+                    {stockBajo ? (
+                      <span className="tag-low">STOCK BAJO</span>
+                    ) : p.tdf_exempt ? (
                       <span className="tag-tdf">
                         <span className="d" />
                         19.640
@@ -383,16 +527,21 @@ export function POSClient({
                     <div className="card-sku">{p.sku ?? '—'}</div>
                     <div className="card-foot">
                       <span className="card-price">{fmt(p.price)}</span>
-                      <span
-                        className={stock < 10 ? 'card-stock low' : 'card-stock'}
-                      >
-                        {stock} u
+                      <span className={stockBajo ? 'card-stock low' : 'card-stock'}>
+                        {stock} uds
                       </span>
                     </div>
                   </div>
                 </button>
               );
             })}
+          </div>
+
+          {/* Pie del catálogo, como en la maqueta. */}
+          <div className="cat-foot">
+            <span className="cat-count">
+              Mostrando {products.length} de {products.length} productos
+            </span>
           </div>
         </div>
       </div>

@@ -269,10 +269,14 @@ export function AppShell({
                 <span>{storeName}</span>
               </div>
 
+              {/* Herramientas de la derecha — iguales a la maqueta: tema,
+                  notificaciones, mensajes, configuración y chip de usuario.
+                  Viven acá (no en cada pantalla) porque son del shell: antes
+                  el POS sólo tenía el toggle de tema y Caja tenía todo. */}
               <div className="top-tools">
                 <button
                   type="button"
-                  className="store-pill glass"
+                  className="iconbtn glass"
                   onClick={toggleTema}
                   aria-label={dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
                   title={dark ? 'Modo claro' : 'Modo oscuro'}
@@ -302,6 +306,58 @@ export function AppShell({
                     </svg>
                   )}
                 </button>
+
+                <button type="button" className="iconbtn glass" title="Notificaciones">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M6 8a6 6 0 1 1 12 0c0 7 3 7 3 9H3c0-2 3-2 3-9z" />
+                    <path d="M10 21a2 2 0 0 0 4 0" />
+                  </svg>
+                </button>
+
+                <button type="button" className="iconbtn glass" title="Mensajes">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+                    <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+                  </svg>
+                </button>
+
+                <button type="button" className="iconbtn glass" title="Configuración">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.7 1.7 0 0 0-2.8 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.8-1.2 2 2 0 1 1-2.8-2.8A1.7 1.7 0 0 0 4.6 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.8 2 2 0 1 1 2.8-2.8A1.7 1.7 0 0 0 11 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.8 1.2 2 2 0 1 1 2.8 2.8A1.7 1.7 0 0 0 19.4 11a2 2 0 1 1 0 4z" />
+                  </svg>
+                </button>
+
+                <div className="user-chip glass">
+                  <span className="avatar-ring">
+                    <span className="cashier-av">{initials(userName)}</span>
+                  </span>
+                  <div>
+                    <div className="user-name">{userName}</div>
+                    <div className="user-role">{userRole}</div>
+                  </div>
+                </div>
               </div>
             </div>
           )}

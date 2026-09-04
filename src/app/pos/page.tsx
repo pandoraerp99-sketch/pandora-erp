@@ -31,6 +31,9 @@ export default async function POSPage() {
     tax_rate: p.tax_rate,
     tdf_exempt: p.tdf_exempt,
     stock_current: p.stock_current,
+    // Necesario para el badge "STOCK BAJO" de la maqueta: el umbral es por
+    // producto (no un número fijo), así que tiene que viajar al cliente.
+    stock_minimum: p.stock_minimum,
   }));
 
   return (
