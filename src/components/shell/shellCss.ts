@@ -438,7 +438,7 @@ body{
 /* Fila que se ve pero no se puede cobrar en F0 (mp_qr: falta el SDK de
    MercadoPago que emite el mp_payment_external_id). Se muestra en vez de
    ocultarse para no mentir sobre los medios que el comercio va a tener. */
-.pmrow[data-off="1"]{ opacity:0.5; }
+.pmrow[data-off="1"]{ opacity:0.5; cursor:not-allowed; }
 .pmrow[data-off="1"] .pmf{ background:rgba(13,20,36,0.03); border-style:dashed; }
 .pmrow .pmoff{ font-size:10px; font-weight:600; color:var(--ink-4); white-space:nowrap; }
 `;

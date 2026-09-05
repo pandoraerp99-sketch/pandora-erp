@@ -248,12 +248,33 @@ export function POSClient({
     return Number.isFinite(n) ? n : 0;
   }, []);
 
-  const pagado = PAY_COBRABLES.reduce((s, o) => s + montoDe(o.key), 0);
+  /**
+   * Lo ENTREGADO por el cliente (lo que el cajero tipea), que no es lo mismo
+   * que lo que se registra como pago: si entrega $1.235 por una venta de
+   * $1.234,56, el pago son $1.234,56 y los $0,44 son vuelto.
+   */
+  const entregado = PAY_COBRABLES.reduce(
+    (s, o) => s.plus(montoDe(o.key)),
+    new Decimal(0)
+  );
   const totalNum = totals.total.toNumber();
-  /** Lo que falta cubrir. Nunca negativo: el excedente es vuelto, no faltante. */
-  const restante = Math.max(0, Math.round(totalNum) - pagado);
-  /** Sólo tiene sentido en efectivo: nadie da vuelto de una tarjeta. */
-  const vuelto = Math.max(0, pagado - Math.round(totalNum));
+
+  /**
+   * OJO — nada de `Math.round(total)` acá.
+   *
+   * La primera versión comparaba contra el total redondeado a entero. Con un
+   * total de $1.234,56 daba `restante === 0` habiendo entregado $1.235, y se
+   * mandaba `1235.0000` como monto del pago. `finalizeSale` NO valida que los
+   * pagos sumen el total (verificado: inserta lo que le pasan), así que ese
+   * peso de más entraba silencioso y después aparecía como descuadre en el
+   * cierre de caja, sin nada que lo explicara. El catálogo demo es todo
+   * números redondos, por eso no saltaba.
+   */
+  const restanteDec = Decimal.max(0, totals.total.minus(entregado));
+  const vueltoDec = Decimal.max(0, entregado.minus(totals.total));
+  const restante = restanteDec.toNumber();
+  const vuelto = vueltoDec.toNumber();
+  const pagado = entregado.toNumber();
 
   /**
    * Escribe una tecla sobre el input activo. Lo usan el numpad Y el teclado
@@ -302,10 +323,29 @@ export function POSClient({
 
     // Se arma UNA fila por medio con monto. Si hay 2+, el service deriva
     // `sales.payment_method='mixto'` — no hace falta mandarlo.
-    const payments = PAY_COBRABLES.filter((o) => montoDe(o.key) > 0).map((o) => ({
-      method: o.key,
-      amount: montoDe(o.key).toFixed(4),
-    }));
+    //
+    // Los montos registrados suman EXACTO el total, aunque el cliente haya
+    // entregado de más. Se reparte asignando a cada medio lo menor entre lo
+    // tipeado y lo que falta cubrir; el excedente NO se registra como pago,
+    // es vuelto.
+    //
+    // Las tarjetas van primero a propósito: a una tarjeta se le cobra el
+    // importe exacto, nunca de más. El vuelto sale siempre del efectivo, que
+    // es lo único de lo que se puede dar cambio.
+    const orden = [
+      ...PAY_COBRABLES.filter((o) => o.key !== 'efectivo'),
+      ...PAY_COBRABLES.filter((o) => o.key === 'efectivo'),
+    ];
+    let porAsignar = totals.total;
+    const payments: Array<{ method: SalePaymentMethod; amount: string }> = [];
+    for (const o of orden) {
+      if (porAsignar.lte(0)) break;
+      const tipeado = new Decimal(montoDe(o.key));
+      if (tipeado.lte(0)) continue;
+      const asignado = Decimal.min(tipeado, porAsignar);
+      payments.push({ method: o.key, amount: asignado.toFixed(4) });
+      porAsignar = porAsignar.minus(asignado);
+    }
 
     if (payments.length === 0) {
       setError('Ingresá el monto de al menos un medio de pago.');
