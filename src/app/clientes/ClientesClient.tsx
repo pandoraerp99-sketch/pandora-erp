@@ -146,7 +146,14 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
   const [condActiva, setCondActiva] = useState('Todos');
   const [segmentoActivo, setSegmentoActivo] = useState('');
   const [busqueda, setBusqueda] = useState('');
-  const [selId, setSelId] = useState<string | null>(clientes[0]?.id ?? null);
+  // Arranca en el cliente con mas informacion, no en el primero alfabetico:
+  // el panel de detalle se juzga por lo que muestra, y abrir en el mas vacio
+  // (el "Cliente mostrador", sin telefono ni mail) lo hace parecer roto.
+  const [selId, setSelId] = useState<string | null>(() => {
+    const puntaje = (c: ClienteDTO) =>
+      (c.email ? 1 : 0) + (c.phone ? 1 : 0) + (c.address ? 1 : 0) + c.tags.length;
+    return [...clientes].sort((a, b) => puntaje(b) - puntaje(a))[0]?.id ?? null;
+  });
   const [modalAbierto, setModalAbierto] = useState(false);
   const [editando, setEditando] = useState<ClienteDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -424,7 +431,7 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
 
           <div className="cl-colhead">
             <span style={{ flex: 1 }}>Cliente</span>
-            <span style={{ width: 140 }}>Condición</span>
+            <span style={{ width: 118 }}>Condición</span>
             <span style={{ width: 92, textAlign: 'right' }}>Compras</span>
             <span style={{ width: 92 }}>Última</span>
             <span style={{ width: 16 }} />
@@ -458,7 +465,7 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
                     {/* Los segmentos van DEBAJO del nombre, como la maqueta —
                         no en una columna aparte. */}
                     {c.tags.length > 0 ? (
-                      <div className="ctags">
+                      <div className="ctags" style={{ marginTop: 3 }}>
                         {c.tags.slice(0, 2).map((t) => (
                           <span key={t} className="ctag">
                             {t}
@@ -469,7 +476,10 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
                   </div>
                   {/* Pill SÓLIDA = condición fiscal. Color por condición, no
                       al azar: la misma condición se ve igual en toda la app. */}
-                  <span className="pill" style={colorCondicion(c.tax_condition)}>
+                  <span
+                    className="pill"
+                    style={{ ...colorCondicion(c.tax_condition), width: 118 }}
+                  >
                     {etiquetaCondicion(c.tax_condition)}
                   </span>
                   <span className="clcompras tnum">{plata(c.compras_monto)}</span>
@@ -618,10 +628,11 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
                     type="button"
                     className="hbtn"
                     style={{ flex: 1, justifyContent: 'center' }}
-                    disabled
-                    title="Falta la pantalla de historial de compras"
+                    onClick={() => {
+                      window.location.href = '/pos';
+                    }}
                   >
-                    Ver compras
+                    Nueva venta
                   </button>
                 </div>
               </>
