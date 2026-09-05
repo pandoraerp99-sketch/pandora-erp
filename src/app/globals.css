@@ -183,7 +183,6 @@
   --fiscal-contingency: oklch(65% 0.195 35);
 
   /* ─── Typography ─── */
-  --font-display: var(--font-instrument-serif), Georgia, serif;
   --font-ui:      var(--font-geist-sans), system-ui, sans-serif;
   --font-data:    var(--font-geist-mono), "SF Mono", monospace;
 
@@ -275,14 +274,6 @@
   letter-spacing: -0.02em;
 }
 
-.pos-hero-number {
-  font-family: var(--font-display);
-  font-weight: 400;
-  font-style: italic;
-  font-feature-settings: "lnum" 1, "ss01" 1;
-  letter-spacing: -0.04em;
-  line-height: 0.95;
-}
 
 .pos-data {
   font-family: var(--font-data);

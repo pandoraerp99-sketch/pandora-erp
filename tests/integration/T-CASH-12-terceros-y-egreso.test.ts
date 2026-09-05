@@ -39,16 +39,20 @@ describe('T-CASH-12 — Terceros + egreso estructurado', () => {
   let tenantId: string;
   let userId: string;
 
+  // `withTracingContext` devuelve `T | Promise<T>` (acepta fn sincronas), asi
+  // que hay que envolverlo para tipar el await.
   const ctxFor = <T,>(tid: string, uid: string, fn: () => Promise<T>): Promise<T> =>
-    withTracingContext(
-      {
-        correlation_id: generateCorrelationId(),
-        request_id: generateRequestId(),
-        tenant_id: tid,
-        actor_user_id: uid,
-        actor_type: 'user',
-      },
-      fn
+    Promise.resolve(
+      withTracingContext(
+        {
+          correlation_id: generateCorrelationId(),
+          request_id: generateRequestId(),
+          tenant_id: tid,
+          actor_user_id: uid,
+          actor_type: 'user',
+        },
+        fn
+      )
     );
   const withCtx = <T,>(fn: () => Promise<T>): Promise<T> => ctxFor(tenantId, userId, fn);
 

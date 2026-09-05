@@ -1,6 +1,20 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+
+/**
+ * Instrument Serif se quitó el 2026-09-05.
+ *
+ * Existía para el "hero number" del total, del diseño de
+ * `docs/POS-DESIGN-V1.1-DIRECTION.md` — el doc que quedó SUPERADO cuando se
+ * decidió que las maquetas de `pos-preview/` son la autoridad visual. Su
+ * único consumidor real era `<CartTotal>`, que quedó huérfano tras el reskin
+ * del POS y se borró en este mismo commit.
+ *
+ * Quedaba una webfont bajando en CADA página para un componente que ya no
+ * renderiza nadie. Si vuelve a hacer falta un display serif, se agrega junto
+ * con el componente que lo use, no antes.
+ */
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -10,24 +24,6 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
-});
-
-/**
- * Instrument Serif — DISPLAY ONLY. Reservado para 2 lugares:
- * 1. <CartTotal> el monto total grande (hero number)
- * 2. <CaeNumber> al recibir CAE (momento de éxito)
- *
- * NO usar como body. NO usar como label. Solo donde un número debe
- * tener carácter editorial.
- *
- * Pairing: Geist Sans (UI) + Geist Mono (data) + Instrument Serif (display).
- * Ver docs/POS-DESIGN-V1.1-DIRECTION.md §4.
- */
-const instrumentSerif = Instrument_Serif({
-  variable: "--font-instrument-serif",
-  subsets: ["latin"],
-  weight: "400",
-  style: ["normal", "italic"],
 });
 
 export const metadata: Metadata = {
@@ -55,7 +51,7 @@ export default function RootLayout({
   return (
     <html
       lang="es-AR"
-      className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
