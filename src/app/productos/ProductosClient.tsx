@@ -122,6 +122,35 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
     });
   }, [lista, rubroActivo, busqueda]);
 
+  /**
+   * KPIs de la maqueta. Los cuatro se DERIVAN del catálogo que ya está en
+   * memoria — ninguno necesita una consulta nueva ni una columna nueva.
+   *
+   * OJO con el que NO está: la maqueta muestra "+4,2% vs mes anterior" con un
+   * sparkline. Eso necesita el VALOR DEL STOCK DE MESES ANTERIORES, que hoy
+   * no se guarda en ningún lado (habría que fotografiar el inventario
+   * periódicamente). Poner una flechita verde inventada sería peor que no
+   * ponerla: es un número sobre el que el comerciante tomaría decisiones.
+   */
+  const kpis = useMemo(() => {
+    let valor = new Decimal(0);
+    let bajoMinimo = 0;
+    let sinStock = 0;
+    for (const p of lista) {
+      // Valor de stock = a COSTO, no a precio de venta: es lo que el comercio
+      // tiene inmovilizado, no lo que espera facturar. Sin costo cargado el
+      // producto no suma (no se estima).
+      if (p.cost !== null) {
+        valor = valor.plus(new Decimal(p.stock_current).times(p.cost));
+      }
+      const est = estadoDe(p);
+      if (est.clase === 'err') sinStock++;
+      else if (est.clase === 'warn') bajoMinimo++;
+    }
+    const sinCosto = lista.filter((p) => p.cost === null).length;
+    return { valor, bajoMinimo, sinStock, sinCosto };
+  }, [lista]);
+
   const sel = lista.find((p) => p.id === selId) ?? null;
 
   function guardar(form: ProductFormInput) {
@@ -184,6 +213,48 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
           >
             + Nuevo producto
           </button>
+        </div>
+      </div>
+
+
+      {/* KPIs — los 4 salen del catálogo en memoria, sin consultas nuevas. */}
+      <div className="kpis">
+        <div className="k lead">
+          <div className="k-k">Valor de stock</div>
+          <div className="k-v">{fmt(kpis.valor)}</div>
+          <div className="k-f">
+            a costo
+            {kpis.sinCosto > 0
+              ? ` · ${kpis.sinCosto} sin costo cargado`
+              : ''}
+          </div>
+        </div>
+        <div className="k">
+          <div className="k-k">Productos activos</div>
+          <div className="k-v">{lista.length}</div>
+          <div className="k-f">
+            en {rubros.length - 1 === 1 ? '1 rubro' : `${rubros.length - 1} rubros`}
+          </div>
+        </div>
+        <div className="k warn">
+          <div className="k-k">
+            <span className="d" style={{ background: 'var(--orange)' }} />
+            Bajo mínimo
+          </div>
+          <div className="k-v">{kpis.bajoMinimo}</div>
+          <div className="k-f">
+            {kpis.bajoMinimo > 0 ? <span className="tag warn">reponer</span> : '—'}
+          </div>
+        </div>
+        <div className="k bad">
+          <div className="k-k">
+            <span className="d" style={{ background: 'var(--red)' }} />
+            Sin stock
+          </div>
+          <div className="k-v">{kpis.sinStock}</div>
+          <div className="k-f">
+            {kpis.sinStock > 0 ? <span className="tag bad">urgente</span> : '—'}
+          </div>
         </div>
       </div>
 
@@ -292,6 +363,9 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
                       <span className="d" />
                       {est.label}
                     </span>
+                    <svg className="clgo" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m9 18 6-6-6-6" />
+                    </svg>
                   </button>
                 );
               })
@@ -355,19 +429,49 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
                 </div>
               </div>
 
-              <div className="kv">
-                <span className="label-sm">Stock actual</span>
-                <b className="tnum">{new Decimal(sel.stock_current).toFixed(0)}</b>
-              </div>
-              <div className="kv">
-                <span className="label-sm">Stock mínimo</span>
-                <b className="tnum">
-                  {sel.stock_minimum === null
-                    ? 'sin definir'
-                    : new Decimal(sel.stock_minimum).toFixed(0)}
-                </b>
-              </div>
-              <div className="kv">
+              {/* Barra de stock de la maqueta. El ancho es el stock actual
+                  medido contra el mínimo (llena = el doble del mínimo o más),
+                  y el color sale del MISMO estado que la lista, para que no
+                  puedan contradecirse. Sin mínimo definido no hay referencia
+                  contra la cual dibujar: se muestra la barra neutra. */}
+              {(() => {
+                const est = estadoDe(sel);
+                const actual = new Decimal(sel.stock_current);
+                const min =
+                  sel.stock_minimum === null ? null : new Decimal(sel.stock_minimum);
+                const pct =
+                  min !== null && min.gt(0)
+                    ? Math.min(100, actual.dividedBy(min.times(2)).times(100).toNumber())
+                    : actual.gt(0)
+                      ? 100
+                      : 0;
+                const color =
+                  est.clase === 'err'
+                    ? 'var(--red)'
+                    : est.clase === 'warn'
+                      ? 'var(--orange)'
+                      : 'var(--green)';
+                return (
+                  <div style={{ marginTop: 14 }}>
+                    <div className="kv" style={{ padding: 0 }}>
+                      <span className="upper-mini">Stock</span>
+                      <b className="tnum" style={{ fontSize: 17 }}>
+                        {actual.toFixed(0)} u
+                      </b>
+                    </div>
+                    <div className="pd-bar">
+                      <i style={{ width: `${Math.max(pct, 2)}%`, background: color }} />
+                    </div>
+                    <div className="label-sm">
+                      {min === null
+                        ? 'sin mínimo definido'
+                        : `mínimo ${min.toFixed(0)} u`}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="kv" style={{ marginTop: 6 }}>
                 <span className="label-sm">Estado</span>
                 <span className={`estado ${estadoDe(sel).clase}`}>
                   <span className="d" />
