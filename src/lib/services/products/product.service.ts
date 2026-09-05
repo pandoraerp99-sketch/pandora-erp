@@ -79,6 +79,10 @@ export async function createProduct(rawInput: unknown): Promise<Product> {
         description: input.description,
         sku: input.sku,
         barcode: input.barcode,
+        // OJO: este .values() ENUMERA los campos, no hace spread. Un campo
+        // nuevo que pase el Zod pero falte aca se descarta EN SILENCIO
+        // (validacion OK, insert OK, dato perdido). Ver T-INV-09.
+        category: input.category,
         unit_type: input.unit_type,
         price: input.price,
         cost: input.cost,

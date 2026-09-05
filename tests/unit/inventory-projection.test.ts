@@ -28,6 +28,7 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
     description: null,
     sku: 'T-ALG-BLA',
     barcode: '7790000111222',
+    category: null,
     unit_type: 'metro',
     price: '1500.5000',
     cost: '1000.0000',

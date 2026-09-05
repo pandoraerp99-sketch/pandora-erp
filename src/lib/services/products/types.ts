@@ -32,6 +32,14 @@ export const CreateProductInputSchema = z.object({
   description: z.string().max(2000).optional(),
   sku: skuString.optional(),
   barcode: barcodeString.optional(),
+  // Rubro libre por tenant. Se normaliza el vacio a undefined para que
+  // "" del <select> no quede guardado como rubro llamado cadena vacia.
+  category: z
+    .string()
+    .trim()
+    .max(64)
+    .optional()
+    .transform((v) => (v === undefined || v === '' ? undefined : v)),
   unit_type: z.enum(UNIT_TYPES).default('unidad'),
   price: moneyString,
   cost: moneyString.optional(),

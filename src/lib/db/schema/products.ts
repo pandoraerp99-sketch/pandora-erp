@@ -29,6 +29,13 @@ export const products = pgTable(
     description: text('description'),
     sku: text('sku'),
     barcode: text('barcode'),
+    /**
+     * Rubro comercial libre por tenant (Bebidas, Almacen, ...).
+     * NULL = sin rubro, que es un estado legitimo. El color del chip se
+     * deriva del nombre en el cliente, no se guarda (migration 0022).
+     * NO confundir con tdf_exempt: eso es fiscal (Ley 19.640).
+     */
+    category: text('category'),
 
     unit_type: text('unit_type').notNull().default('unidad'),
 
