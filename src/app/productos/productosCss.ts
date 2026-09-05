@@ -373,4 +373,16 @@ export const PRODUCTOS_CSS = `
   border:1px solid rgba(255,255,255,0.8);
   box-shadow:inset 0 1px 0 rgba(255,255,255,0.8);
 }
+/* Clase base de .quick — no habia quedado en la extraccion y sin ella el
+   boton renderiza con los estilos por defecto del navegador. */
+.quick{ display:flex; flex-direction:column; gap:9px; padding:15px 13px; border-radius:15px; text-align:left; background:rgba(255,255,255,0.7); border:1px solid rgba(255,255,255,0.9); box-shadow:var(--glass-hi); transition:all 180ms; }
+.quick:disabled{ opacity:0.5; cursor:not-allowed; box-shadow:none; }
+.quick:disabled:hover{ transform:none; box-shadow:none; }
+
+/* Las filas de reposicion son <button> para poder tocarlas. Sin este reset
+   arrastran el padding, el borde y el fondo por defecto del navegador, y la
+   fila queda mucho mas alta y con un fondo gris que la maqueta no tiene. */
+button.stock-row{ width:100%; text-align:left; background:none; border:none; border-top:1px solid rgba(13,20,36,0.05); font:inherit; cursor:pointer; }
+button.stock-row:first-of-type{ border-top:none; }
+button.stock-row:hover{ background:rgba(107,95,255,0.04); }
 `;

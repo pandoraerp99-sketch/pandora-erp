@@ -248,6 +248,23 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
           </div>
         </div>
         <div className="bar-actions">
+          {/* La importacion masiva TIENE service (csv-import.ts) pero no
+              pantalla: necesita subir el archivo, previsualizar, y resolver
+              errores fila por fila (SKU repetido, precio invalido). Se muestra
+              apagada con el motivo en vez de abrir algo a medias. */}
+          <button
+            type="button"
+            className="b ghost"
+            disabled
+            title="Falta la pantalla de importacion (preview + errores por fila)"
+          >
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3v12" />
+              <path d="m7 10 5 5 5-5" />
+              <path d="M4 21h16" />
+            </svg>
+            Importar
+          </button>
           <button
             type="button"
             className="b primary"
@@ -597,7 +614,6 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
                     key={r.producto.id}
                     className="stock-row"
                     onClick={() => setSelId(r.producto.id)}
-                    style={{ width: '100%', textAlign: 'left' }}
                   >
                     <span
                       className="rthumb"
@@ -652,8 +668,6 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
                   padding: 11,
                   fontWeight: 600,
                   color: 'var(--ink-1)',
-                  opacity: 0.55,
-                  cursor: 'not-allowed',
                 }}
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -684,16 +698,24 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
   );
 
   return (
-    // `scroll="fijo"`: Productos es pantalla de operación, la lista scrollea
-    // por dentro. El ítem activo del sidebar lo resuelve el shell con
-    // usePathname, no hace falta pasarlo.
+    // `scroll="pagina"`, como Caja. Productos es pantalla de GESTIÓN, no de
+    // operación: se lee, se compara y se edita, y el contenido pasa el alto
+    // del viewport (KPIs + lista + detalle + reposición).
+    //
+    // Estaba en 'fijo' y la tarjeta de Reposición quedaba INALCANZABLE: la
+    // columna lateral llegaba a 1213px en un viewport de 848 y nada
+    // scrolleaba. Medido, no supuesto (ordenVisible.dentro === false). Es el
+    // mismo error que ya se cometió en Caja: aplicarle el modelo del POS a una
+    // pantalla que no es el POS.
+    //
+    // El ítem activo del sidebar lo resuelve el shell con usePathname.
     <AppShell
       storeName={salePointLabel}
       userName={cashierName}
       userRole="Cajero"
       afipConnected={false}
       afipDetail="WSFEv1 · sin certificado"
-      scroll="fijo"
+      scroll="pagina"
     >
       {contenido}
     </AppShell>
