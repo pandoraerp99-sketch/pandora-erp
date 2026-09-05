@@ -44,5 +44,15 @@ export const NAV_ITEMS: NavItem[] = [
 /**
  * Rutas que YA existen en la app. El resto se pinta atenuado y no navega:
  * forman parte de la identidad visual aunque todavia no esten construidas.
+ *
+ * ACORDARSE: esta lista hay que actualizarla al crear una pantalla nueva. Si
+ * no, la pantalla existe pero el sidebar la deja gris y sin link, o sea que
+ * no hay forma de llegar salvo escribiendo la URL. Paso con /productos
+ * (2026-09-05).
  */
-export const IMPLEMENTED_ROUTES = new Set(['/panel', '/pos', '/caja']);
+export const IMPLEMENTED_ROUTES = new Set([
+  '/panel',
+  '/pos',
+  '/caja',
+  '/productos',
+]);
