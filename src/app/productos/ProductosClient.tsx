@@ -454,17 +454,76 @@ function ProductoModal({
     stock_minimum: producto?.stock_minimum ?? '',
     tdf_exempt: producto?.tdf_exempt ?? false,
   });
+  /** El <select> de rubro cambia a texto libre al elegir "+ Nuevo rubro". */
+  const [rubroLibre, setRubroLibre] = useState(
+    producto?.category !== undefined &&
+      producto?.category !== null &&
+      !rubrosExistentes.includes(producto.category)
+  );
 
   const set = <K extends keyof ProductFormInput>(k: K, v: ProductFormInput[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
+  /**
+   * Cálculo en vivo, igual que la maqueta. Los tres números salen de precio y
+   * costo, no hace falta guardar nada:
+   *   ganancia = precio − costo
+   *   margen   = ganancia / PRECIO   (cuánto del precio es ganancia)
+   *   markup   = ganancia / COSTO    (cuánto se le recarga al costo)
+   *
+   * Margen y markup NO son lo mismo y confundirlos es un error caro: un 50%
+   * de markup es 33% de margen. La maqueta muestra los dos a propósito.
+   *
+   * Con Decimal: es plata, y CLAUDE.md §9.8 prohíbe Number en ese camino.
+   */
+  const num = (v: string | undefined): Decimal | null => {
+    const t = (v ?? '').trim();
+    if (t === '') return null;
+    try {
+      const d = new Decimal(t);
+      return d.isFinite() ? d : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const precio = num(form.price);
+  const costo = num(form.cost);
+  const ganancia = precio !== null && costo !== null ? precio.minus(costo) : null;
+  const margen =
+    ganancia !== null && precio !== null && precio.gt(0)
+      ? ganancia.dividedBy(precio).times(100)
+      : null;
+  const markup =
+    ganancia !== null && costo !== null && costo.gt(0)
+      ? ganancia.dividedBy(costo).times(100)
+      : null;
+  const bajoCosto = ganancia !== null && ganancia.lt(0);
+
   return (
     <>
       <div className="pm-backdrop" onClick={onCancelar} />
-      <div className="pm glass-strong" role="dialog" aria-modal="true">
-        <h2 className="pm-title">
-          {producto ? 'Editar producto' : 'Nuevo producto'}
-        </h2>
+      <div className="pmod glass-strong" role="dialog" aria-modal="true">
+        <div className="pm-head">
+          <div>
+            <div className="pm-title">
+              {producto ? 'Editar producto' : 'Nuevo producto'}
+            </div>
+            <div className="pm-sub">
+              El costo define el margen — y alimenta el guard de las promos.
+            </div>
+          </div>
+          <button
+            type="button"
+            className="pm-x"
+            onClick={onCancelar}
+            aria-label="Cerrar"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
 
         <div className="pm-fld">
           <label htmlFor="pmName">Nombre del producto</label>
@@ -476,24 +535,63 @@ function ProductoModal({
           />
         </div>
 
+        {/* Foto: la maqueta tiene acá una zona de arrastre. Todavía no existe
+            el flujo de subida (bucket por tenant, validación de tipo y peso,
+            borrado al reemplazar), así que se muestra APAGADA con el motivo en
+            vez de un recuadro que no hace nada. Un control que promete algo
+            que no funciona es peor que no tenerlo. */}
+        <div className="pm-fld">
+          <label>Foto del producto</label>
+          <div className="pm-photo" data-off="1" aria-disabled="true">
+            <div className="pm-photo-empty">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <path d="m21 15-5-5L5 21" />
+              </svg>
+              <div>
+                <div>Subir foto — todavía no disponible</div>
+                <small>Mientras tanto se muestra la inicial del producto.</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="pm-row">
           <div className="pm-fld">
             <label htmlFor="pmRubro">Rubro</label>
-            {/* Lista + texto libre: el comercio inventa sus rubros, pero los
-                que ya usa aparecen para no escribirlos distinto cada vez
-                ("Bebidas" vs "bebidas" serían dos rubros). */}
-            <input
-              id="pmRubro"
-              list="rubros-existentes"
-              value={form.category ?? ''}
-              onChange={(e) => set('category', e.target.value)}
-              placeholder="Ej: Bebidas"
-            />
-            <datalist id="rubros-existentes">
-              {rubrosExistentes.map((r) => (
-                <option key={r} value={r} />
-              ))}
-            </datalist>
+            {rubroLibre ? (
+              <input
+                id="pmRubro"
+                value={form.category ?? ''}
+                onChange={(e) => set('category', e.target.value)}
+                placeholder="Nombre del rubro nuevo"
+                autoFocus
+              />
+            ) : (
+              <select
+                id="pmRubro"
+                value={form.category ?? ''}
+                onChange={(e) => {
+                  if (e.target.value === '__nuevo__') {
+                    setRubroLibre(true);
+                    set('category', '');
+                    return;
+                  }
+                  set('category', e.target.value);
+                }}
+              >
+                <option value="">Sin rubro</option>
+                {rubrosExistentes.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+                {/* Los rubros los inventa cada comercio: una lista cerrada
+                    dejaría afuera a la ferretería que no vende Golosinas. */}
+                <option value="__nuevo__">+ Nuevo rubro…</option>
+              </select>
+            )}
           </div>
           <div className="pm-fld">
             <label htmlFor="pmSku">Código / SKU</label>
@@ -529,6 +627,43 @@ function ProductoModal({
           </div>
         </div>
 
+        {bajoCosto ? (
+          <div className="pm-warn">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 9v4M12 17h.01" />
+              <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+            </svg>
+            <span>El precio está por debajo del costo.</span>
+          </div>
+        ) : null}
+
+        {/* Los tres números en vivo. Es lo que convierte esta pantalla en algo
+            útil: el comerciante ve el margen MIENTRAS pone el precio, no
+            después. */}
+        <div className="pm-prev">
+          <div className="pc">
+            <div className="pk">Ganancia unit.</div>
+            <div className="pv">{ganancia === null ? '—' : fmt(ganancia)}</div>
+          </div>
+          <div className="pc">
+            <div className="pk">Margen</div>
+            <div className={bajoCosto ? 'pv mgbad' : 'pv mgok'}>
+              {margen === null ? '—' : `${margen.toFixed(1)}%`}
+            </div>
+          </div>
+          <div className="pc">
+            <div className="pk">Markup</div>
+            <div className="pv">
+              {markup === null ? '—' : `${markup.toFixed(1)}%`}
+            </div>
+          </div>
+        </div>
+
+        <div className="pm-note">
+          Este margen es el que usa el <b>guard de Ofertas</b>: si una promo baja
+          el precio por debajo del costo, te avisa antes de activarla.
+        </div>
+
         <div className="pm-row">
           <div className="pm-fld">
             <label htmlFor="pmStock">Stock actual</label>
@@ -541,7 +676,7 @@ function ProductoModal({
               disabled={producto !== null}
             />
             {producto !== null ? (
-              <small className="pm-hint">
+              <small className="pm-note">
                 El stock no se edita acá: se ajusta con un movimiento y su
                 motivo, para que quede el rastro de por qué cambió.
               </small>
@@ -573,12 +708,12 @@ function ProductoModal({
         </label>
 
         <div className="pm-acts">
-          <button type="button" className="pm-cancel" onClick={onCancelar}>
+          <button type="button" className="b ghost" onClick={onCancelar}>
             Cancelar
           </button>
           <button
             type="button"
-            className="cobrar"
+            className="b primary"
             onClick={() => {
               // El stock sólo viaja en el alta; al editar se ajusta aparte.
               const payload: ProductFormInput = producto
@@ -588,7 +723,7 @@ function ProductoModal({
             }}
             disabled={pending || form.name.trim() === '' || form.price.trim() === ''}
           >
-            {pending ? 'Guardando…' : 'Guardar'}
+            {pending ? 'Guardando…' : 'Guardar producto'}
           </button>
         </div>
       </div>

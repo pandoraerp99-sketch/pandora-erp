@@ -334,4 +334,43 @@ export const PRODUCTOS_CSS = `
 .main::-webkit-scrollbar{ width:7px; }
 .main::-webkit-scrollbar-track{ background:transparent; }
 .main::-webkit-scrollbar-thumb{ background:rgba(13,20,36,0.14); border-radius:5px; border:2px solid transparent; background-clip:padding-box; }
+/* Zona de foto apagada: el flujo de subida a Storage no existe todavia, y un
+   recuadro que no hace nada seria peor que decirlo. Mismo criterio que la fila
+   de QR en el cobro del POS. */
+.pm-photo[data-off="1"]{ opacity:0.55; cursor:not-allowed; border-style:dashed; }
+.pm-photo[data-off="1"] small{ display:block; font-size:10.5px; margin-top:2px; }
+/* Overlay del modal — el markup React no usa .pmov, monta el backdrop aparte. */
+.pm-backdrop{ position:fixed; inset:0; z-index:60; background:rgba(13,20,36,0.34); backdrop-filter:blur(2px); }
+.pmod{ position:fixed; z-index:61; top:50%; left:50%; transform:translate(-50%,-50%); width:min(660px, calc(100vw - 40px)); max-height:calc(100dvh - 48px); overflow-y:auto; border-radius:22px; padding:24px; }
+.pm-acts{ display:flex; gap:10px; justify-content:flex-end; margin-top:6px; }
+.pm-check{ display:flex; align-items:center; gap:9px; font-size:12.5px; color:var(--ink-2); margin:2px 0 16px; cursor:pointer; }
+.pm-check i{ color:var(--ink-3); font-style:normal; }
+/* Boton base. OJO: en la maqueta la clase .b esta DUPLICADA — se usa para los
+   botones y tambien para las barras de un grafico (flex:1; border-radius:5px).
+   Gana la ultima por orden de carga, o sea que es una colision real del
+   mockup. Aca se define con ALCANCE ACOTADO a los contenedores de botones
+   para no heredar ese bug si algun dia entra un grafico con barras .b. */
+.bar-actions .b, .pm-acts .b, .cd-btns .b{
+  display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  padding:10px 16px; border-radius:12px; font-size:13px; font-weight:600;
+  cursor:pointer; border:none; transition:all 180ms cubic-bezier(.2,.7,.2,1);
+}
+.bar-actions .b:disabled, .pm-acts .b:disabled, .cd-btns .b:disabled{
+  opacity:0.5; cursor:not-allowed;
+}
+.bar-actions .b.primary:hover:not(:disabled),
+.pm-acts .b.primary:hover:not(:disabled){ transform:translateY(-1px); }
+/* Variantes con el MISMO alcance acotado que la base, para que ganen sin
+   depender del orden de carga contra las .b sueltas de la maqueta. Valores
+   copiados de .b.primary / .b.ghost del mockup. */
+.bar-actions .b.primary, .pm-acts .b.primary, .cd-btns .b.primary{
+  color:#fff; border:none;
+  background:linear-gradient(135deg, #7a6fff, #6b5fff);
+  box-shadow:0 4px 14px -2px rgba(107,95,255,0.5), inset 0 1px 0 rgba(255,255,255,0.35);
+}
+.bar-actions .b.ghost, .pm-acts .b.ghost, .cd-btns .b.ghost{
+  color:var(--ink-1); background:rgba(255,255,255,0.55);
+  border:1px solid rgba(255,255,255,0.8);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.8);
+}
 `;
