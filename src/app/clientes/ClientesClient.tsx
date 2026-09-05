@@ -42,7 +42,8 @@ export interface ClienteDTO {
   notes: string | null;
   tags: string[];
   created_at: string;
-  compras: number;
+  tickets: number;
+  compras_monto: string;
   ultima_compra: string | null;
 }
 
@@ -61,6 +62,72 @@ const CONDICIONES: Array<{ valor: string; label: string }> = [
 ];
 const etiquetaCondicion = (v: string | null) =>
   v === null ? 'Sin definir' : (CONDICIONES.find((c) => c.valor === v)?.label ?? v);
+
+
+/** Iniciales para el avatar, como la maqueta (GS, MS, DA...). */
+function iniciales(nombre: string): string {
+  const partes = nombre.trim().split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return '?';
+  if (partes.length === 1) return partes[0]!.slice(0, 2).toUpperCase();
+  return (partes[0]![0]! + partes[1]![0]!).toUpperCase();
+}
+
+/**
+ * Degradado del avatar, derivado del NOMBRE. Mismo criterio que el color de
+ * rubro en Productos: el mismo cliente se ve igual siempre, sin guardar nada.
+ */
+const PARES: Array<[string, string]> = [
+  ['#34c77d', '#5b8cff'],
+  ['#6b5fff', '#9088ff'],
+  ['#0e8f9e', '#34c77d'],
+  ['#f7984a', '#ee6a8e'],
+  ['#5b8cff', '#6b5fff'],
+  ['#ee6a8e', '#f7984a'],
+];
+function gradienteDe(nombre: string): string {
+  let h = 0;
+  for (let i = 0; i < nombre.length; i++) h = (h * 31 + nombre.charCodeAt(i)) >>> 0;
+  const par = PARES[h % PARES.length]!;
+  return `linear-gradient(135deg, ${par[0]}, ${par[1]})`;
+}
+
+/**
+ * Color de la pill por CONDICION FISCAL. No es aleatorio a proposito: la
+ * misma condicion tiene que verse igual en toda la app, porque es el dato que
+ * decide el tipo de comprobante.
+ */
+function colorCondicion(cond: string | null): React.CSSProperties {
+  switch (cond) {
+    case 'responsable_inscripto':
+      return { background: 'rgba(91,140,255,0.16)', color: '#3b6fd4' };
+    case 'monotributo':
+      return { background: 'rgba(52,199,125,0.14)', color: '#1a8e5a' };
+    case 'exento':
+      return { background: 'rgba(14,143,158,0.14)', color: '#0e8f9e' };
+    case 'consumidor_final':
+      return { background: 'rgba(13,20,36,0.06)', color: 'var(--ink-2)' };
+    default:
+      return { background: 'rgba(13,20,36,0.05)', color: 'var(--ink-3)' };
+  }
+}
+
+const PESOS = new Intl.NumberFormat('es-AR', {
+  style: 'currency',
+  currency: 'ARS',
+  maximumFractionDigits: 0,
+});
+const plata = (v: string) => PESOS.format(Number(v));
+
+/** "hoy" / "ayer" / "hace N dias", como la maqueta. */
+function haceCuanto(iso: string | null): string {
+  if (iso === null) return 'sin compras';
+  const dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (dias <= 0) return 'hoy';
+  if (dias === 1) return 'ayer';
+  if (dias < 30) return `hace ${dias} dias`;
+  const meses = Math.floor(dias / 30);
+  return meses === 1 ? 'hace 1 mes' : `hace ${meses} meses`;
+}
 
 const DOC_TIPOS = ['none', 'DNI', 'CUIT', 'CUIL'] as const;
 
@@ -173,7 +240,8 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
           g.created_at instanceof Date ? g.created_at.toISOString() : String(g.created_at),
         // El agregado de compras lo calcula el server; en un alta es 0 y en una
         // edición se conserva el que ya se había cargado.
-        compras: editando?.compras ?? 0,
+        tickets: editando?.tickets ?? 0,
+        compras_monto: editando?.compras_monto ?? '0',
         ultima_compra: editando?.ultima_compra ?? null,
       };
       setLista((prev) =>
@@ -311,9 +379,9 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
           <div className="cl-colhead">
             <span style={{ flex: 1 }}>Cliente</span>
             <span style={{ width: 140 }}>Condición</span>
-            <span style={{ width: 150 }}>Segmentos</span>
-            <span style={{ width: 82, textAlign: 'right' }}>Compras</span>
+            <span style={{ width: 92, textAlign: 'right' }}>Compras</span>
             <span style={{ width: 92 }}>Última</span>
+            <span style={{ width: 16 }} />
           </div>
 
           <div className="cl-list">
@@ -328,9 +396,12 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
                 <button
                   type="button"
                   key={c.id}
-                  className={c.id === selId ? 'crow sel' : 'crow'}
+                  className={c.id === selId ? 'clrow sel' : 'clrow'}
                   onClick={() => setSelId(c.id)}
                 >
+                  <span className="clav" style={{ background: gradienteDe(c.name) }}>
+                    {iniciales(c.name)}
+                  </span>
                   <div className="clmain">
                     <div className="clname">{c.name}</div>
                     <div className="clid">
@@ -338,30 +409,28 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
                         ? `${c.doc_type} ${c.doc_number}`
                         : 'sin documento'}
                     </div>
+                    {/* Los segmentos van DEBAJO del nombre, como la maqueta —
+                        no en una columna aparte. */}
+                    {c.tags.length > 0 ? (
+                      <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
+                        {c.tags.slice(0, 2).map((t) => (
+                          <span key={t} className="tag-com">
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
-                  {/* Pill SÓLIDA = condición fiscal. */}
-                  <span className="pill" style={{ width: 140 }}>
+                  {/* Pill SÓLIDA = condición fiscal. Color por condición, no
+                      al azar: la misma condición se ve igual en toda la app. */}
+                  <span className="pill" style={colorCondicion(c.tax_condition)}>
                     {etiquetaCondicion(c.tax_condition)}
                   </span>
-                  {/* Chips PUNTEADOS = segmentos comerciales. Distintos a
-                      propósito: no son el mismo eje. */}
-                  <span style={{ width: 150, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    {c.tags.length === 0 ? (
-                      <i className="label-sm">—</i>
-                    ) : (
-                      c.tags.slice(0, 2).map((t) => (
-                        <span key={t} className="tag-com">
-                          {t}
-                        </span>
-                      ))
-                    )}
-                  </span>
-                  <span className="tnum" style={{ width: 82, textAlign: 'right' }}>
-                    {c.compras}
-                  </span>
-                  <span className="label-sm" style={{ width: 92 }}>
-                    {fechaCorta(c.ultima_compra)}
-                  </span>
+                  <span className="clcompras tnum">{plata(c.compras_monto)}</span>
+                  <span className="clult">{haceCuanto(c.ultima_compra)}</span>
+                  <svg className="clgo" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m9 18 6-6-6-6" />
+                  </svg>
                 </button>
               ))
             )}
@@ -374,11 +443,26 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
               <p className="label-sm">Elegí un cliente para ver el detalle.</p>
             ) : (
               <>
-                <div className="cd-name">{sel.name}</div>
-                <div className="cd-id">
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <span
+                    className="clav"
+                    style={{
+                      background: gradienteDe(sel.name),
+                      width: 44,
+                      height: 44,
+                      fontSize: 14,
+                    }}
+                  >
+                    {iniciales(sel.name)}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="cd-name">{sel.name}</div>
+                    <div className="cd-id">
                   {sel.doc_number !== null
                     ? `${sel.doc_type} ${sel.doc_number}`
                     : 'sin documento'}
+                    </div>
+                  </div>
                 </div>
 
                 <div
@@ -390,7 +474,9 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
                     alignItems: 'center',
                   }}
                 >
-                  <span className="pill">{etiquetaCondicion(sel.tax_condition)}</span>
+                  <span className="pill" style={colorCondicion(sel.tax_condition)}>
+                    {etiquetaCondicion(sel.tax_condition)}
+                  </span>
                   {sel.tags.map((t) => (
                     <span key={t} className="tag-com">
                       {t}
@@ -401,15 +487,19 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
                 <div className="cd-stats">
                   <div>
                     <div className="upper-mini">Compras</div>
-                    <div className="tnum cd-sv">{sel.compras}</div>
+                    <div className="tnum cd-sv">{plata(sel.compras_monto)}</div>
                   </div>
                   <div>
-                    <div className="upper-mini">Última</div>
-                    <div className="tnum cd-sv">{fechaCorta(sel.ultima_compra)}</div>
+                    <div className="upper-mini">Tickets</div>
+                    <div className="tnum cd-sv">{sel.tickets}</div>
                   </div>
                   <div>
-                    <div className="upper-mini">Alta</div>
-                    <div className="tnum cd-sv">{fechaCorta(sel.created_at)}</div>
+                    <div className="upper-mini">Ticket prom.</div>
+                    <div className="tnum cd-sv">
+                      {sel.tickets === 0
+                        ? '—'
+                        : plata(String(Number(sel.compras_monto) / sel.tickets))}
+                    </div>
                   </div>
                 </div>
 

@@ -28,6 +28,9 @@ export default async function ClientesPage() {
     .select({
       customer_id: sales.customer_id,
       cantidad: sql<number>`count(*)::int`,
+      // La maqueta muestra PLATA en la columna "Compras", no un contador: al
+      // comerciante le importa cuánto le compró, no cuántas veces vino.
+      monto: sql<string>`coalesce(sum(${sales.total}), 0)::text`,
       ultima: sql<string | null>`max(${sales.created_at})::text`,
     })
     .from(sales)
@@ -35,7 +38,10 @@ export default async function ClientesPage() {
     .groupBy(sales.customer_id);
 
   const porCliente = new Map(
-    compras.map((c) => [c.customer_id, { cantidad: c.cantidad, ultima: c.ultima }])
+    compras.map((c) => [
+      c.customer_id,
+      { cantidad: c.cantidad, monto: c.monto, ultima: c.ultima },
+    ])
   );
 
   const [company] = await db
@@ -58,7 +64,8 @@ export default async function ClientesPage() {
       notes: c.notes,
       tags: c.tags,
       created_at: c.created_at.toISOString(),
-      compras: agg?.cantidad ?? 0,
+      tickets: agg?.cantidad ?? 0,
+      compras_monto: agg?.monto ?? '0',
       ultima_compra: agg?.ultima ?? null,
     };
   });
