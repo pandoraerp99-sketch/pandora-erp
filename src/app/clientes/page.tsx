@@ -6,13 +6,15 @@
  * 0023): las ventas anteriores no la tienen, así que van a dar 0 hasta que se
  * empiece a asociar el cliente al cobrar. Es un cero REAL, no un placeholder.
  */
-import { and, eq, isNotNull, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { requireSessionWithCompany } from '@/lib/auth/session';
 import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
 import { db } from '@/lib/db/client';
 import { companies } from '@/lib/db/schema/companies';
-import { sales } from '@/lib/db/schema/sales';
-import { listCustomers } from '@/lib/services/customers/customer.service';
+import {
+  getPurchaseStatsByCustomer,
+  listCustomers,
+} from '@/lib/services/customers/customer.service';
 import { getBalancesByCustomer } from '@/lib/services/customers/account.service';
 import { ClientesClient, type ClienteDTO } from './ClientesClient';
 
@@ -25,24 +27,11 @@ export default async function ClientesPage() {
   });
 
   // Un solo agregado para todos, en vez de una consulta por cliente (N+1).
-  const compras = await db
-    .select({
-      customer_id: sales.customer_id,
-      cantidad: sql<number>`count(*)::int`,
-      // La maqueta muestra PLATA en la columna "Compras", no un contador: al
-      // comerciante le importa cuánto le compró, no cuántas veces vino.
-      monto: sql<string>`coalesce(sum(${sales.total}), 0)::text`,
-      ultima: sql<string | null>`max(${sales.created_at})::text`,
-    })
-    .from(sales)
-    .where(and(eq(sales.tenant_id, tenantId), isNotNull(sales.customer_id)))
-    .groupBy(sales.customer_id);
-
-  const porCliente = new Map(
-    compras.map((c) => [
-      c.customer_id,
-      { cantidad: c.cantidad, monto: c.monto, ultima: c.ultima },
-    ])
+  // Vive en el servicio y no acá para poder testearlo: la primera versión
+  // contaba carritos abandonados como compras (ver T-CUST-02).
+  const porCliente = await withServerActionTracing(
+    () => getPurchaseStatsByCustomer(),
+    { requireAuth: true }
   );
 
   // Saldos de cuenta corriente: UNA consulta agrupada para todos (ADR-0027).

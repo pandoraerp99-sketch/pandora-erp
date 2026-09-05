@@ -301,3 +301,51 @@ export async function listCustomerTags(): Promise<string[]> {
   );
   return filas.map((f) => f.tag);
 }
+
+/**
+ * Estadistica de compras POR CLIENTE, en UNA consulta agrupada (no N+1).
+ *
+ * **Solo cuenta ventas que pasaron de verdad.** Un carrito abandonado con el
+ * cliente ya elegido queda en draft/in_progress, y una venta dada de baja
+ * queda en cancelada: ninguna de las dos es una compra. Sin este filtro el
+ * cliente aparecia con tickets que nunca compro — se vio en pantalla como
+ * "TICKETS 2 / COMPRAS $ 0": dos carritos vacios contados como visitas.
+ */
+export const PURCHASED_STATUSES = ['cobrada', 'terminada'] as const;
+
+export interface PurchaseStats {
+  /** Cuantas compras cerro. */
+  cantidad: number;
+  /** Cuanto gasto, como string decimal (es plata: nunca number). */
+  monto: string;
+  /** ISO de la ultima compra, o null. */
+  ultima: string | null;
+}
+
+export async function getPurchaseStatsByCustomer(): Promise<
+  Map<string, PurchaseStats>
+> {
+  const tenantId = requireTenantId();
+  const filas = await db.execute<{
+    customer_id: string;
+    cantidad: number;
+    monto: string;
+    ultima: string | null;
+  }>(
+    sql`SELECT customer_id::text,
+               count(*)::int                 AS cantidad,
+               coalesce(sum(total), 0)::text AS monto,
+               max(created_at)::text         AS ultima
+        FROM sales
+        WHERE tenant_id = ${tenantId}
+          AND customer_id IS NOT NULL
+          AND commercial_status IN ('cobrada', 'terminada')
+        GROUP BY customer_id`
+  );
+  return new Map(
+    filas.map((f) => [
+      f.customer_id,
+      { cantidad: f.cantidad, monto: f.monto, ultima: f.ultima },
+    ])
+  );
+}

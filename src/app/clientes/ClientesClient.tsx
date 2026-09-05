@@ -22,6 +22,7 @@
  *     por mes, que no se guarda.
  */
 import { useMemo, useState, useTransition } from 'react';
+import Decimal from 'decimal.js';
 import { AppShell } from '@/components/shell/AppShell';
 import { CLIENTES_CSS } from './clientesCss';
 import {
@@ -64,9 +65,9 @@ const CONDICIONES: Array<{ valor: string; label: string }> = [
 ];
 /** Etiquetas CORTAS para los chips del filtro, como la maqueta. */
 const COND_CHIP: Record<string, string> = {
-  consumidor_final: 'Cons. Final',
   responsable_inscripto: 'Resp. Insc.',
   monotributo: 'Monotributo',
+  consumidor_final: 'Cons. Final',
   exento: 'Exento',
 };
 const etiquetaCorta = (v: string) => COND_CHIP[v] ?? v;
@@ -129,6 +130,9 @@ const PESOS = new Intl.NumberFormat('es-AR', {
 });
 const plata = (v: string) => PESOS.format(Number(v));
 
+/** Saldo positivo = el cliente DEBE. Comparar plata con Decimal, no con `>`. */
+const debe = (saldo: string) => new Decimal(saldo).gt(0);
+
 /** "hoy" / "ayer" / "hace N dias", como la maqueta. */
 function haceCuanto(iso: string | null): string {
   if (iso === null) return 'sin compras';
@@ -181,14 +185,23 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
   const condiciones = useMemo(() => {
     const set = new Set<string>();
     for (const c of lista) if (c.tax_condition) set.add(c.tax_condition);
-    return ['Todos', ...Array.from(set)];
+    // Orden FIJO, el de la maqueta. Si sale del orden en que aparecen los
+    // clientes, los chips se reacomodan solos cuando cambia el padron: el
+    // filtro que estaba tercero pasa a estar primero y el que lo usa todos los
+    // dias tiene que volver a leer la barra.
+    const orden = Object.keys(COND_CHIP);
+    return [
+      'Todos',
+      ...orden.filter((c) => set.has(c)),
+      ...Array.from(set).filter((c) => !orden.includes(c)),
+    ];
   }, [lista]);
 
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return lista.filter((c) => {
       if (condActiva === '__deuda__') {
-        if (Number(c.saldo) <= 0) return false;
+        if (!debe(c.saldo)) return false;
       } else if (condActiva !== 'Todos' && c.tax_condition !== condActiva) {
         return false;
       }
@@ -229,12 +242,16 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
     // Por cobrar: suma de los saldos POSITIVOS. Los saldos a favor no se
     // restan de la deuda de otros — son cosas distintas y mezclarlas daria un
     // numero que no significa nada.
-    let porCobrar = 0;
+    //
+    // La suma va en Decimal. Es plata: acumular con `+` sobre float arrastra
+    // error de redondeo (CLAUDE.md §9.8). Con los dos saldos redondos del demo
+    // no se nota; con una cartera de 200 clientes con centavos, si.
+    let porCobrar = new Decimal(0);
     let deudores = 0;
     for (const c of lista) {
-      const saldo = Number(c.saldo);
-      if (saldo > 0) {
-        porCobrar += saldo;
+      const saldo = new Decimal(c.saldo);
+      if (saldo.gt(0)) {
+        porCobrar = porCobrar.plus(saldo);
         deudores++;
       }
     }
@@ -246,7 +263,7 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
       nuevosMes,
       nuevosMesPasado,
       segmentos: segmentos.length,
-      porCobrar,
+      porCobrar: porCobrar.toFixed(2),
       deudores,
     };
   }, [lista, segmentos]);
@@ -334,13 +351,26 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
         </button>
       </div>
 
-      {/* "Tipo" = segmento comercial. Es un <select> nativo y no el menu
-          desplegable de la maqueta: el nativo ya trae teclado y accesibilidad,
-          y el filtro es el mismo. */}
+      {/* "Tipo" = segmento comercial.
+          El CHROME es el de la maqueta (icono de etiqueta violeta + label +
+          chevron), pero el control real es un <select> nativo transparente
+          encima: asi se ve como la maqueta y ademas conserva teclado, lector
+          de pantalla y el selector nativo del celular, que un menu hecho a
+          mano habria que reimplementar entero para igualar. */}
       {segmentos.length > 0 ? (
         <div className="tipo-dd">
+          <span className="tipo-btn glass" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--purple)' }}>
+              <path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.58a2 2 0 0 1 0 2.83z" />
+              <circle cx="7" cy="7" r="1.5" />
+            </svg>
+            <span className="tb-lbl">{segmentoActivo === '' ? 'Tipo' : segmentoActivo}</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </span>
           <select
-            className="tipo-btn glass"
+            className="tipo-native"
             value={segmentoActivo}
             onChange={(e) => setSegmentoActivo(e.target.value)}
             aria-label="Filtrar por tipo comercial"
@@ -473,9 +503,10 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
             <span className="d" style={{ background: 'var(--red)' }} />
             Por cobrar
           </div>
-          <div className="k-v" style={{ color: '#c0384a' }}>
-            {plata(String(kpis.porCobrar))}
-          </div>
+          {/* Sin color inline: `.kpis .k.bad .k-v` ya lo pinta, y ADEMAS tiene
+              su variante de modo oscuro. Un inline la pisaria (gana siempre) y
+              el KPI se quedaria con el rojo claro en oscuro. */}
+          <div className="k-v">{plata(kpis.porCobrar)}</div>
           <div className="k-f">
             {kpis.deudores === 0 ? (
               'nadie debe'
@@ -560,10 +591,8 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
                   <span className="clcompras tnum">{plata(c.compras_monto)}</span>
                   {/* Saldo REAL, calculado del libro (ADR-0027). Rojo si
                       debe, verde si esta al dia — igual que la maqueta. */}
-                  <span
-                    className={Number(c.saldo) > 0 ? 'cc red' : 'cc ok'}
-                  >
-                    {Number(c.saldo) > 0 ? plata(c.saldo) : 'al día'}
+                  <span className={debe(c.saldo) ? 'cc red' : 'cc ok'}>
+                    {debe(c.saldo) ? plata(c.saldo) : 'al día'}
                   </span>
                   <svg className="clgo" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
                     <path d="m9 18 6-6-6-6" />

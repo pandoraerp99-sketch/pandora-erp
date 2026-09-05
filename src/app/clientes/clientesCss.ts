@@ -483,4 +483,14 @@ html[data-theme="dark"] .seg-add input{ background:rgba(255,255,255,0.06); borde
 button.clrow{ background:none; border:none; font-family:inherit; color:inherit; }
 button.ctag{ cursor:pointer; }
 button.ctag.on{ background:rgba(247,152,74,0.24); border-style:solid; }
+
+/* El desplegable "Tipo": el chrome es el de la maqueta (.tipo-btn) y encima
+   va un select nativo transparente. La maqueta abre .tipo-menu con JS propio;
+   el nativo nos da teclado, lector de pantalla y el selector del celular sin
+   reimplementar nada de eso. */
+.tipo-dd .tipo-native{
+  position:absolute; inset:0; width:100%; height:100%;
+  opacity:0; cursor:pointer; font:inherit;
+}
+.tipo-dd:focus-within .tipo-btn{ outline:2px solid var(--purple); outline-offset:2px; }
 `;
