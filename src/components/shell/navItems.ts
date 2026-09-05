@@ -55,4 +55,5 @@ export const IMPLEMENTED_ROUTES = new Set([
   '/pos',
   '/caja',
   '/productos',
+  '/clientes',
 ]);

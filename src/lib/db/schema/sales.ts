@@ -76,6 +76,13 @@ export const sales = pgTable(
       onDelete: 'set null',
     }),
 
+    /**
+     * Referencia OPCIONAL al cliente del registro (migration 0023) — "quien
+     * era". NO es la autoridad de lo que dice el comprobante: para eso estan
+     * los snapshots de abajo, que son INMUTABLES post-emision (CLAUDE.md 2.3).
+     * Si el cliente cambia de condicion fiscal, las facturas viejas no cambian.
+     */
+    customer_id: uuid('customer_id'),
     customer_doc_type: text('customer_doc_type').default('none'),
     customer_doc_number: text('customer_doc_number'),
     customer_name_snapshot: text('customer_name_snapshot'),
