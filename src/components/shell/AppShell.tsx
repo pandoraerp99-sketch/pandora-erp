@@ -32,6 +32,17 @@ export interface AppShellProps {
   aside?: React.ReactNode;
   /** Barra superior. Si no se pasa, se usa la del shell con el buscador. */
   topbar?: React.ReactNode;
+  /**
+   * Parte IZQUIERDA de la topbar (buscador, filtros) propia de la pantalla.
+   * Las herramientas de la derecha (tema, notificaciones, mensajes,
+   * configuracion, chip de usuario) las sigue poniendo el shell.
+   *
+   * Es distinto de `topbar`, que reemplaza la barra ENTERA. Esa via es la que
+   * hizo que /clientes perdiera los cuatro botones sin que nadie lo notara:
+   * la pantalla los tenia que redibujar y no lo hizo. Con `topbarLeft` eso no
+   * puede pasar.
+   */
+  topbarLeft?: React.ReactNode;
   /** Nombre del comercio para el pill de la topbar. */
   storeName?: string;
   /** Nombre y rol del usuario, para el pie del sidebar. */
@@ -70,6 +81,7 @@ export function AppShell({
   children,
   aside,
   topbar,
+  topbarLeft,
   storeName = 'Mi comercio',
   userName = 'Operador',
   userRole = 'Cajero',
@@ -259,6 +271,11 @@ export function AppShell({
         <section className="main" data-view="prod">
           {topbar ?? (
             <div className="topbar">
+              {/* Izquierda: la pantalla puede reemplazarla (buscador y
+                  filtros propios). Las herramientas de la derecha las
+                  pone SIEMPRE el shell. */}
+              {topbarLeft ?? (
+                <>
               <div className="search glass">
                 <svg
                   className="lead"
@@ -312,6 +329,9 @@ export function AppShell({
                   notificaciones, mensajes, configuración y chip de usuario.
                   Viven acá (no en cada pantalla) porque son del shell: antes
                   el POS sólo tenía el toggle de tema y Caja tenía todo. */}
+                </>
+              )}
+
               <div className="top-tools">
                 <button
                   type="button"

@@ -45,6 +45,8 @@ export interface ClienteDTO {
   tickets: number;
   compras_monto: string;
   ultima_compra: string | null;
+  /** Saldo de cuenta corriente. Positivo = DEBE. Calculado, no guardado. */
+  saldo: string;
 }
 
 interface Props {
@@ -60,6 +62,15 @@ const CONDICIONES: Array<{ valor: string; label: string }> = [
   { valor: 'monotributo', label: 'Monotributo' },
   { valor: 'exento', label: 'Exento' },
 ];
+/** Etiquetas CORTAS para los chips del filtro, como la maqueta. */
+const COND_CHIP: Record<string, string> = {
+  consumidor_final: 'Cons. Final',
+  responsable_inscripto: 'Resp. Insc.',
+  monotributo: 'Monotributo',
+  exento: 'Exento',
+};
+const etiquetaCorta = (v: string) => COND_CHIP[v] ?? v;
+
 const etiquetaCondicion = (v: string | null) =>
   v === null ? 'Sin definir' : (CONDICIONES.find((c) => c.valor === v)?.label ?? v);
 
@@ -176,7 +187,11 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return lista.filter((c) => {
-      if (condActiva !== 'Todos' && c.tax_condition !== condActiva) return false;
+      if (condActiva === '__deuda__') {
+        if (Number(c.saldo) <= 0) return false;
+      } else if (condActiva !== 'Todos' && c.tax_condition !== condActiva) {
+        return false;
+      }
       if (segmentoActivo !== '' && !c.tags.includes(segmentoActivo)) return false;
       if (!q) return true;
       return (
@@ -211,6 +226,19 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
       else if (alta >= inicioMesPasado) nuevosMesPasado++;
       if (c.doc_number !== null) conDoc++;
     }
+    // Por cobrar: suma de los saldos POSITIVOS. Los saldos a favor no se
+    // restan de la deuda de otros — son cosas distintas y mezclarlas daria un
+    // numero que no significa nada.
+    let porCobrar = 0;
+    let deudores = 0;
+    for (const c of lista) {
+      const saldo = Number(c.saldo);
+      if (saldo > 0) {
+        porCobrar += saldo;
+        deudores++;
+      }
+    }
+
     return {
       total: lista.length,
       conDoc,
@@ -218,6 +246,8 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
       nuevosMes,
       nuevosMesPasado,
       segmentos: segmentos.length,
+      porCobrar,
+      deudores,
     };
   }, [lista, segmentos]);
 
@@ -249,6 +279,7 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
         // edición se conserva el que ya se había cargado.
         tickets: editando?.tickets ?? 0,
         compras_monto: editando?.compras_monto ?? '0',
+        saldo: editando?.saldo ?? '0',
         ultima_compra: editando?.ultima_compra ?? null,
       };
       setLista((prev) =>
@@ -267,8 +298,8 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
    * completamente distinta aunque la lista fuera parecida. AppShell acepta
    * `topbar` justamente para esto.
    */
-  const topbar = (
-    <div className="topbar">
+  const topbarIzq = (
+    <>
       <div className="search glass">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="11" cy="11" r="7" />
@@ -290,9 +321,17 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
             className={condActiva === c ? 'on' : undefined}
             onClick={() => setCondActiva(c)}
           >
-            {c === 'Todos' ? 'Todos' : etiquetaCondicion(c)}
+            {c === 'Todos' ? 'Todos' : etiquetaCorta(c)}
           </button>
         ))}
+        {/* Filtro de la maqueta que ahora SI se puede: hay dominio de deuda. */}
+        <button
+          type="button"
+          className={condActiva === '__deuda__' ? 'on' : undefined}
+          onClick={() => setCondActiva('__deuda__')}
+        >
+          Con deuda
+        </button>
       </div>
 
       {/* "Tipo" = segmento comercial. Es un <select> nativo y no el menu
@@ -316,18 +355,7 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
         </div>
       ) : null}
 
-      <div className="top-tools">
-        <div className="user-chip glass">
-          <span className="avatar-ring">
-            <span className="cashier-av">{iniciales(cashierName)}</span>
-          </span>
-          <div>
-            <div className="user-name">{cashierName}</div>
-            <div className="user-role">Cajero</div>
-          </div>
-        </div>
-      </div>
-    </div>
+    </>
   );
 
   const contenido = (
@@ -347,8 +375,7 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
           <div>
             <div className="bar-title">Clientes</div>
             <div className="bar-sub">
-              Padrón · <b>{kpis.total} clientes</b> ·{' '}
-              {kpis.segmentos === 1 ? '1 segmento' : `${kpis.segmentos} segmentos`}
+              Cartera · <b>{kpis.total} clientes</b> · cuentas corrientes
             </div>
           </div>
         </div>
@@ -377,7 +404,12 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
             }}
             disabled={pending}
           >
-            + Nuevo cliente
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M19 8v6M22 11h-6" />
+            </svg>
+            Nuevo cliente
           </button>
         </div>
       </div>
@@ -434,13 +466,25 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
             {segmentos.length > 0 ? segmentos.slice(0, 3).join(' · ') : 'sin etiquetar'}
           </div>
         </div>
-        {/* El 4º KPI de la maqueta es "Por cobrar", que necesita cuenta
-            corriente. En su lugar va uno real: sin cliente identificado no hay
-            historial de compras que analizar. */}
-        <div className="k">
-          <div className="k-k">Sin identificar</div>
-          <div className="k-v">{kpis.sinDoc}</div>
-          <div className="k-f">no tienen documento cargado</div>
+        {/* "Por cobrar" — ahora con datos REALES (ADR-0027). Suma de los
+            saldos deudores del padron, calculada del libro. */}
+        <div className="k bad">
+          <div className="k-k">
+            <span className="d" style={{ background: 'var(--red)' }} />
+            Por cobrar
+          </div>
+          <div className="k-v" style={{ color: '#c0384a' }}>
+            {plata(String(kpis.porCobrar))}
+          </div>
+          <div className="k-f">
+            {kpis.deudores === 0 ? (
+              'nadie debe'
+            ) : (
+              <span className="tag bad">
+                {kpis.deudores === 1 ? '1 deudor' : `${kpis.deudores} deudores`}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -514,13 +558,12 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
                     {etiquetaCondicion(c.tax_condition)}
                   </span>
                   <span className="clcompras tnum">{plata(c.compras_monto)}</span>
-                  {/* Cta. corriente: la columna EXISTE (la maqueta la tiene y
-                      sin ella el resto se corre 118px) pero NO se inventa un
-                      numero. No hay dominio de deuda: no hay libro de
-                      movimientos ni pago contra cuenta. Decir "al dia" seria
-                      afirmar que el sistema lo controla, y no lo controla. */}
-                  <span className="cc" title="Todavia no existe la cuenta corriente">
-                    sin cuenta
+                  {/* Saldo REAL, calculado del libro (ADR-0027). Rojo si
+                      debe, verde si esta al dia — igual que la maqueta. */}
+                  <span
+                    className={Number(c.saldo) > 0 ? 'cc red' : 'cc ok'}
+                  >
+                    {Number(c.saldo) > 0 ? plata(c.saldo) : 'al día'}
                   </span>
                   <svg className="clgo" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
                     <path d="m9 18 6-6-6-6" />
@@ -705,7 +748,7 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
       afipConnected={false}
       afipDetail="WSFEv1 · sin certificado"
       scroll="pagina"
-      topbar={topbar}
+      topbarLeft={topbarIzq}
     >
       {contenido}
     </AppShell>

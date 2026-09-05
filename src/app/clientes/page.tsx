@@ -13,6 +13,7 @@ import { db } from '@/lib/db/client';
 import { companies } from '@/lib/db/schema/companies';
 import { sales } from '@/lib/db/schema/sales';
 import { listCustomers } from '@/lib/services/customers/customer.service';
+import { getBalancesByCustomer } from '@/lib/services/customers/account.service';
 import { ClientesClient, type ClienteDTO } from './ClientesClient';
 
 export default async function ClientesPage() {
@@ -44,6 +45,12 @@ export default async function ClientesPage() {
     ])
   );
 
+  // Saldos de cuenta corriente: UNA consulta agrupada para todos (ADR-0027).
+  // El saldo NO esta guardado, se calcula del libro.
+  const saldos = await withServerActionTracing(() => getBalancesByCustomer(), {
+    requireAuth: true,
+  });
+
   const [company] = await db
     .select({ name: companies.name })
     .from(companies)
@@ -67,6 +74,7 @@ export default async function ClientesPage() {
       tickets: agg?.cantidad ?? 0,
       compras_monto: agg?.monto ?? '0',
       ultima_compra: agg?.ultima ?? null,
+      saldo: (saldos.get(c.id) ?? 0).toString(),
     };
   });
 
