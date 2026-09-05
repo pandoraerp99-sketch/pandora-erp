@@ -22,7 +22,14 @@
  * el SERVER ya calculó por ítem (ADR-0021 — cliente muestra preview, server es
  * autoridad). Usa Decimal.js para las sumas (nunca Number en money).
  */
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from 'react';
 import Decimal from 'decimal.js';
 import { AppShell } from '@/components/shell/AppShell';
 import {
@@ -34,13 +41,42 @@ import {
 import type { SaleWithItems } from '@/lib/services/sales/sale.service';
 import type { SalePaymentMethod } from '@/lib/db/schema/_common';
 
-/** Medios que el cajero puede elegir en el cobro (single-method F0). */
-const PAY_OPTIONS: Array<{ key: SalePaymentMethod; label: string }> = [
-  { key: 'efectivo', label: 'Efectivo' },
-  { key: 'debito', label: 'Débito' },
-  { key: 'credito', label: 'Crédito' },
-  { key: 'mp_qr', label: 'QR / MP' },
+/**
+ * Medios de la grilla de cobro (maqueta `checkpoint-v20-cobro-tipeable`).
+ *
+ * **El cobro es multi-medio.** No es una feature nueva: `sale_payments` se
+ * diseñó en el Sprint 5 con una fila por pago, y `sale.service` deriva
+ * `sales.payment_method='mixto'` cuando hay 2+ medios distintos. Lo que era
+ * F1+ (ADR-0026) es *reclasificar* una venta mixta, no crearla — dos cosas
+ * distintas que un comentario mío anterior había mezclado.
+ *
+ * `cobrable:false` = se muestra pero no se puede usar. Es el caso de `mp_qr`:
+ * el schema exige `mp_payment_external_id`, que emite el SDK de MercadoPago
+ * al crear el pago, y ese flujo todavía no existe. Antes esta opción estaba
+ * en el menú como si funcionara: elegirla y cobrar fallaba SIEMPRE
+ * (ver `tests/unit/pos-payment-methods.test.ts`). Se deja visible y apagada
+ * en vez de borrarla, para no mentir sobre los medios que el comercio va a
+ * tener.
+ */
+const PAY_OPTIONS: Array<{
+  key: SalePaymentMethod;
+  label: string;
+  cobrable: boolean;
+  motivo?: string;
+}> = [
+  { key: 'efectivo', label: 'Efectivo', cobrable: true },
+  {
+    key: 'mp_qr',
+    label: 'QR / Transferencia',
+    cobrable: false,
+    motivo: 'falta MercadoPago',
+  },
+  { key: 'debito', label: 'Débito', cobrable: true },
+  { key: 'credito', label: 'Crédito', cobrable: true },
 ];
+
+/** Los que realmente aceptan monto. */
+const PAY_COBRABLES = PAY_OPTIONS.filter((o) => o.cobrable);
 
 export interface PosProductDTO {
   id: string;
@@ -79,8 +115,31 @@ export function POSClient({
   const [cart, setCart] = useState<SaleWithItems | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [payMethod, setPayMethod] = useState<SalePaymentMethod>('efectivo');
   const [pending, startTransition] = useTransition();
+
+  /**
+   * ── COBRO TIPEABLE (maqueta v20) ────────────────────────────────────
+   *
+   * Los inputs de monto son **NO controlados** a propósito. El spike v20
+   * demostró que el camino que funciona es: el `value` del input ES la fuente
+   * de verdad, y el numpad y el teclado físico escriben ahí por el mismo
+   * lugar. Levantar cada tecla a `useState` rompe las tres cosas que el spike
+   * resolvió:
+   *   1. `inputmode="none"` — tocar el campo lo enfoca SIN abrir el teclado
+   *      del sistema, que en tablet taparía el numpad. En desktop el teclado
+   *      físico igual escribe.
+   *   2. El recálculo NUNCA pisa el value del input enfocado (si no, el
+   *      cursor salta mientras escribís).
+   *   3. El numpad usa `mousedown` + `preventDefault` para no robarle el foco
+   *      al input activo.
+   *
+   * `tick` sólo fuerza el re-render de lo derivado (pagado, restante, vuelto,
+   * fila activa). No guarda montos.
+   */
+  const montoRefs = useRef<Partial<Record<SalePaymentMethod, HTMLInputElement | null>>>({});
+  const [activo, setActivo] = useState<SalePaymentMethod>('efectivo');
+  const [, setTick] = useState(0);
+  const recompute = useCallback(() => setTick((t) => t + 1), []);
 
   /**
    * MODO CONSULTA (F2) — tocar un producto muestra precio y stock SIN meterlo
@@ -180,17 +239,92 @@ export function POSClient({
     });
   }
 
+  // ── Montos del cobro: se leen del DOM, no del state (ver `montoRefs`) ──
+
+  /** Entero en pesos que tiene tipeado un medio. Sin monto → 0. */
+  const montoDe = useCallback((k: SalePaymentMethod): number => {
+    const crudo = montoRefs.current[k]?.value ?? '';
+    const n = parseInt(crudo.replace(/[^0-9]/g, '') || '0', 10);
+    return Number.isFinite(n) ? n : 0;
+  }, []);
+
+  const pagado = PAY_COBRABLES.reduce((s, o) => s + montoDe(o.key), 0);
+  const totalNum = totals.total.toNumber();
+  /** Lo que falta cubrir. Nunca negativo: el excedente es vuelto, no faltante. */
+  const restante = Math.max(0, Math.round(totalNum) - pagado);
+  /** Sólo tiene sentido en efectivo: nadie da vuelto de una tarjeta. */
+  const vuelto = Math.max(0, pagado - Math.round(totalNum));
+
+  /**
+   * Escribe una tecla sobre el input activo. Lo usan el numpad Y el teclado
+   * físico, para que haya UN solo camino de edición.
+   *
+   * Si el input está todo seleccionado (recién enfocado), el primer dígito
+   * REEMPLAZA en vez de concatenar — así el cajero corrige un monto sin tener
+   * que borrarlo primero.
+   */
+  const aplicarTecla = useCallback((inp: HTMLInputElement, tecla: string) => {
+    const todoSeleccionado =
+      inp.selectionStart === 0 &&
+      inp.selectionEnd === inp.value.length &&
+      inp.value.length > 0;
+    let s = todoSeleccionado ? '' : inp.value;
+    s = tecla === 'back' ? s.slice(0, -1) : s + tecla;
+    let n = parseInt(s || '0', 10);
+    if (!Number.isFinite(n)) n = 0;
+    if (n > 99_999_999) n = 99_999_999;
+    inp.value = n ? String(n) : '';
+    inp.setSelectionRange(inp.value.length, inp.value.length);
+  }, []);
+
+  /** Mete todo lo que falta en el medio activo. */
+  function completarResto() {
+    const inp = montoRefs.current[activo];
+    if (!inp) return;
+    inp.value = String(montoDe(activo) + restante);
+    inp.focus();
+    inp.select();
+    recompute();
+  }
+
+  /** Vacía la grilla (al cerrar la hoja o después de cobrar). */
+  const limpiarMontos = useCallback(() => {
+    for (const o of PAY_COBRABLES) {
+      const inp = montoRefs.current[o.key];
+      if (inp) inp.value = '';
+    }
+    setActivo('efectivo');
+    recompute();
+  }, [recompute]);
+
   function charge() {
     if (!cart || !hasItems) return;
+
+    // Se arma UNA fila por medio con monto. Si hay 2+, el service deriva
+    // `sales.payment_method='mixto'` — no hace falta mandarlo.
+    const payments = PAY_COBRABLES.filter((o) => montoDe(o.key) > 0).map((o) => ({
+      method: o.key,
+      amount: montoDe(o.key).toFixed(4),
+    }));
+
+    if (payments.length === 0) {
+      setError('Ingresá el monto de al menos un medio de pago.');
+      return;
+    }
+    if (restante > 0) {
+      setError(`Falta cubrir ${fmt(String(restante))}.`);
+      return;
+    }
+
     setError(null);
     // idempotency_key por INTENTO de cobro — un retry del mismo cobro reusa
     // esta key (dedup, ADR-0010). Se genera al iniciar el intento.
     const key = crypto.randomUUID();
-    const amount = totals.total.toFixed(4);
+    const vueltoDelIntento = vuelto;
     startTransition(async () => {
       const res = await finalizeSaleAction({
         sale_id: cart.sale.id,
-        payments: [{ method: payMethod, amount }],
+        payments,
         require_fiscal_invoice: false,
         idempotency_key: key,
       });
@@ -198,16 +332,26 @@ export function POSClient({
         setError(res.error);
         return;
       }
-      const medio = PAY_OPTIONS.find((o) => o.key === payMethod)?.label ?? '';
-      setToast(`Venta cobrada · ${medio} · ${fmt(totals.total)}`);
+      const medios = payments
+        .map((p) => PAY_OPTIONS.find((o) => o.key === p.method)?.label ?? p.method)
+        .join(' + ');
+      const cola =
+        vueltoDelIntento > 0 ? ` · vuelto ${fmt(String(vueltoDelIntento))}` : '';
+      setToast(`Venta cobrada · ${medios} · ${fmt(totals.total)}${cola}`);
       setCart(null); // lista para la próxima venta
-      setPayMethod('efectivo'); // vuelve al medio más común para la próxima
+      setPaySheetOpen(false);
+      limpiarMontos();
     });
   }
 
   // ════════════ CARRITO (columna derecha del shell) ════════════
   const carrito = (
-    <aside className="cart glass">
+    // `sheet-open` en el CARRITO es lo que levanta la hoja de cobro: el CSS de
+    // la maqueta la deja en `translateY(105%)` y sólo `.cart.sheet-open
+    // .paysheet` la sube. Sin esta clase la hoja se ve pero queda 700px más
+    // abajo y el botón de confirmar cae FUERA de la pantalla — medido, no
+    // supuesto (confirmVisible.dentro === false).
+    <aside className={paySheetOpen ? 'cart glass sheet-open' : 'cart glass'}>
       <div className="cart-head">
         <span className="cart-title">Venta actual</span>
         <span className="cart-count">
@@ -323,13 +467,18 @@ export function POSClient({
         </div>
       </div>
 
-      {/* Método de pago — fila desplegable como en la maqueta, no chips
-          sueltos. Al tocarla se abre una hoja con los 4 medios.
-          Single-method F0: el reparto multi-medio (estilo lisCobro) es F1+. */}
-      {paySheetOpen && (
-        <>
+      {/* ── Hoja de cobro (maqueta v20) ───────────────────────────────
+          Un monto TIPEABLE por medio. Se puede repartir entre varios: el
+          service deriva `payment_method='mixto'` solo. Los inputs son NO
+          controlados a propósito — ver el comentario de `montoRefs`. */}
+      {/* Siempre montada, como en la maqueta: el CSS la desliza con
+          `.cart.sheet-open`. Renderizarla condicionalmente mataba la
+          transición y remontaba los inputs (perdiendo refs y foco). El
+          backdrop tiene `pointer-events:none` mientras está cerrada, así que
+          no tapa nada. */}
+      <>
           <div className="paysheet-backdrop" onClick={() => setPaySheetOpen(false)} />
-          <div className="paysheet" data-m={payMethod}>
+          <div className="paysheet" data-m={activo} aria-hidden={!paySheetOpen}>
             <div className="paysheet-grip" />
             <div className="paysheet-head">
               <span className="t">Cobrar</span>
@@ -345,25 +494,149 @@ export function POSClient({
                 </svg>
               </button>
             </div>
-            <div className="paysheet-grid">
-              {PAY_OPTIONS.map((op) => (
-                <button
-                  type="button"
-                  key={op.key}
-                  className={payMethod === op.key ? 'pm active' : 'pm'}
-                  onClick={() => {
-                    setPayMethod(op.key);
-                    setPaySheetOpen(false);
-                  }}
-                  disabled={pending}
-                >
-                  {op.label}
+
+            {/* Progreso pagado / total */}
+            <div className="paybar">
+              <div
+                className="paybar-fill"
+                style={{
+                  width: `${totalNum > 0 ? Math.min(100, (pagado / totalNum) * 100) : 0}%`,
+                }}
+              />
+            </div>
+            <div className="paystat">
+              <span>
+                Pagado <b>{fmt(String(pagado))}</b>
+              </span>
+              <span>
+                {vuelto > 0 ? (
+                  <>
+                    Vuelto <b>{fmt(String(vuelto))}</b>
+                  </>
+                ) : (
+                  <>
+                    Restante <b>{fmt(String(restante))}</b>
+                  </>
+                )}
+              </span>
+            </div>
+
+            {/* Grilla de medios con monto tipeable */}
+            <div className="pmrows">
+              {PAY_OPTIONS.map((op) => {
+                const monto = op.cobrable ? montoDe(op.key) : 0;
+                const esActivo = op.cobrable && activo === op.key;
+                return (
+                  <div
+                    key={op.key}
+                    className={esActivo ? 'pmrow active' : 'pmrow'}
+                    data-k={op.key}
+                    data-off={op.cobrable ? undefined : '1'}
+                    onMouseDown={(e) => {
+                      if (!op.cobrable) return;
+                      if ((e.target as HTMLElement).closest('input')) return;
+                      // No robar el foco antes de dárselo al input de la fila.
+                      e.preventDefault();
+                      montoRefs.current[op.key]?.focus();
+                    }}
+                  >
+                    <span className="pmn">{op.label}</span>
+                    {op.cobrable ? (
+                      <span className="pmf">
+                        <span className="pmc">$</span>
+                        <input
+                          className={monto === 0 ? 'pmin zero' : 'pmin'}
+                          ref={(el) => {
+                            montoRefs.current[op.key] = el;
+                          }}
+                          defaultValue=""
+                          // Enfoca SIN abrir el teclado del sistema, que en
+                          // tablet taparía el numpad. El teclado físico igual
+                          // escribe (desktop).
+                          inputMode="none"
+                          placeholder="0"
+                          aria-label={`Monto en ${op.label}`}
+                          disabled={pending}
+                          onFocus={(e) => {
+                            setActivo(op.key);
+                            e.currentTarget.select();
+                            recompute();
+                          }}
+                          onInput={(e) => {
+                            // Teclado físico: el navegador ya escribió; acá se
+                            // sanea a dígitos y se recalcula lo derivado.
+                            const inp = e.currentTarget;
+                            let n = parseInt(
+                              inp.value.replace(/[^0-9]/g, '') || '0',
+                              10
+                            );
+                            if (!Number.isFinite(n)) n = 0;
+                            if (n > 99_999_999) n = 99_999_999;
+                            const s = n ? String(n) : '';
+                            if (inp.value !== s) inp.value = s;
+                            recompute();
+                          }}
+                        />
+                      </span>
+                    ) : (
+                      <span className="pmoff">{op.motivo}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              className="pmfill"
+              onClick={completarResto}
+              disabled={pending || restante === 0}
+            >
+              Auto-completar el resto en{' '}
+              <b>{PAY_OPTIONS.find((o) => o.key === activo)?.label}</b>
+            </button>
+
+            {/* Numpad: `mousedown` + preventDefault para NO robarle el foco al
+                input activo — si lo robara, cada tecla cerraría la edición. */}
+            <div
+              className="numpad"
+              onMouseDown={(e) => {
+                const b = (e.target as HTMLElement).closest('button');
+                if (!b) return;
+                e.preventDefault();
+                const inp = montoRefs.current[activo];
+                if (!inp) return;
+                // Si no estaba enfocado, enfocar dispara select() → el primer
+                // dígito reemplaza el monto anterior en vez de concatenarse.
+                if (document.activeElement !== inp) inp.focus();
+                aplicarTecla(inp, b.dataset['k'] ?? '');
+                recompute();
+              }}
+            >
+              {['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0'].map((t) => (
+                <button type="button" key={t} data-k={t}>
+                  {t}
                 </button>
               ))}
+              <button type="button" className="bk" data-k="back" aria-label="Borrar">
+                ⌫
+              </button>
             </div>
+
+            <button
+              type="button"
+              className="cobrar"
+              onClick={charge}
+              disabled={!hasItems || pending || restante > 0 || pagado === 0}
+            >
+              {pending
+                ? 'Procesando…'
+                : restante > 0
+                  ? `Falta ${fmt(String(restante))}`
+                  : `Cobrar ${fmt(totals.total)}`}
+            </button>
           </div>
-        </>
-      )}
+      </>
 
       <div className="pay">
         <button
@@ -379,9 +652,13 @@ export function POSClient({
             </svg>
           </span>
           <span className="ptx">
-            <span className="pl">Método de pago</span>
+            <span className="pl">Medio de pago</span>
             <span className="pv">
-              {PAY_OPTIONS.find((o) => o.key === payMethod)?.label}
+              {pagado > 0
+                ? PAY_COBRABLES.filter((o) => montoDe(o.key) > 0)
+                    .map((o) => o.label)
+                    .join(' + ')
+                : 'Elegir al cobrar'}
             </span>
           </span>
           <span className="pchev">
@@ -394,7 +671,7 @@ export function POSClient({
         <button
           type="button"
           className="cobrar"
-          onClick={charge}
+          onClick={() => setPaySheetOpen(true)}
           disabled={!hasItems || pending}
         >
           {pending ? (

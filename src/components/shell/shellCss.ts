@@ -404,4 +404,41 @@ body{
 .user-chip{ display:flex; align-items:center; gap:9px; padding:5px 14px 5px 5px; border-radius:999px; flex:0 0 auto; }
 .user-name{ font-size:12.5px; font-weight:600; line-height:1.25; color:var(--ink-1); }
 .user-role{ font-size:10.5px; color:var(--ink-3); }
+
+/* ══ CORRECCIÓN sobre la maqueta (no es extracción) ═══════════════════
+   OJO: este archivo es UN TEMPLATE LITERAL. Nada de backticks acá adentro,
+   ni siquiera en los comentarios — cierran el string y rompen TODA la app
+   con un "Expected a semicolon" que apunta al CSS y no al verdadero culpable.
+
+   El selector .shell declara height:100dvh pero NO declara filas, así que la
+   única fila del grid queda en auto y crece con el contenido: la altura fija
+   no la contiene. Medido en headless (1600x848): .main daba 1005px dentro de
+   un shell de 848 → la columna del carrito se cortaba 157px abajo, y con la
+   hoja de cobro abierta el botón de confirmar quedaba FUERA de la pantalla.
+
+   La maqueta tiene el mismo bug (mainH 996 vs shellH 848 en checkpoint-v20),
+   o sea que esto no es divergencia sino un arreglo que la maqueta también
+   necesita. Va acá abajo, después de la extracción verbatim, para no
+   ensuciarla y para que una re-extracción no lo pise. */
+.shell{ grid-template-rows:minmax(0,1fr); }
+
+/* ── Cobro tipeable por método (v20 · estilo lisCobro) ──────────────
+   Extraido VERBATIM de pos-preview/checkpoint-v20-cobro-tipeable.html.
+   El v19 mostraba el monto en un <span>; el v20 lo hace un <input> que
+   acepta teclado fisico Y numpad por el mismo camino. */
+.pmrow .pmf{ display:flex; align-items:center; gap:3px; padding:5px 10px; border-radius:9px; background:rgba(13,20,36,0.04); border:1px solid rgba(13,20,36,0.08); transition:all 140ms; }
+.pmrow.active .pmf{ background:rgba(107,95,255,0.09); border-color:rgba(107,95,255,0.4); }
+.pmrow .pmc{ font-family:'JetBrains Mono',monospace; font-size:12.5px; font-weight:700; color:var(--ink-4); }
+.pmrow.active .pmc{ color:var(--purple); }
+.pmin{ width:78px; text-align:right; font-family:'JetBrains Mono',monospace; font-size:15px; font-weight:700; font-variant-numeric:tabular-nums; color:var(--ink); background:transparent; border:none; outline:none; padding:0; caret-color:var(--purple); }
+.pmin.zero{ color:var(--ink-4); }
+.pmrow.active .pmin{ color:var(--purple); }
+.pmin::placeholder{ color:var(--ink-4); }
+
+/* Fila que se ve pero no se puede cobrar en F0 (mp_qr: falta el SDK de
+   MercadoPago que emite el mp_payment_external_id). Se muestra en vez de
+   ocultarse para no mentir sobre los medios que el comercio va a tener. */
+.pmrow[data-off="1"]{ opacity:0.5; }
+.pmrow[data-off="1"] .pmf{ background:rgba(13,20,36,0.03); border-style:dashed; }
+.pmrow .pmoff{ font-size:10px; font-weight:600; color:var(--ink-4); white-space:nowrap; }
 `;
