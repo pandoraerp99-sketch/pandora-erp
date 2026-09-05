@@ -394,7 +394,37 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
           <div className="k-k">Nuevos este mes</div>
           <div className="k-v">{kpis.nuevosMes}</div>
           <div className="k-f">
-            {kpis.nuevosMesPasado} el mes pasado
+            {/* Comparacion REAL contra el mes pasado: created_at existe, asi
+                que este porcentaje no es inventado. Sin mes anterior no se
+                muestra flecha — un "+100%" contra cero no informa nada. */}
+            {kpis.nuevosMesPasado > 0 ? (
+              <>
+                <span
+                  className={kpis.nuevosMes >= kpis.nuevosMesPasado ? 'up' : 'down'}
+                >
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <path
+                      d={
+                        kpis.nuevosMes >= kpis.nuevosMesPasado
+                          ? 'm6 15 6-6 6 6'
+                          : 'm6 9 6 6 6-6'
+                      }
+                    />
+                  </svg>
+                  {Math.abs(
+                    Math.round(
+                      ((kpis.nuevosMes - kpis.nuevosMesPasado) /
+                        kpis.nuevosMesPasado) *
+                        100
+                    )
+                  )}
+                  %
+                </span>{' '}
+                vs mes pasado
+              </>
+            ) : (
+              `${kpis.nuevosMesPasado} el mes pasado`
+            )}
           </div>
         </div>
         <div className="k">
@@ -434,6 +464,7 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
             <span style={{ width: 118 }}>Condición</span>
             <span style={{ width: 92, textAlign: 'right' }}>Compras</span>
             <span style={{ width: 92 }}>Última</span>
+            <span style={{ width: 118, textAlign: 'center' }}>Cta. corriente</span>
             <span style={{ width: 16 }} />
           </div>
 
@@ -483,7 +514,14 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
                     {etiquetaCondicion(c.tax_condition)}
                   </span>
                   <span className="clcompras tnum">{plata(c.compras_monto)}</span>
-                  <span className="clult">{haceCuanto(c.ultima_compra)}</span>
+                  {/* Cta. corriente: la columna EXISTE (la maqueta la tiene y
+                      sin ella el resto se corre 118px) pero NO se inventa un
+                      numero. No hay dominio de deuda: no hay libro de
+                      movimientos ni pago contra cuenta. Decir "al dia" seria
+                      afirmar que el sistema lo controla, y no lo controla. */}
+                  <span className="cc" title="Todavia no existe la cuenta corriente">
+                    sin cuenta
+                  </span>
                   <svg className="clgo" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
                     <path d="m9 18 6-6-6-6" />
                   </svg>
