@@ -458,9 +458,9 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
                     {/* Los segmentos van DEBAJO del nombre, como la maqueta —
                         no en una columna aparte. */}
                     {c.tags.length > 0 ? (
-                      <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
+                      <div className="ctags">
                         {c.tags.slice(0, 2).map((t) => (
-                          <span key={t} className="tag-com">
+                          <span key={t} className="ctag">
                             {t}
                           </span>
                         ))}
@@ -532,7 +532,7 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
                       <span className="label-sm">sin etiquetar</span>
                     ) : (
                       sel.tags.map((t) => (
-                        <span key={t} className="tag-com">
+                        <span key={t} className="ctag">
                           {t}
                         </span>
                       ))
@@ -798,7 +798,7 @@ function ClienteModal({
               <button
                 key={t}
                 type="button"
-                className={tags.includes(t) ? 'tag-com on' : 'tag-com'}
+                className={tags.includes(t) ? 'ctag on' : 'ctag'}
                 onClick={() => toggleTag(t)}
               >
                 {t}
@@ -810,7 +810,7 @@ function ClienteModal({
                 <button
                   key={t}
                   type="button"
-                  className="tag-com on"
+                  className="ctag on"
                   onClick={() => toggleTag(t)}
                 >
                   {t}
