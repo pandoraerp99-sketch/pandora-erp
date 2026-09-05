@@ -32,6 +32,13 @@ import { generateCorrelationId, generateRequestId } from '@/lib/tracing/ids';
 import { handleMpWebhook } from '@/lib/integrations/mercadopago/webhook-handler';
 import { resolveMpWebhookSecret } from '@/lib/integrations/mercadopago/mp-secret';
 import { resolveKnownTenantId } from '@/lib/multi_tenant/resolve-tenant';
+import { logger } from '@/lib/observability/logger';
+import { resolveClientIp } from '@/lib/security/client-ip';
+import {
+  POLICY_PUBLIC_ENDPOINT,
+  checkRateLimit,
+  defaultRateLimitStore,
+} from '@/lib/security/rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -42,12 +49,38 @@ export async function POST(
 ): Promise<NextResponse> {
   const { company_id } = await params;
 
-  // Trust boundary — antes que cualquier otra cosa, y antes del tracing context.
+  // Rate limit ANTES de tocar la base. Validar la company es una consulta a
+  // Postgres sobre input NO autenticado (el HMAC recién se valida adentro del
+  // handler), así que sin este límite cualquiera dispara un SELECT por request
+  // con un POST pelado. Es endpoint público → POLICY_PUBLIC_ENDPOINT.
+  const ip = resolveClientIp(request.headers);
+  const cupo = checkRateLimit(defaultRateLimitStore, {
+    config: POLICY_PUBLIC_ENDPOINT,
+    subject: ip,
+  });
+  if (!cupo.allowed) {
+    logger.warn(
+      { policy: POLICY_PUBLIC_ENDPOINT.policy, retry_after_sec: cupo.retryAfterSec },
+      'Webhook de MP bloqueado por rate limit'
+    );
+    return NextResponse.json(
+      { ok: false },
+      { status: 429, headers: { 'retry-after': String(cupo.retryAfterSec) } }
+    );
+  }
+
+  // Trust boundary — antes del tracing context.
   const tenant = await resolveKnownTenantId(company_id);
   if (!tenant.ok) {
-    // 400 vs 404 se distinguen a propósito: uno es un pedido mal armado, el otro
-    // apunta a un comercio que no existe. Ninguno de los dos revela nada útil,
-    // porque el company_id ya lo eligió quien llama.
+    // 400 = pedido mal armado · 404 = comercio inexistente. Se mantienen
+    // distintos porque son bugs distintos del que llama y mezclarlos hace
+    // imposible depurar una integración rota.
+    //
+    // Sí, la diferencia confirma si un UUID corresponde a una company. No es
+    // un problema práctico: un UUID v4 tiene 122 bits de entropía, así que no
+    // se enumeran — y con el rate limit de arriba, menos. (La justificación
+    // anterior decía que "no revela nada porque el company_id lo eligió quien
+    // llama"; eso era falso: un scanner no autenticado no elige, prueba.)
     const status = tenant.reason === 'malformed' ? 400 : 404;
     return NextResponse.json({ ok: false }, { status });
   }

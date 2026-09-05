@@ -48,6 +48,11 @@ const envSchema = z.object({
 
   // MercadoPago webhook signing secret (F0 piloto single-tenant; F1 → vault per-tenant).
   MP_WEBHOOK_SECRET: z.string().min(1).optional(),
+  // A QUÉ comercio pertenece ese secret. Obligatorio si MP_WEBHOOK_SECRET está
+  // seteado: sin esta atadura el mismo secret vale para cualquier company_id de
+  // la URL, y una notificación legítima reenviada con otro id se acredita en el
+  // comercio equivocado. Ver integrations/mercadopago/mp-secret.ts.
+  MP_WEBHOOK_SECRET_COMPANY_ID: z.string().uuid().optional(),
   // MercadoPago access token para re-consultar pagos (F0 piloto; F1 → vault per-tenant).
   MP_ACCESS_TOKEN: z.string().min(1).optional(),
   // Secret que Vercel Cron manda como `Authorization: Bearer` a las rutas de cron.
