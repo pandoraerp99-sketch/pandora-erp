@@ -253,12 +253,90 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
     });
   }
 
+
+  /**
+   * Topbar PROPIA. En la maqueta de Clientes el buscador y los filtros viven
+   * en la barra superior, no en una fila aparte — por eso la pantalla se veia
+   * completamente distinta aunque la lista fuera parecida. AppShell acepta
+   * `topbar` justamente para esto.
+   */
+  const topbar = (
+    <div className="topbar">
+      <div className="search glass">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+          placeholder="Buscar cliente, CUIT o DNI…"
+          aria-label="Buscar cliente"
+        />
+      </div>
+
+      <div className="seg glass">
+        {condiciones.map((c) => (
+          <button
+            key={c}
+            type="button"
+            className={condActiva === c ? 'on' : undefined}
+            onClick={() => setCondActiva(c)}
+          >
+            {c === 'Todos' ? 'Todos' : etiquetaCondicion(c)}
+          </button>
+        ))}
+      </div>
+
+      {/* "Tipo" = segmento comercial. Es un <select> nativo y no el menu
+          desplegable de la maqueta: el nativo ya trae teclado y accesibilidad,
+          y el filtro es el mismo. */}
+      {segmentos.length > 0 ? (
+        <div className="tipo-dd">
+          <select
+            className="tipo-btn glass"
+            value={segmentoActivo}
+            onChange={(e) => setSegmentoActivo(e.target.value)}
+            aria-label="Filtrar por tipo comercial"
+          >
+            <option value="">Tipo</option>
+            {segmentos.map((sg) => (
+              <option key={sg} value={sg}>
+                {sg}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+
+      <div className="top-tools">
+        <div className="user-chip glass">
+          <span className="avatar-ring">
+            <span className="cashier-av">{iniciales(cashierName)}</span>
+          </span>
+          <div>
+            <div className="user-name">{cashierName}</div>
+            <div className="user-role">Cajero</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   const contenido = (
     <>
       <style>{CLIENTES_CSS}</style>
 
       <div className="bar">
         <div className="bar-id">
+          <span className="bar-icon">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+          </span>
           <div>
             <div className="bar-title">Clientes</div>
             <div className="bar-sub">
@@ -268,6 +346,21 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
           </div>
         </div>
         <div className="bar-actions">
+          {/* Exportar necesita generar y descargar un archivo: no existe ese
+              flujo todavia. Se muestra apagado con el motivo. */}
+          <button
+            type="button"
+            className="b ghost"
+            disabled
+            title="Falta el flujo de exportacion (generar y descargar el archivo)"
+          >
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3v12" />
+              <path d="m7 10 5 5 5-5" />
+              <path d="M4 21h16" />
+            </svg>
+            Exportar
+          </button>
           <button
             type="button"
             className="b primary"
@@ -314,53 +407,6 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
         </div>
       </div>
 
-      <div className="cli-head">
-        <div className="seg glass">
-          {condiciones.map((c) => (
-            <button
-              key={c}
-              type="button"
-              className={condActiva === c ? 'on' : undefined}
-              onClick={() => setCondActiva(c)}
-            >
-              {c === 'Todos' ? 'Todos' : etiquetaCondicion(c)}
-            </button>
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: 9, alignItems: 'center' }}>
-          {segmentos.length > 0 ? (
-            <select
-              value={segmentoActivo}
-              onChange={(e) => setSegmentoActivo(e.target.value)}
-              aria-label="Filtrar por segmento"
-              style={{
-                padding: '9px 12px',
-                borderRadius: 10,
-                border: '1px solid rgba(13,20,36,0.12)',
-                background: '#fff',
-                fontSize: 13,
-                fontFamily: 'inherit',
-              }}
-            >
-              <option value="">Todos los segmentos</option>
-              {segmentos.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          ) : null}
-          <div className="search glass" style={{ maxWidth: 280 }}>
-            <input
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Buscar nombre, documento o email…"
-              aria-label="Buscar cliente"
-            />
-          </div>
-        </div>
-      </div>
-
       {error ? (
         <div className="card glass" role="alert" style={{ marginBottom: 12 }}>
           {error}
@@ -370,7 +416,7 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
       <div className="cli-grid">
         <div className="card glass" style={{ padding: '6px 6px 10px' }}>
           <div className="card-title" style={{ padding: '13px 16px 11px' }}>
-            <h3>Padrón</h3>
+            <h3>Cartera de clientes</h3>
             <span className="label-sm">
               {visibles.length} de {lista.length}
             </span>
@@ -443,16 +489,8 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
               <p className="label-sm">Elegí un cliente para ver el detalle.</p>
             ) : (
               <>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <span
-                    className="clav"
-                    style={{
-                      background: gradienteDe(sel.name),
-                      width: 44,
-                      height: 44,
-                      fontSize: 14,
-                    }}
-                  >
+                <div className="cd-top">
+                  <span className="cd-av" style={{ background: gradienteDe(sel.name) }}>
                     {iniciales(sel.name)}
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -465,24 +503,76 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
                   </div>
                 </div>
 
-                <div
-                  style={{
-                    marginTop: 10,
-                    display: 'flex',
-                    gap: 6,
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                  }}
-                >
+                {/* La condicion FISCAL va sola, arriba. */}
+                <div style={{ marginTop: 11 }}>
                   <span className="pill" style={colorCondicion(sel.tax_condition)}>
                     {etiquetaCondicion(sel.tax_condition)}
                   </span>
-                  {sel.tags.map((t) => (
-                    <span key={t} className="tag-com">
-                      {t}
-                    </span>
-                  ))}
                 </div>
+
+                {/* El TIPO COMERCIAL va en su propio bloque, con su titulo:
+                    la maqueta los separa a proposito para que no se lean como
+                    lo mismo que la condicion de IVA. */}
+                <div className="cd-tipos">
+                  <div className="cd-tipos-head">
+                    <span className="upper-mini">Tipo comercial</span>
+                    <button
+                      type="button"
+                      className="cd-edit"
+                      onClick={() => {
+                        setEditando(sel);
+                        setModalAbierto(true);
+                      }}
+                    >
+                      Editar
+                    </button>
+                  </div>
+                  <div className="ctags">
+                    {sel.tags.length === 0 ? (
+                      <span className="label-sm">sin etiquetar</span>
+                    ) : (
+                      sel.tags.map((t) => (
+                        <span key={t} className="tag-com">
+                          {t}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Caja de contacto. Solo se muestran los datos que hay: un
+                    renglon vacio con un icono no informa nada. */}
+                {sel.email !== null || sel.phone !== null || sel.address !== null ? (
+                  <div className="cd-contact">
+                    {sel.email !== null ? (
+                      <div>
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="2" y="4" width="20" height="16" rx="2" />
+                          <path d="m2 7 10 6 10-6" />
+                        </svg>
+                        {sel.email}
+                      </div>
+                    ) : null}
+                    {sel.phone !== null ? (
+                      <div>
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z" />
+                        </svg>
+                        {sel.phone}
+                      </div>
+                    ) : null}
+                    {sel.address !== null ? (
+                      <div>
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
+                          <circle cx="12" cy="10" r="3" />
+                        </svg>
+                        {sel.address}
+                        <span className="label-sm"> · desde {fechaCorta(sel.created_at)}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 <div className="cd-stats">
                   <div>
@@ -502,29 +592,6 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
                     </div>
                   </div>
                 </div>
-
-                {sel.email !== null || sel.phone !== null || sel.address !== null ? (
-                  <div style={{ marginTop: 14 }}>
-                    {sel.phone !== null ? (
-                      <div className="kv">
-                        <span className="label-sm">Teléfono</span>
-                        <b>{sel.phone}</b>
-                      </div>
-                    ) : null}
-                    {sel.email !== null ? (
-                      <div className="kv">
-                        <span className="label-sm">Email</span>
-                        <b>{sel.email}</b>
-                      </div>
-                    ) : null}
-                    {sel.address !== null ? (
-                      <div className="kv">
-                        <span className="label-sm">Dirección</span>
-                        <b>{sel.address}</b>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
 
                 {sel.notes !== null ? (
                   <p className="label-sm" style={{ marginTop: 12 }}>
@@ -589,6 +656,7 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
       afipConnected={false}
       afipDetail="WSFEv1 · sin certificado"
       scroll="pagina"
+      topbar={topbar}
     >
       {contenido}
     </AppShell>
