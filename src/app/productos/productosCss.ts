@@ -376,13 +376,27 @@ export const PRODUCTOS_CSS = `
 /* Clase base de .quick — no habia quedado en la extraccion y sin ella el
    boton renderiza con los estilos por defecto del navegador. */
 .quick{ display:flex; flex-direction:column; gap:9px; padding:15px 13px; border-radius:15px; text-align:left; background:rgba(255,255,255,0.7); border:1px solid rgba(255,255,255,0.9); box-shadow:var(--glass-hi); transition:all 180ms; }
-.quick:disabled{ opacity:0.5; cursor:not-allowed; box-shadow:none; }
+.quick:disabled{ cursor:not-allowed; color:var(--ink-3); }
 .quick:disabled:hover{ transform:none; box-shadow:none; }
 
 /* Las filas de reposicion son <button> para poder tocarlas. Sin este reset
    arrastran el padding, el borde y el fondo por defecto del navegador, y la
    fila queda mucho mas alta y con un fondo gris que la maqueta no tiene. */
-button.stock-row{ width:100%; text-align:left; background:none; border:none; border-top:1px solid rgba(13,20,36,0.05); font:inherit; cursor:pointer; }
+button.stock-row{ width:100%; text-align:left; background:none; border:none; border-top:1px solid rgba(13,20,36,0.05); font-family:inherit; font-size:12.5px; color:inherit; cursor:pointer; }
 button.stock-row:first-of-type{ border-top:none; }
 button.stock-row:hover{ background:rgba(107,95,255,0.04); }
+/* COLISION ENTRE MAQUETAS: el selector .card significa cosas distintas.
+   En el POS (shellCss) es la TARJETA DE PRODUCTO de la grilla — sin padding,
+   con :hover que la levanta y :active que la encoge. En Productos es un PANEL
+   (padding 22px, quieto). El filtro de duplicados de la extraccion se quedo
+   con la del POS y descarto esta, asi que los paneles quedaban sin padding y
+   ademas saltaban al pasar el mouse.
+   Se define con alcance acotado a los contenedores de esta pantalla. */
+.cli-grid > .card, .col-side .card{ padding:22px; display:block; }
+.cli-grid > .card:hover, .col-side .card:hover{ transform:none; box-shadow:var(--glass-hi); border-color:rgba(255,255,255,0.92); }
+.cli-grid > .card:active, .col-side .card:active{ transform:none; }
+/* El texto de la tarjeta de reposicion es chico, como la maqueta. */
+.col-side .stock-name{ font-size:12.5px; font-weight:600; }
+.col-side .quick{ font-size:13px; }
+.col-side .pm-note{ font-size:11px; }
 `;
