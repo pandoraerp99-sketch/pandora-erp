@@ -151,6 +151,52 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
     return { valor, bajoMinimo, sinStock, sinCosto };
   }, [lista]);
 
+  /**
+   * Reposicion sugerida: que hay que comprar, ordenado por urgencia.
+   *
+   * **La cantidad es una REGLA SIMPLE Y DECLARADA, no una prediccion.**
+   * Sugerido = llegar al doble del minimo (2 x minimo - stock actual). Se
+   * eligio asi porque es explicable y el comerciante puede discutirla.
+   *
+   * Lo honesto es decir lo que NO contempla: rotacion (que tan rapido se
+   * vende), plazo de entrega del proveedor y compra minima. Ninguno de esos
+   * datos se mide todavia, y sin ellos una formula mas sofisticada seria
+   * precision falsa. La pantalla lo aclara abajo de la lista.
+   *
+   * Un producto SIN minimo definido no entra: sin referencia no hay nada que
+   * sugerir. Es la misma regla que usa estadoDe().
+   */
+  const reposicion = useMemo(() => {
+    const items: Array<{
+      producto: ProductoDTO;
+      sugerido: number;
+      detalle: string;
+      urgencia: number;
+    }> = [];
+    for (const p of lista) {
+      if (p.stock_minimum === null) continue;
+      const min = new Decimal(p.stock_minimum);
+      if (min.lte(0)) continue;
+      const stock = new Decimal(p.stock_current);
+      if (stock.gt(min)) continue;
+
+      const sugerido = min.times(2).minus(stock);
+      if (sugerido.lte(0)) continue;
+
+      const sinStock = stock.lte(0);
+      items.push({
+        producto: p,
+        sugerido: Math.ceil(sugerido.toNumber()),
+        detalle: sinStock
+          ? "Sin stock"
+          : stock.toFixed(0) + " u \u00b7 m\u00edn " + min.toFixed(0),
+        // Primero lo que esta en cero; despues, lo mas lejos de su minimo.
+        urgencia: sinStock ? 0 : stock.dividedBy(min).toNumber(),
+      });
+    }
+    return items.sort((a, b) => a.urgencia - b.urgencia);
+  }, [lista]);
+
   const sel = lista.find((p) => p.id === selId) ?? null;
 
   function guardar(form: ProductFormInput) {
@@ -480,22 +526,145 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
               </div>
 
               <div className="cd-btns">
-              <button
-                type="button"
-                className="b ghost"
-                style={{ flex: 1 }}
-                onClick={() => {
-                  setEditando(sel);
-                  setModalAbierto(true);
-                }}
-                disabled={pending}
-              >
-                Editar producto
-              </button>
+                <button
+                  type="button"
+                  className="cta"
+                  style={{ flex: 1, fontSize: 13, padding: 11 }}
+                  onClick={() => {
+                    setEditando(sel);
+                    setModalAbierto(true);
+                  }}
+                  disabled={pending}
+                >
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+                  </svg>
+                  Editar
+                </button>
+                {/* Historial: los movimientos SI existen (stock_movements es
+                    append-only y guarda cada ajuste con su motivo), pero no hay
+                    pantalla que los muestre. Se deja visible y apagada en vez
+                    de un boton que no lleva a ningun lado. */}
+                <button
+                  type="button"
+                  className="hbtn"
+                  style={{ flex: 1, justifyContent: 'center' }}
+                  disabled
+                  title="Los movimientos se registran, falta la pantalla que los muestre"
+                >
+                  Historial
+                </button>
               </div>
             </>
           )}
           </div>
+
+          {/* ── Reposición sugerida ─────────────────────────────────────
+              Es la lista de lo que hay que comprar, ordenada por urgencia:
+              primero lo que está en cero, después lo que está por debajo del
+              mínimo. Sale del mismo `estadoDe()` que la lista y los KPIs, así
+              que los tres no pueden contradecirse. */}
+          {reposicion.length > 0 ? (
+            <div className="card glass">
+              <div className="card-title">
+                <h3>
+                  <span
+                    className="ic"
+                    style={{ background: 'rgba(247,152,74,0.14)', color: '#b96c1a' }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="8" cy="21" r="1" />
+                      <circle cx="19" cy="21" r="1" />
+                      <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
+                    </svg>
+                  </span>
+                  Reposición sugerida
+                </h3>
+                <span
+                  className="pill"
+                  style={{ background: 'rgba(247,152,74,0.16)', color: '#b96c1a' }}
+                >
+                  {reposicion.length}
+                </span>
+              </div>
+
+              {reposicion.slice(0, 6).map((r) => {
+                const color = colorDeRubro(r.producto.category);
+                return (
+                  <button
+                    type="button"
+                    key={r.producto.id}
+                    className="stock-row"
+                    onClick={() => setSelId(r.producto.id)}
+                    style={{ width: '100%', textAlign: 'left' }}
+                  >
+                    <span
+                      className="rthumb"
+                      style={{ color, background: `${color}14` }}
+                    >
+                      {r.producto.name.charAt(0).toUpperCase()}
+                    </span>
+                    <div className="stock-name">
+                      {r.producto.name}
+                      <span
+                        style={{
+                          display: 'block',
+                          fontSize: 10.5,
+                          color: 'var(--ink-3)',
+                          fontWeight: 400,
+                        }}
+                      >
+                        {r.detalle}
+                      </span>
+                    </div>
+                    <span className="repoped">{r.sugerido} u</span>
+                  </button>
+                );
+              })}
+
+              {reposicion.length > 6 ? (
+                <div className="label-sm" style={{ marginTop: 8 }}>
+                  y {reposicion.length - 6} más
+                </div>
+              ) : null}
+
+              {/* De dónde sale el número: se dice, no se deja adivinar. El
+                  comerciante tiene que poder discutirlo. */}
+              <div className="pm-note" style={{ margin: '10px 0 0' }}>
+                Sugerido para llegar al <b>doble del mínimo</b>. No contempla
+                rotación ni plazo del proveedor — todavía no se miden.
+              </div>
+
+              {/* No existe el módulo de órdenes de compra. Un botón que no
+                  hace nada es peor que decirlo. */}
+              <button
+                type="button"
+                className="quick"
+                disabled
+                title="Todavía no existe el módulo de órdenes de compra"
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  marginTop: 10,
+                  padding: 11,
+                  fontWeight: 600,
+                  color: 'var(--ink-1)',
+                  opacity: 0.55,
+                  cursor: 'not-allowed',
+                }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="9" cy="20" r="1.4" />
+                  <circle cx="18" cy="20" r="1.4" />
+                  <path d="M2 3h3l2.4 12.2a1.6 1.6 0 0 0 1.6 1.3h8.4a1.6 1.6 0 0 0 1.6-1.3L22 7H6" />
+                </svg>
+                Generar orden de compra
+              </button>
+            </div>
+          ) : null}
         </aside>
       </div>
 
