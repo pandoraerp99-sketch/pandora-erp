@@ -40,7 +40,15 @@ export type RemoveItemInput = z.infer<typeof RemoveItemInputSchema>;
 
 export const SetCustomerInputSchema = z.object({
   sale_id: z.string().uuid(),
-  doc_type: z.enum(CUSTOMER_DOC_TYPES),
+  /**
+   * Cliente del padron. Cuando viene, el service COPIA sus datos al snapshot
+   * de la venta — no basta con guardar el id: el comprobante tiene que decir
+   * lo que decia el dia que se emitio, aunque el cliente cambie despues
+   * (CLAUDE.md 2.3). Ver T-SALES-06.
+   */
+  customer_id: z.string().uuid().optional(),
+  /** Se puede facturar a alguien que NO esta en la agenda: doc a mano. */
+  doc_type: z.enum(CUSTOMER_DOC_TYPES).optional(),
   doc_number: z
     .string()
     .max(20)

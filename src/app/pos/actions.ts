@@ -121,7 +121,14 @@ export async function removeItemAction(
 
 export interface SetCustomerActionInput {
   sale_id: string;
-  doc_type: string;
+  /**
+   * Cliente del padron. El service COPIA sus datos al snapshot de la venta en
+   * ese momento — el comprobante no puede depender de un JOIN al padron
+   * (T-SALES-06).
+   */
+  customer_id?: string;
+  /** Doc a mano, para facturarle a alguien que NO esta en la agenda. */
+  doc_type?: string;
   doc_number?: string;
   name?: string;
   tax_condition?: string;

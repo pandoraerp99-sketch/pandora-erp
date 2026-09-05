@@ -37,6 +37,8 @@ import {
   addItemAction,
   removeItemAction,
   finalizeSaleAction,
+  setCustomerAction,
+  getSaleAction,
 } from './actions';
 import type { SaleWithItems } from '@/lib/services/sales/sale.service';
 import type { SalePaymentMethod } from '@/lib/db/schema/_common';
@@ -94,12 +96,33 @@ export interface PosProductDTO {
   stock_minimum: string | null;
 }
 
+/** Cliente del padron, para el selector del POS. */
+export interface PosCustomerDTO {
+  id: string;
+  name: string;
+  doc_type: string;
+  doc_number: string | null;
+  tax_condition: string | null;
+  tags: string[];
+}
+
 interface POSClientProps {
   products: PosProductDTO[];
+  customers: PosCustomerDTO[];
   cashierName: string;
   salePointLabel: string;
   serverTimeIso: string;
 }
+
+/** Etiqueta corta de la condicion fiscal, para el POS. */
+const COND_CORTA: Record<string, string> = {
+  consumidor_final: 'Cons. Final',
+  responsable_inscripto: 'Resp. Inscripto',
+  monotributo: 'Monotributo',
+  exento: 'Exento',
+};
+const etiquetaCond = (v: string | null) =>
+  v === null ? 'Sin condición' : (COND_CORTA[v] ?? v);
 
 const ARS = new Intl.NumberFormat('es-AR', {
   style: 'currency',
@@ -109,6 +132,7 @@ const fmt = (v: Decimal | string) => ARS.format(new Decimal(v).toNumber());
 
 export function POSClient({
   products,
+  customers,
   cashierName,
   salePointLabel,
 }: POSClientProps) {
@@ -163,6 +187,16 @@ export function POSClient({
   /** Hoja de selección de medio de pago (la abre la fila `.paysel`). */
   const [paySheetOpen, setPaySheetOpen] = useState(false);
 
+  /**
+   * Cliente de la venta. Se guarda el DTO completo (no solo el id) para poder
+   * mostrar nombre y condicion sin volver a buscar. Lo que manda al server es
+   * el id: el service copia los datos al snapshot de la venta en ese momento
+   * (T-SALES-06) — el comprobante no puede depender de un JOIN al padron.
+   */
+  const [cliente, setCliente] = useState<PosCustomerDTO | null>(null);
+  const [clienteSheetOpen, setClienteSheetOpen] = useState(false);
+  const [buscaCliente, setBuscaCliente] = useState('');
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'F2') {
@@ -178,6 +212,18 @@ export function POSClient({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [modoConsulta]);
+
+  const clientesVisibles = (() => {
+    const q = buscaCliente.trim().toLowerCase();
+    if (q === '') return customers.slice(0, 12);
+    return customers
+      .filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          (c.doc_number ?? '').toLowerCase().includes(q)
+      )
+      .slice(0, 12);
+  })();
 
   const items = cart?.items ?? [];
   const hasItems = items.length > 0;
@@ -318,6 +364,41 @@ export function POSClient({
     recompute();
   }, [recompute]);
 
+  /**
+   * Asocia (o quita) el cliente de la venta. Si todavia no hay venta abierta,
+   * la crea: el cajero puede elegir el cliente ANTES de cargar productos, que
+   * es lo natural cuando el cliente llega y saluda.
+   */
+  function elegirCliente(c: PosCustomerDTO | null) {
+    setError(null);
+    startTransition(async () => {
+      let saleId = cart?.sale.id;
+      if (!saleId) {
+        const started = await startSaleAction();
+        if (!started.ok) {
+          setError(started.error);
+          return;
+        }
+        saleId = started.data.id;
+      }
+      const res = await setCustomerAction(
+        c === null
+          ? { sale_id: saleId, doc_type: 'none' }
+          : { sale_id: saleId, customer_id: c.id }
+      );
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setCliente(c);
+      setClienteSheetOpen(false);
+      setBuscaCliente('');
+      // Releer el carrito: el snapshot lo escribio el server.
+      const rele = await getSaleAction(saleId);
+      if (rele.ok) setCart(rele.data);
+    });
+  }
+
   function charge() {
     if (!cart || !hasItems) return;
 
@@ -379,6 +460,7 @@ export function POSClient({
         vueltoDelIntento > 0 ? ` · vuelto ${fmt(String(vueltoDelIntento))}` : '';
       setToast(`Venta cobrada · ${medios} · ${fmt(totals.total)}${cola}`);
       setCart(null); // lista para la próxima venta
+      setCliente(null); // la proxima venta arranca sin cliente
       setPaySheetOpen(false);
       limpiarMontos();
     });
@@ -413,11 +495,119 @@ export function POSClient({
             <circle cx="12" cy="7" r="4" />
           </svg>
         </div>
-        <div>
-          <div className="cust-name">Consumidor final</div>
-          <div className="cust-sub">Sin identificar · Ticket</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="cust-name">
+            {cliente === null ? 'Consumidor final' : cliente.name}
+            {cliente !== null && cliente.tags.length > 0 ? (
+              <span className="cust-tag">{cliente.tags[0]}</span>
+            ) : null}
+          </div>
+          <div className="cust-sub">
+            {cliente === null
+              ? 'Sin identificar · Ticket'
+              : `${etiquetaCond(cliente.tax_condition)}${
+                  cliente.doc_number !== null
+                    ? ` · ${cliente.doc_type} ${cliente.doc_number}`
+                    : ''
+                }`}
+          </div>
         </div>
+        <button
+          type="button"
+          className="cust-cta"
+          onClick={() => setClienteSheetOpen(true)}
+          disabled={pending}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+          </svg>
+          {cliente === null ? 'Elegir' : 'Cambiar'}
+        </button>
       </div>
+
+      {/* Hoja de seleccion de cliente. Reusa el mismo mecanismo de la hoja de
+          cobro (backdrop + .paysheet), que ya esta probado en esta pantalla. */}
+      {clienteSheetOpen ? (
+        <>
+          <div
+            className="paysheet-backdrop"
+            style={{ opacity: 1, pointerEvents: 'auto', zIndex: 7 }}
+            onClick={() => setClienteSheetOpen(false)}
+          />
+          {/* Clase propia ADEMAS de .paysheet: la hoja de cobro esta siempre
+              montada, asi que dos elementos .paysheet conviven y hay que poder
+              distinguirlos (en el DOM y en los tests). */}
+          <div className="paysheet custsheet" style={{ transform: 'translateY(0)', zIndex: 8 }}>
+            <div className="paysheet-grip" />
+            <div className="paysheet-head">
+              <span className="t">Cliente de la venta</span>
+              <button
+                type="button"
+                className="paysheet-close"
+                onClick={() => setClienteSheetOpen(false)}
+                aria-label="Cerrar"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="search glass" style={{ marginBottom: 10 }}>
+              <input
+                value={buscaCliente}
+                onChange={(e) => setBuscaCliente(e.target.value)}
+                placeholder="Buscar por nombre o documento…"
+                aria-label="Buscar cliente"
+                autoFocus
+              />
+            </div>
+
+            <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+              {/* Consumidor final SIEMPRE primero: es el caso mas comun en un
+                  kiosco y tiene que estar a un toque, no al final de la lista. */}
+              <button
+                type="button"
+                className="pmrow"
+                onClick={() => elegirCliente(null)}
+                disabled={pending}
+                style={{ width: '100%', textAlign: 'left' }}
+              >
+                <span className="pmn">Consumidor final</span>
+                <span className="pmoff">sin identificar</span>
+              </button>
+
+              {clientesVisibles.length === 0 ? (
+                <p className="label-sm" style={{ padding: 12 }}>
+                  Ningún cliente coincide.
+                </p>
+              ) : (
+                clientesVisibles.map((c) => (
+                  <button
+                    type="button"
+                    key={c.id}
+                    className="pmrow"
+                    onClick={() => elegirCliente(c)}
+                    disabled={pending}
+                    style={{ width: '100%', textAlign: 'left' }}
+                  >
+                    <span className="pmn">
+                      {c.name}
+                      <i style={{ display: 'block', fontSize: 10.5, color: 'var(--ink-3)', fontStyle: 'normal' }}>
+                        {c.doc_number !== null
+                          ? `${c.doc_type} ${c.doc_number}`
+                          : 'sin documento'}
+                      </i>
+                    </span>
+                    <span className="pmoff">{etiquetaCond(c.tax_condition)}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </>
+      ) : null}
 
       <div className="items">
         {!hasItems ? (

@@ -28,12 +28,15 @@ import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import type { ZodType } from 'zod';
 import { db } from '../../db/client.js';
 import {
+  CUSTOMER_DOC_TYPES,
   type CommercialStatus,
+  type CustomerDocType,
   type FiscalStatus,
 } from '../../db/schema/_common.js';
 import { products, type UnitType } from '../../db/schema/products.js';
 import { sale_items, sales, type Sale, type SaleItem } from '../../db/schema/sales.js';
 import { sale_payments } from '../../db/schema/sale_payments.js';
+import { customers } from '../../db/schema/customers.js';
 import { cash_sessions } from '../../db/schema/cash_sessions.js';
 import {
   recordStockMovement,
@@ -473,13 +476,68 @@ export async function setSaleCustomer(rawInput: unknown): Promise<Sale> {
     );
   }
 
+  /**
+   * Si viene un cliente del padron, el snapshot se DERIVA de sus datos en
+   * ESTE momento. No alcanza con guardar el id: manana el cliente puede
+   * cambiar de nombre o de condicion fiscal, y la factura vieja tiene que
+   * seguir diciendo lo que decia (CLAUDE.md 2.3, inmutabilidad post-emision).
+   * Imprimir un comprobante viejo con un JOIN al padron seria un bug fiscal.
+   *
+   * Lo escrito a mano (doc_type/doc_number/name) sigue funcionando: el cajero
+   * tiene que poder facturarle a alguien que no esta en la agenda.
+   */
+  let datos: {
+    customer_id: string | null;
+    doc_type: CustomerDocType;
+    doc_number: string | null;
+    name: string | null;
+    tax_condition: string | null;
+  } = {
+    customer_id: null,
+    doc_type: input.doc_type ?? 'none',
+    doc_number: input.doc_number ?? null,
+    name: input.name ?? null,
+    tax_condition: input.tax_condition ?? null,
+  };
+
+  if (input.customer_id !== undefined) {
+    const [cliente] = await db
+      .select()
+      .from(customers)
+      .where(
+        and(eq(customers.tenant_id, tenantId), eq(customers.id, input.customer_id))
+      )
+      .limit(1);
+    // El filtro por tenant es la defensa: un cliente de otro comercio no
+    // aparece, y el service falla en vez de asociar algo ajeno.
+    if (!cliente) throw new NotFoundError('Cliente', input.customer_id);
+
+    // `customers.doc_type` es text en la base; se VALIDA contra el enum en vez
+    // de castear a ciegas. Si alguien mete un tipo raro por SQL directo, se
+    // frena aca y no llega al comprobante.
+    if (!CUSTOMER_DOC_TYPES.includes(cliente.doc_type as CustomerDocType)) {
+      throw new FiscalIntegrityError(
+        `El cliente tiene un tipo de documento invalido: ${cliente.doc_type}`
+      );
+    }
+
+    datos = {
+      customer_id: cliente.id,
+      doc_type: cliente.doc_type as CustomerDocType,
+      doc_number: cliente.doc_number,
+      name: cliente.name,
+      tax_condition: cliente.tax_condition,
+    };
+  }
+
   const [updated] = await db
     .update(sales)
     .set({
-      customer_doc_type: input.doc_type,
-      customer_doc_number: input.doc_number,
-      customer_name_snapshot: input.name,
-      customer_tax_condition_snapshot: input.tax_condition,
+      customer_id: datos.customer_id,
+      customer_doc_type: datos.doc_type,
+      customer_doc_number: datos.doc_number,
+      customer_name_snapshot: datos.name,
+      customer_tax_condition_snapshot: datos.tax_condition,
       updated_at: new Date(),
     })
     .where(and(eq(sales.tenant_id, tenantId), eq(sales.id, input.sale_id)))

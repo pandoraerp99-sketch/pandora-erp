@@ -12,6 +12,7 @@ import { eq } from 'drizzle-orm';
 import { requireSessionWithCompany } from '@/lib/auth/session';
 import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
 import { listProductsPaginated } from '@/lib/inventory/queries';
+import { listCustomers } from '@/lib/services/customers/customer.service';
 import { db } from '@/lib/db/client';
 import { companies } from '@/lib/db/schema/companies';
 import { POSClient, type PosProductDTO } from './POSClient';
@@ -25,6 +26,11 @@ export default async function POSPage() {
     () => listProductsPaginated({ limit: 200 }),
     { requireAuth: true }
   );
+
+  // Padron para el selector de cliente del carrito. Mismo tracing context.
+  const clientes = await withServerActionTracing(() => listCustomers({ limit: 200 }), {
+    requireAuth: true,
+  });
 
   // Nombre del comercio para el pill de la topbar (la maqueta muestra el
   // comercio, no la caja). Se lee por id de la sesión, así que no hace falta
@@ -51,6 +57,14 @@ export default async function POSPage() {
   return (
     <POSClient
       products={productDtos}
+      customers={clientes.map((c) => ({
+        id: c.id,
+        name: c.name,
+        doc_type: c.doc_type,
+        doc_number: c.doc_number,
+        tax_condition: c.tax_condition,
+        tags: c.tags,
+      }))}
       // Sólo la parte antes del @: el chip de la topbar muestra un NOMBRE,
       // como en la maqueta. Mandar el email entero lo desbalanceaba (Caja ya
       // lo recortaba y el POS no).
