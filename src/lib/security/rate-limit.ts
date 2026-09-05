@@ -138,9 +138,16 @@ export class InMemoryRateLimitStore implements RateLimitStore {
  * **Responsabilidades del caller cuando allowed=false:**
  *   - Respuesta HTTP 429 Too Many Requests + header `Retry-After: ${retryAfterSec}`
  *   - Pino warn con `security.rate_limit_hit` (subject anonimizado si pii_high)
- *   - Para policies de login (LOGIN_BY_IP, LOGIN_BY_EMAIL): audit_log con
- *     `auth.login.rate_limited` (catalogo F0 requiere event). NUNCA loguear
- *     el password attempted.
+ *   - NUNCA loguear el password intentado.
+ *
+ * **Corregido 2026-09-05 — el bloqueo NO va a audit_log.** Este bloque decia
+ * que las policies de login debian escribir `auth.login.rate_limited` en
+ * audit_log. Es falso por partida doble: ese evento no existe en el catalogo
+ * (`audit/event-names.ts`), y EVENT-TAXONOMY lista `rate_limit_exceeded`
+ * explicitamente entre "lo que va a Pino log, NO audit_log". Gana la
+ * taxonomia — es autoridad documental, un comentario no.
+ * A audit_log van `auth.login.success` / `auth.login.failed`, que si estan
+ * en el catalogo y los escribe `src/app/login/actions.ts`.
  *
  * **Normalizacion del subject** (defensa contra bypass por whitespace):
  * el subject se hace `.trim()` antes de componer la key. Subject que sea
@@ -234,8 +241,13 @@ export const POLICY_LOGIN_BY_IP: RateLimitConfig = {
  * targeting). Window 1h porque emails legitimos raramente tipean password
  * mal mas de 10 veces en una hora.
  *
- * Hit de esta policy → audit_log `auth.login.failed` + email warning
- * al titular (Sprint 5+ auth).
+ * Hit de esta policy → Pino warn (ver nota en checkRateLimit). El aviso por
+ * email al titular queda para F1+ — hoy no hay quien lo mande.
+ *
+ * OJO al componerla con la de IP: `checkLoginRateLimit` chequea SIEMPRE la
+ * IP primero. Si el caller ya aplico la capa de IP por separado, tiene que
+ * usar `checkRateLimit` con esta config sola — llamar al helper de nuevo
+ * consume el slot de IP dos veces por intento y baja el limite real de 5 a 2.
  */
 export const POLICY_LOGIN_BY_EMAIL: RateLimitConfig = {
   policy: 'login_by_email',
