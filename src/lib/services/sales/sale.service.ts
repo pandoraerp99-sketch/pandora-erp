@@ -26,6 +26,7 @@
 import { createHash } from 'node:crypto';
 import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import type { ZodType } from 'zod';
+import Decimal from 'decimal.js';
 import { db } from '../../db/client.js';
 import {
   CUSTOMER_DOC_TYPES,
@@ -37,6 +38,7 @@ import { products, type UnitType } from '../../db/schema/products.js';
 import { sale_items, sales, type Sale, type SaleItem } from '../../db/schema/sales.js';
 import { sale_payments } from '../../db/schema/sale_payments.js';
 import { customers } from '../../db/schema/customers.js';
+import { registerChargeFromSale } from '../customers/account.service.js';
 import { cash_sessions } from '../../db/schema/cash_sessions.js';
 import {
   recordStockMovement,
@@ -773,6 +775,30 @@ async function finalizeSaleCore(
         method: sale_payments.method,
         amount: sale_payments.amount,
       });
+
+    // ─── Cuenta corriente: la venta fiada genera la deuda (ADR-0027) ──
+    // Dentro de la MISMA transaccion que la venta: si la venta se cae, no
+    // queda una deuda colgada de una venta que no existe.
+    const fiado = input.payments.filter((p) => p.method === 'cuenta_corriente');
+    if (fiado.length > 0) {
+      if (!sale.customer_id) {
+        throw new FiscalIntegrityError(
+          'No se puede fiar sin cliente: hay que elegir a quien se le fia'
+        );
+      }
+      const totalFiado = fiado.reduce(
+        (acc, p) => acc.plus(p.amount),
+        new Decimal(0)
+      );
+      await registerChargeFromSale(
+        {
+          customer_id: sale.customer_id,
+          sale_id: input.sale_id,
+          amount: totalFiado.toFixed(4),
+        },
+        tx
+      );
+    }
 
     // ─── Denormalización para sales.payment_* (queries simples) ─────
     const denormalizedPaymentMethod = computeDenormalizedPaymentMethod(

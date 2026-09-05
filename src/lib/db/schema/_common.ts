@@ -86,6 +86,8 @@ export const PAYMENT_METHODS = [
   'tarjeta',
   'mp_qr',
   'mixto',
+  // Denormalizado de sales.payment_method: una venta 100% fiada.
+  'cuenta_corriente',
 ] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
@@ -109,6 +111,9 @@ export const SALE_PAYMENT_METHODS = [
   'credito',
   'tarjeta',
   'mp_qr',
+  // Venta fiada (ADR-0027). El cierre de caja la excluye sola porque filtra
+  // method='efectivo': una venta a cuenta NO es plata del cajon.
+  'cuenta_corriente',
 ] as const;
 export type SalePaymentMethod = (typeof SALE_PAYMENT_METHODS)[number];
 
@@ -167,6 +172,10 @@ export const CASH_MOVEMENT_TYPES = [
   'withdraw',
   'deposit',
   'provider_payment',
+  // Cobro de una cuenta corriente EN EFECTIVO (ADR-0027). Tipo propio y no
+  // 'deposit': un deposito generico y un cliente pagando su cuenta son
+  // eventos distintos, y mezclarlos hace el arqueo inexplicable.
+  'customer_payment',
 ] as const;
 export type CashMovementType = (typeof CASH_MOVEMENT_TYPES)[number];
 

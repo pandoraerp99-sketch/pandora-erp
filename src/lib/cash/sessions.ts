@@ -56,7 +56,9 @@ export class CashValidationError extends Error {
       | 'invalid_counted_amount'
       | 'invalid_expected_amount'
       | 'missing_discrepancy_reason'
-      | 'invalid_session_id',
+      | 'invalid_session_id'
+      /** El catalogo de movimientos crecio y el calculo del esperado no. */
+      | 'unknown_movement_type',
     message: string
   ) {
     super(message);
@@ -737,17 +739,42 @@ async function computeExpectedAmountFromActivity(
   let depositsInt = 0;
   let withdrawsInt = 0;
   let providerPaymentsInt = 0;
+  // Cobro de cuenta corriente EN EFECTIVO (ADR-0027): plata que ENTRA al cajon,
+  // igual que un deposito. Los cobros por transferencia o tarjeta no generan
+  // movimiento de caja, asi que no llegan hasta aca.
+  let customerPaymentsInt = 0;
   for (const row of movementRows) {
     const amountInt = Math.round(parseFloat(row.total) * SCALE);
     if (!Number.isFinite(amountInt)) continue;
     if (row.type === 'deposit') depositsInt = amountInt;
     else if (row.type === 'withdraw') withdrawsInt = amountInt;
     else if (row.type === 'provider_payment') providerPaymentsInt = amountInt;
-    // type fuera del enum: ignorado (CHECK constraint debería prevenirlo).
+    else if (row.type === 'customer_payment') customerPaymentsInt = amountInt;
+    else {
+      // FAIL-LOUD (2026-09-05). Antes decia "type fuera del enum: ignorado".
+      // Ignorar un tipo desconocido es un bug de PLATA esperando: alguien
+      // agrega un movimiento nuevo (el cobro de una cuenta corriente, por
+      // ejemplo), la plata entra al cajon, y el arqueo no la cuenta. El
+      // resultado es un descuadre que nadie puede explicar.
+      // Un tipo desconocido significa que el catalogo crecio y esta formula
+      // NO se actualizo: es justo el momento de frenar (CLAUDE.md 13.9).
+      throw new CashValidationError(
+        'unknown_movement_type',
+        'computeExpectedAmountFromActivity: tipo de movimiento desconocido "' +
+          row.type +
+          '". Si se agrego un tipo nuevo, hay que decidir COMO entra en el ' +
+          'calculo del esperado antes de usarlo.'
+      );
+    }
   }
 
   const expectedInt =
-    initialInt + cashSalesInt + depositsInt - withdrawsInt - providerPaymentsInt;
+    initialInt +
+    cashSalesInt +
+    depositsInt +
+    customerPaymentsInt -
+    withdrawsInt -
+    providerPaymentsInt;
   return (expectedInt / SCALE).toFixed(4);
 }
 

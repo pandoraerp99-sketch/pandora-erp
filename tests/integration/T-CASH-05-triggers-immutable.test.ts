@@ -307,7 +307,17 @@ describe('T-CASH-05 + T-CASH-06 — Triggers immutability', () => {
       expect(rows).toHaveLength(1);
     });
 
-    it('T6.3: TRUNCATE de cash_movements → throw check_violation (statement-level trigger)', async () => {
+    it('T6.3: TRUNCATE de cash_movements → BLOQUEADO', async () => {
+      // Lo que importa es la invariante: la tabla NO se puede vaciar.
+      //
+      // El MECANISMO cambió el 2026-09-05 y por eso el test acepta dos códigos.
+      // Antes lo frenaba el trigger statement-level (23514 check_violation).
+      // Desde ADR-0027, `customer_account_movements.cash_movement_id` referencia
+      // esta tabla, y Postgres rechaza el TRUNCATE por la FK (0A000) ANTES de
+      // llegar al trigger. Queda MÁS protegida, no menos.
+      //
+      // No se afloja la assertion "a que pase": se afirma que alguno de los dos
+      // guardas actuó, y cuál.
       let caught: unknown;
       try {
         await db.execute(sql`TRUNCATE TABLE cash_movements`);
@@ -317,8 +327,14 @@ describe('T-CASH-05 + T-CASH-06 — Triggers immutability', () => {
 
       expect(caught).toBeDefined();
       const err = unwrapPgError(caught);
-      expect(err.code).toBe('23514');
-      expect(err.message).toMatch(/INSERT-only/);
+      if (err.code === '23514') {
+        // Trigger de inmutabilidad.
+        expect(err.message).toMatch(/INSERT-only/);
+      } else {
+        // FK desde el libro de cuenta corriente.
+        expect(err.code).toBe('0A000');
+        expect(err.message).toMatch(/foreign key|clave foránea/i);
+      }
     });
 
     it('T6.4: INSERT inverso (deposit → withdraw) via service → OK (cancelación legítima)', async () => {
