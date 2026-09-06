@@ -536,4 +536,20 @@ button.tm-item[disabled]{ opacity:0.45; cursor:not-allowed; }
 button.tm-item[disabled]:hover{ background:none; }
 /* El foco tiene que verse: es el unico control de la barra que abre algo. */
 button.tipo-btn:focus-visible{ outline:2px solid var(--purple); outline-offset:2px; }
+
+/* ===== PROPORCIONES: dos cosas que el shell agrega y la maqueta no =====
+   (medido 2026-09-06 comparando la pantalla contra su maqueta en el mismo
+   navegador y al mismo ancho)
+
+   1. line-height. La maqueta no declara ninguno, o sea 'normal'. Tailwind
+      Preflight le pone 1.5 a <html> = 24px, y eso engorda TODO lo que mide por
+      su contenido: los botones del filtro pasaban de 29px a 33, la barra de
+      titulo de 78 a 81 y las tarjetas de KPI de 114 a 119.
+   2. gap. La maqueta separa los bloques con el margin-bottom de cada uno; el
+      shell ADEMAS pone gap:9px en .main, y los dos se suman: 25px de
+      separacion donde la maqueta tiene 16.
+
+   Va acotado a .main a proposito: la barra lateral la pinta shellCss con los
+   valores del POS y tiene que seguir viendose igual en todas las pantallas. */
+.main{ line-height:normal; gap:0; }
 `;

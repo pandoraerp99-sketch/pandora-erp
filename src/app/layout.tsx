@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import "./fonts.css";
 import "./globals.css";
 
 /**
@@ -16,15 +16,27 @@ import "./globals.css";
  * con el componente que lo use, no antes.
  */
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+/**
+ * Las fuentes viven en `./fonts.css` (Inter + JetBrains Mono, auto-alojadas).
+ *
+ * ANTES ESTABA MAL Y NO SE VEÍA: se cargaban Geist y Geist Mono con
+ * `next/font`, pero el CSS de TODAS las pantallas — copiado verbatim de
+ * `pos-preview/` — pide `font-family:'Inter'` y `'JetBrains Mono'` por nombre.
+ * Esas familias no existían, así que cada texto caía al sans-serif del sistema
+ * y cada número al monospace genérico. Medido contra la maqueta en el mismo
+ * navegador: "Monotributo" medía 64.08px acá y 71.36px en la maqueta, 11% más
+ * angosto, en toda la app.
+ *
+ * No se usa `next/font` porque renombra la familia a un hash
+ * (`__Inter_a1b2c3`) y el `font-family:'Inter'` literal del CSS copiado
+ * seguiría sin resolver; la alternativa era editar ese CSS, que es lo único
+ * que no hay que tocar.
+ *
+ * Y no van por <link> a Google porque el CSP (`style-src 'self'` +
+ * `font-src 'self' data:`) las bloquea sin avisar — así fue como estuvieron
+ * bloqueadas un rato acá. Auto-alojadas además abren con internet malo, que en
+ * un mostrador pasa.
+ */
 
 export const metadata: Metadata = {
   title: "Pandora ERP",
@@ -49,10 +61,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="es-AR"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
+    <html lang="es-AR" className="h-full antialiased">
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
