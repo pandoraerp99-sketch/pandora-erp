@@ -140,7 +140,7 @@ function haceCuanto(iso: string | null): string {
   const dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
   if (dias <= 0) return 'hoy';
   if (dias === 1) return 'ayer';
-  if (dias < 30) return `hace ${dias} dias`;
+  if (dias < 30) return `hace ${dias} días`;
   const meses = Math.floor(dias / 30);
   return meses === 1 ? 'hace 1 mes' : `hace ${meses} meses`;
 }
@@ -522,7 +522,7 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
             <span style={{ width: 118 }}>Condición</span>
             <span style={{ width: 92, textAlign: 'right' }}>Compras</span>
             <span style={{ width: 92 }}>Última</span>
-            <span style={{ width: 118, textAlign: 'center' }}>Cta. corriente</span>
+            <span style={{ width: 118, textAlign: 'right' }}>Cta. corriente</span>
             <span style={{ width: 16 }} />
           </div>
 
@@ -572,6 +572,11 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
                     {etiquetaCondicion(c.tax_condition)}
                   </span>
                   <span className="clcompras tnum">{plata(c.compras_monto)}</span>
+                  {/* "Última". Es una columna FIJA de 92px que el encabezado
+                      declara: si la fila no la pone, .clmain (flex:1) se come
+                      esos 92px y empuja todo lo de la derecha, dejando los
+                      títulos sin nada debajo. Ya pasó. */}
+                  <span className="clult">{haceCuanto(c.ultima_compra)}</span>
                   {/* Saldo REAL, calculado del libro (ADR-0027). Rojo si
                       debe, verde si esta al dia — igual que la maqueta. */}
                   <span className={debe(c.saldo) ? 'cc red' : 'cc ok'}>

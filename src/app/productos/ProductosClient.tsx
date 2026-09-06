@@ -368,6 +368,11 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
             <span style={{ width: 56, textAlign: 'right' }}>Margen</span>
             <span style={{ width: 74, textAlign: 'right' }}>Stock</span>
             <span style={{ width: 96, textAlign: 'center' }}>Estado</span>
+            {/* Hueco del chevron de la fila. Sin él el encabezado tiene un
+                elemento menos que la fila, el flex:1 de "Producto" se estira
+                16px+13 de gap de más, y TODAS las columnas de la derecha
+                quedan 28px corridas respecto de su título. */}
+            <span style={{ width: 16 }} />
           </div>
 
           <div className="cl-list">
