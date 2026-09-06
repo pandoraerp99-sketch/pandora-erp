@@ -339,9 +339,15 @@ export const PRODUCTOS_CSS = `
    de QR en el cobro del POS. */
 .pm-photo[data-off="1"]{ opacity:0.55; cursor:not-allowed; border-style:dashed; }
 .pm-photo[data-off="1"] small{ display:block; font-size:10.5px; margin-top:2px; }
-/* Overlay del modal — el markup React no usa .pmov, monta el backdrop aparte. */
-.pm-backdrop{ position:fixed; inset:0; z-index:60; background:rgba(13,20,36,0.34); backdrop-filter:blur(2px); }
-.pmod{ position:fixed; z-index:61; top:50%; left:50%; transform:translate(-50%,-50%); width:min(660px, calc(100vw - 40px)); max-height:calc(100dvh - 48px); overflow-y:auto; border-radius:22px; padding:24px; }
+/* BORRADO (2026-09-06): habia aca un .pm-backdrop propio + un override de
+   .pmod que lo reposicionaba a mano. Los tres estaban mal:
+     - el backdrop era mas claro y con menos blur que el de la maqueta
+       (rgba .34 / blur 2px contra el rgba .42 / blur 6px de .pmov)
+     - el override pedia 660px donde la maqueta dice 500
+     - y su transform:translate(-50%,-50%) chocaba con @keyframes pmIn, que
+       tambien anima transform: el modal entraba desde el lugar equivocado
+   Ahora el markup usa .pmov, como la maqueta, que ademas centra solo porque
+   es flex: no hay nada que reposicionar. */
 .pm-acts{ display:flex; gap:10px; justify-content:flex-end; margin-top:6px; }
 .pm-check{ display:flex; align-items:center; gap:9px; font-size:12.5px; color:var(--ink-2); margin:2px 0 16px; cursor:pointer; }
 .pm-check i{ color:var(--ink-3); font-style:normal; }
@@ -382,6 +388,11 @@ export const PRODUCTOS_CSS = `
 /* Las filas de reposicion son <button> para poder tocarlas. Sin este reset
    arrastran el padding, el borde y el fondo por defecto del navegador, y la
    fila queda mucho mas alta y con un fondo gris que la maqueta no tiene. */
+/* Reset acotado de los botones del modal. font-FAMILY, no font: el reset
+   global de la maqueta usa font:inherit y aca, al final del archivo, le
+   ganaria por orden al font-size que define cada clase. */
+button.pm-x, button.pm-btn{ font-family:inherit; border:none; outline:none; }
+button.pm-btn[disabled]{ opacity:0.5; cursor:not-allowed; box-shadow:none; }
 button.stock-row{ width:100%; text-align:left; background:none; border:none; border-top:1px solid rgba(13,20,36,0.05); font-family:inherit; font-size:12.5px; color:inherit; cursor:pointer; }
 button.stock-row:first-of-type{ border-top:none; }
 button.stock-row:hover{ background:rgba(107,95,255,0.04); }

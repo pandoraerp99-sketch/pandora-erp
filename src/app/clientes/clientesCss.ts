@@ -484,6 +484,45 @@ button.clrow{ background:none; border:none; font-family:inherit; color:inherit; 
 button.ctag{ cursor:pointer; }
 button.ctag.on{ background:rgba(247,152,74,0.24); border-style:solid; }
 
+/* ===== MODAL Nuevo/Editar cliente =====
+   COPIA VERBATIM del bloque de modal de pos-preview/productos-v3.html.
+
+   POR QUE DE PRODUCTOS Y NO DE CLIENTES: clientes-v6 tiene .modal-ov/.modal
+   (460px), pero es para un modal CHICO de aviso ("Gestionar tipos"), no para
+   un formulario. La maqueta de Clientes NO tiene modal de formulario, asi que
+   no hay original que copiar. Se usa el de Productos para que los dos modales
+   de la app sean EL MISMO, que es justamente lo que se veia distinto.
+
+   Antes esto no existia: el modal usaba .pmod y .pm-fld sin que ninguna de las
+   dos estuviera definida en este archivo ni en el shell. Resultado medido:
+   position:static, 1336px de ancho, y=917 (tirado al final de la pagina, en
+   flujo normal), padding 0 y SIN animacion. */
+.pmov{ position:fixed; inset:0; z-index:100; background:rgba(20,26,44,0.42); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); display:none; align-items:center; justify-content:center; padding:24px; }
+.pmov.open{ display:flex; }
+.pmod{ width:100%; max-width:500px; max-height:92vh; overflow-y:auto; background:var(--glass-bg-2); -webkit-backdrop-filter:blur(32px) saturate(150%); backdrop-filter:blur(32px) saturate(150%); border:var(--glass-bd); border-radius:22px; box-shadow:0 24px 70px rgba(20,26,44,0.35); padding:24px; animation:pmIn 220ms cubic-bezier(.16,1,.3,1); }
+@keyframes pmIn{ from{ opacity:0; transform:translateY(16px) scale(.98); } }
+.pm-head{ display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:18px; }
+.pm-title{ font-size:19px; font-weight:700; letter-spacing:-0.02em; }
+.pm-sub{ font-size:12.5px; color:var(--ink-3); margin-top:2px; }
+.pm-x{ width:32px; height:32px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:var(--ink-2); background:rgba(13,20,36,0.05); flex:0 0 auto; cursor:pointer; }
+.pm-x svg{ width:16px; height:16px; }
+.pm-fld{ margin-bottom:14px; }
+.pm-fld label{ display:block; font-size:11.5px; font-weight:600; color:var(--ink-2); margin-bottom:6px; }
+.pm-fld input, .pm-fld select{ width:100%; font-size:13.5px; background:#fff; border:1px solid rgba(13,20,36,0.12); border-radius:10px; padding:10px 12px; outline:none; font-family:inherit; box-sizing:border-box; }
+.pm-fld input:focus, .pm-fld select:focus{ border-color:var(--purple); }
+.pm-row{ display:flex; gap:10px; }
+.pm-row .pm-fld{ flex:1; }
+.pm-note{ font-size:11px; color:var(--ink-3); margin:0 0 16px; line-height:1.45; }
+.pm-note b{ color:var(--purple); }
+.pm-acts{ display:flex; gap:10px; justify-content:flex-end; }
+.pm-btn{ font-size:13px; font-weight:600; padding:10px 17px; border-radius:11px; cursor:pointer; }
+.pm-btn.ghost{ color:var(--ink-2); background:rgba(13,20,36,0.05); }
+.pm-btn.primary{ color:#fff; background:linear-gradient(140deg,var(--purple),#9088ff); box-shadow:0 6px 16px rgba(107,95,255,0.4); }
+/* Reset acotado: mismo criterio que el resto del archivo — font-FAMILY, no
+   font, para no pisar los font-size que definen las clases de arriba. */
+button.pm-x, button.pm-btn{ font-family:inherit; border:none; outline:none; }
+button.pm-btn[disabled]{ opacity:0.5; cursor:not-allowed; box-shadow:none; }
+
 /* Desplegable "Tipo". El boton y los items son <button> de verdad; la maqueta
    los resetea con un reset global de button con font:inherit que aca NO se
    puede copiar: iria al final del archivo y le ganaria por orden al font-size

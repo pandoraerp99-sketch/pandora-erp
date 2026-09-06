@@ -821,8 +821,17 @@ function ClienteModal({
 
   return (
     <>
-      <div className="pm-backdrop" onClick={onCancelar} />
-      <div className="pmod glass-strong" role="dialog" aria-modal="true">
+      {/* .pmov es el overlay Y el que centra (es flex). Antes el backdrop iba
+          como HERMANO del modal y el modal quedaba en flujo normal: 1336px de
+          ancho al final de la pagina. */}
+      <div className="pmov open" onClick={onCancelar}>
+        <div
+          className="pmod"
+          role="dialog"
+          aria-modal="true"
+          aria-label={cliente ? 'Editar cliente' : 'Nuevo cliente'}
+          onClick={(e) => e.stopPropagation()}
+        >
         <div className="pm-head">
           <div>
             <div className="pm-title">
@@ -986,18 +995,22 @@ function ClienteModal({
           />
         </div>
 
+        {/* .pm-btn, no .b: es la clase de boton del modal en la maqueta. Ojo
+            que .b esta DUPLICADA (botones y barras de grafico), asi que en un
+            modal no se sabe cual gana. */}
         <div className="pm-acts">
-          <button type="button" className="b ghost" onClick={onCancelar}>
+          <button type="button" className="pm-btn ghost" onClick={onCancelar}>
             Cancelar
           </button>
           <button
             type="button"
-            className="b primary"
+            className="pm-btn primary"
             onClick={() => onGuardar(form)}
             disabled={pending || form.name.trim() === ''}
           >
             {pending ? 'Guardando…' : 'Guardar cliente'}
           </button>
+        </div>
         </div>
       </div>
     </>

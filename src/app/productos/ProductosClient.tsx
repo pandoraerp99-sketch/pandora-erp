@@ -802,8 +802,17 @@ function ProductoModal({
 
   return (
     <>
-      <div className="pm-backdrop" onClick={onCancelar} />
-      <div className="pmod glass-strong" role="dialog" aria-modal="true">
+      {/* .pmov es el overlay de la maqueta Y el que centra (es flex). Sin
+          `glass-strong`: .pmod ya trae fondo, borde, radio y sombra propios,
+          y glass-strong le pisaba el radio 22 con uno de 20. */}
+      <div className="pmov open" onClick={onCancelar}>
+        <div
+          className="pmod"
+          role="dialog"
+          aria-modal="true"
+          aria-label={producto ? 'Editar producto' : 'Nuevo producto'}
+          onClick={(e) => e.stopPropagation()}
+        >
         <div className="pm-head">
           <div>
             <div className="pm-title">
@@ -1007,13 +1016,15 @@ function ProductoModal({
           </span>
         </label>
 
+        {/* .pm-btn, no .b: es la clase de boton del modal en la maqueta.
+            Ojo que .b esta DUPLICADA (botones y barras de grafico). */}
         <div className="pm-acts">
-          <button type="button" className="b ghost" onClick={onCancelar}>
+          <button type="button" className="pm-btn ghost" onClick={onCancelar}>
             Cancelar
           </button>
           <button
             type="button"
-            className="b primary"
+            className="pm-btn primary"
             onClick={() => {
               // El stock sólo viaja en el alta; al editar se ajusta aparte.
               const payload: ProductFormInput = producto
@@ -1025,6 +1036,7 @@ function ProductoModal({
           >
             {pending ? 'Guardando…' : 'Guardar producto'}
           </button>
+        </div>
         </div>
       </div>
     </>
