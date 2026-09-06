@@ -484,13 +484,17 @@ button.clrow{ background:none; border:none; font-family:inherit; color:inherit; 
 button.ctag{ cursor:pointer; }
 button.ctag.on{ background:rgba(247,152,74,0.24); border-style:solid; }
 
-/* El desplegable "Tipo": el chrome es el de la maqueta (.tipo-btn) y encima
-   va un select nativo transparente. La maqueta abre .tipo-menu con JS propio;
-   el nativo nos da teclado, lector de pantalla y el selector del celular sin
-   reimplementar nada de eso. */
-.tipo-dd .tipo-native{
-  position:absolute; inset:0; width:100%; height:100%;
-  opacity:0; cursor:pointer; font:inherit;
+/* Desplegable "Tipo". El boton y los items son <button> de verdad; la maqueta
+   los resetea con un reset global de button con font:inherit que aca NO se
+   puede copiar: iria al final del archivo y le ganaria por orden al font-size
+   que define cada clase, dejando todo en 16px (ya paso una vez). Por eso el
+   reset va acotado y con font-FAMILY, no con font. */
+button.tipo-btn, button.tm-item{
+  font-family:inherit; border:none; outline:none; cursor:pointer;
 }
-.tipo-dd:focus-within .tipo-btn{ outline:2px solid var(--purple); outline-offset:2px; }
+button.tm-item{ background:none; width:100%; }
+button.tm-item[disabled]{ opacity:0.45; cursor:not-allowed; }
+button.tm-item[disabled]:hover{ background:none; }
+/* El foco tiene que verse: es el unico control de la barra que abre algo. */
+button.tipo-btn:focus-visible{ outline:2px solid var(--purple); outline-offset:2px; }
 `;

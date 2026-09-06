@@ -24,6 +24,7 @@
 import { useMemo, useState, useTransition } from 'react';
 import Decimal from 'decimal.js';
 import { AppShell } from '@/components/shell/AppShell';
+import { TipoDropdown } from '@/components/ui/tipo-dropdown';
 import { CLIENTES_CSS } from './clientesCss';
 import {
   createCustomerAction,
@@ -351,39 +352,21 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
         </button>
       </div>
 
-      {/* "Tipo" = segmento comercial.
-          El CHROME es el de la maqueta (icono de etiqueta violeta + label +
-          chevron), pero el control real es un <select> nativo transparente
-          encima: asi se ve como la maqueta y ademas conserva teclado, lector
-          de pantalla y el selector nativo del celular, que un menu hecho a
-          mano habria que reimplementar entero para igualar. */}
-      {segmentos.length > 0 ? (
-        <div className="tipo-dd">
-          <span className="tipo-btn glass" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--purple)' }}>
-              <path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.58a2 2 0 0 1 0 2.83z" />
-              <circle cx="7" cy="7" r="1.5" />
-            </svg>
-            <span className="tb-lbl">{segmentoActivo === '' ? 'Tipo' : segmentoActivo}</span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </span>
-          <select
-            className="tipo-native"
-            value={segmentoActivo}
-            onChange={(e) => setSegmentoActivo(e.target.value)}
-            aria-label="Filtrar por tipo comercial"
-          >
-            <option value="">Tipo</option>
-            {segmentos.map((sg) => (
-              <option key={sg} value={sg}>
-                {sg}
-              </option>
-            ))}
-          </select>
-        </div>
-      ) : null}
+      {/* "Tipo" = segmento comercial. Menu propio, no <select> nativo: el
+          nativo dibuja su lista con el sistema operativo y no hay forma de
+          darle el glass de la maqueta. */}
+      <TipoDropdown
+        opciones={segmentos}
+        valor={segmentoActivo}
+        onChange={setSegmentoActivo}
+        ariaLabel="Filtrar por tipo comercial"
+        // Los tipos se DERIVAN de los clientes: no hay tabla de catalogo (ver
+        // el encabezado de la migration 0023). Crear un tipo que ningun
+        // cliente tiene no tendria donde guardarse. Se muestra deshabilitado
+        // con el motivo en vez de esconderlo: asi se ve que existe y por que
+        // todavia no se puede.
+        motivoGestionarDeshabilitado="Los tipos salen de los clientes que ya los tienen. Para crearlos o borrarlos sueltos falta la pantalla de gestión."
+      />
 
     </>
   );
