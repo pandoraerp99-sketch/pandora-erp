@@ -349,3 +349,67 @@ export async function getPurchaseStatsByCustomer(): Promise<
     ])
   );
 }
+
+/** Cuántos meses cubre la serie del panel de detalle. */
+export const MESES_SERIE = 12;
+
+/**
+ * Compras mensuales de los últimos 12 meses, por cliente, en UNA consulta.
+ *
+ * Devuelve SIEMPRE 12 posiciones, de la más vieja a la más nueva, con 0 en los
+ * meses sin compras: un gráfico que se saltea los meses vacíos miente sobre la
+ * forma de la curva — un cliente que compró en enero y en diciembre se vería
+ * como uno que compra todos los meses.
+ *
+ * Mismo filtro de estado que getPurchaseStatsByCustomer: sólo ventas cerradas.
+ */
+export async function getMonthlyPurchasesByCustomer(): Promise<
+  Map<string, number[]>
+> {
+  const tenantId = requireTenantId();
+  const filas = await db.execute<{
+    customer_id: string;
+    mes: string;
+    total: string;
+  }>(
+    sql`SELECT customer_id::text,
+               to_char(date_trunc('month', created_at), 'YYYY-MM') AS mes,
+               sum(total)::text AS total
+        FROM sales
+        WHERE tenant_id = ${tenantId}
+          AND customer_id IS NOT NULL
+          AND commercial_status IN ('cobrada', 'terminada')
+          AND created_at >= date_trunc('month', now()) - interval '11 months'
+        GROUP BY 1, 2`
+  );
+
+  // Las 12 etiquetas de mes, en orden, calculadas acá para no depender de que
+  // la consulta traiga los meses vacios.
+  const hoy = new Date();
+  const etiquetas: string[] = [];
+  for (let i = MESES_SERIE - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth() - i, 1));
+    etiquetas.push(
+      `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+    );
+  }
+
+  const porCliente = new Map<string, Map<string, number>>();
+  for (const f of filas) {
+    let m = porCliente.get(f.customer_id);
+    if (!m) {
+      m = new Map();
+      porCliente.set(f.customer_id, m);
+    }
+    m.set(f.mes, Number(f.total));
+  }
+
+  const salida = new Map<string, number[]>();
+  for (const [customerId, meses] of porCliente) {
+    salida.set(
+      customerId,
+      etiquetas.map((e) => meses.get(e) ?? 0)
+    );
+  }
+  return salida;
+}

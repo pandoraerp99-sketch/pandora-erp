@@ -12,10 +12,12 @@ import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
 import { db } from '@/lib/db/client';
 import { companies } from '@/lib/db/schema/companies';
 import {
+  getMonthlyPurchasesByCustomer,
   getPurchaseStatsByCustomer,
+  MESES_SERIE,
   listCustomers,
 } from '@/lib/services/customers/customer.service';
-import { getBalancesByCustomer } from '@/lib/services/customers/account.service';
+import { getDebtorsWithAge } from '@/lib/services/customers/account.service';
 import { ClientesClient, type ClienteDTO } from './ClientesClient';
 
 export default async function ClientesPage() {
@@ -34,11 +36,19 @@ export default async function ClientesPage() {
     { requireAuth: true }
   );
 
-  // Saldos de cuenta corriente: UNA consulta agrupada para todos (ADR-0027).
-  // El saldo NO esta guardado, se calcula del libro.
-  const saldos = await withServerActionTracing(() => getBalancesByCustomer(), {
+  // Saldos de cuenta corriente + ANTIGUEDAD de la deuda (ADR-0027). El saldo
+  // no esta guardado: se calcula del libro, y los dias salen de imputar los
+  // pagos a los cargos mas viejos primero.
+  const deudas = await withServerActionTracing(() => getDebtorsWithAge(), {
     requireAuth: true,
   });
+
+  // Serie de 12 meses para el grafico del panel de detalle.
+  const series = await withServerActionTracing(
+    () => getMonthlyPurchasesByCustomer(),
+    { requireAuth: true }
+  );
+  const SERIE_VACIA = Array.from({ length: MESES_SERIE }, () => 0);
 
   const [company] = await db
     .select({ name: companies.name })
@@ -63,7 +73,9 @@ export default async function ClientesPage() {
       tickets: agg?.cantidad ?? 0,
       compras_monto: agg?.monto ?? '0',
       ultima_compra: agg?.ultima ?? null,
-      saldo: (saldos.get(c.id) ?? 0).toString(),
+      saldo: (deudas.get(c.id)?.saldo ?? 0).toString(),
+      dias_deuda: deudas.get(c.id)?.dias ?? null,
+      serie: series.get(c.id) ?? SERIE_VACIA,
     };
   });
 

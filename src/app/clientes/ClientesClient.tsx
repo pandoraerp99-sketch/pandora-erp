@@ -49,6 +49,10 @@ export interface ClienteDTO {
   ultima_compra: string | null;
   /** Saldo de cuenta corriente. Positivo = DEBE. Calculado, no guardado. */
   saldo: string;
+  /** Días del cargo más viejo sin pagar (FIFO). null si no debe. */
+  dias_deuda: number | null;
+  /** Compras de los últimos 12 meses, de la más vieja a la más nueva. */
+  serie: number[];
 }
 
 interface Props {
@@ -147,6 +151,70 @@ function haceCuanto(iso: string | null): string {
 
 const DOC_TIPOS = ['none', 'DNI', 'CUIT', 'CUIL'] as const;
 
+/** "ago 2022", como la maqueta. */
+const mesAno = (iso: string) =>
+  new Intl.DateTimeFormat('es-AR', { month: 'short', year: 'numeric' })
+    .format(new Date(iso))
+    .replace('.', '');
+
+/**
+ * Curva de compras por mes. SVG a mano, sin libreria (ADR-0014).
+ *
+ * El viewBox es el de la maqueta (252x52) con preserveAspectRatio="none": el
+ * ancho lo pone el contenedor y los puntos se calculan sobre esa grilla.
+ *
+ * Escala al maximo de la serie. Si el cliente no compro nada, la curva va
+ * plana ABAJO y no en el medio: una linea al medio se lee como "compro algo
+ * constante", que es exactamente lo contrario.
+ */
+function Sparkline({ serie }: { serie: number[] }) {
+  const W = 252;
+  const H = 52;
+  const TECHO = 8; // margen arriba, para que el pico no toque el borde
+  const max = Math.max(...serie, 0);
+  const paso = serie.length > 1 ? W / (serie.length - 1) : W;
+
+  const puntos = serie.map((v, i) => {
+    const x = i * paso;
+    const y = max === 0 ? H - 2 : TECHO + (1 - v / max) * (H - TECHO - 2);
+    return `${x.toFixed(1)} ${y.toFixed(1)}`;
+  });
+
+  const linea = 'M ' + puntos.join(' L ');
+  const area = `M 0 ${H} L ${puntos.join(' L ')} L ${W} ${H} Z`;
+  const id = 'cdg-' + serie.length;
+
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
+      style={{ width: '100%', height: 48, display: 'block' }}
+      role="img"
+      aria-label={
+        max === 0
+          ? 'Sin compras en los ultimos 12 meses'
+          : 'Compras de los ultimos 12 meses'
+      }
+    >
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="rgba(107,95,255,0.26)" />
+          <stop offset="100%" stopColor="rgba(107,95,255,0)" />
+        </linearGradient>
+      </defs>
+      <path d={area} fill={`url(#${id})`} />
+      <path
+        d={linea}
+        fill="none"
+        stroke="var(--purple)"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 const fechaCorta = (iso: string | null) =>
   iso === null
     ? '—'
@@ -197,6 +265,17 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
       ...Array.from(set).filter((c) => !orden.includes(c)),
     ];
   }, [lista]);
+
+  // Deudores ordenados por monto: el que mas debe, primero. Del mismo dato
+  // que el KPI, no de una consulta aparte.
+  const deudores = useMemo(
+    () =>
+      lista
+        .filter((c) => debe(c.saldo))
+        .sort((a, b) => new Decimal(b.saldo).comparedTo(new Decimal(a.saldo)))
+        .slice(0, 6),
+    [lista]
+  );
 
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -298,6 +377,10 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
         tickets: editando?.tickets ?? 0,
         compras_monto: editando?.compras_monto ?? '0',
         saldo: editando?.saldo ?? '0',
+        dias_deuda: editando?.dias_deuda ?? null,
+        // Serie vacía en un alta: el cliente recién creado no compró nada. Al
+        // editar se conserva la que ya venía del server.
+        serie: editando?.serie ?? Array.from({ length: 12 }, () => 0),
         ultima_compra: editando?.ultima_compra ?? null,
       };
       setLista((prev) =>
@@ -669,16 +752,21 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
                         {sel.phone}
                       </div>
                     ) : null}
-                    {sel.address !== null ? (
-                      <div>
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
-                          <circle cx="12" cy="10" r="3" />
-                        </svg>
-                        {sel.address}
-                        <span className="label-sm"> · desde {fechaCorta(sel.created_at)}</span>
-                      </div>
-                    ) : null}
+                    {/* Va SIEMPRE, aunque no haya direccion: "cliente desde"
+                        es de las cosas que el comerciante mira primero, y sale
+                        de created_at, que existe para todos. */}
+                    <div>
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
+                        <circle cx="12" cy="10" r="3" />
+                      </svg>
+                      {sel.address !== null ? (
+                        <>
+                          {sel.address} ·{' '}
+                        </>
+                      ) : null}
+                      cliente desde {mesAno(sel.created_at)}
+                    </div>
                   </div>
                 ) : null}
 
@@ -701,6 +789,36 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
                   </div>
                 </div>
 
+                {/* Compras por mes. SVG propio, sin libreria (ADR-0014). */}
+                <div className="cd-spark">
+                  <div className="upper-mini" style={{ marginBottom: 5 }}>
+                    Compras · últimos 12 meses
+                  </div>
+                  <Sparkline serie={sel.serie} />
+                </div>
+
+                {/* Saldo de cuenta corriente + antiguedad (ADR-0027). */}
+                <div className="cd-cc">
+                  <div>
+                    <div className="upper-mini">Saldo cuenta corriente</div>
+                    <div
+                      className="tnum cd-ccv"
+                      style={debe(sel.saldo) ? undefined : { color: '#1a8e5a' }}
+                    >
+                      {plata(sel.saldo)}
+                    </div>
+                  </div>
+                  <span className="cd-ccage">
+                    {sel.dias_deuda === null
+                      ? 'al día'
+                      : sel.dias_deuda === 0
+                        ? 'hoy'
+                        : sel.dias_deuda === 1
+                          ? '1 día'
+                          : `${sel.dias_deuda} días`}
+                  </span>
+                </div>
+
                 {sel.notes !== null ? (
                   <p className="label-sm" style={{ marginTop: 12 }}>
                     {sel.notes}
@@ -708,20 +826,19 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
                 ) : null}
 
                 <div className="cd-btns">
+                  {/* La maqueta pone "Ver historial" aca, y "Editar" como el
+                      link chico de arriba — que ya funciona. Se muestra
+                      apagado con el motivo en vez de esconderlo: el historial
+                      de compras del cliente todavia no tiene pantalla. */}
                   <button
                     type="button"
                     className="cta"
                     style={{ flex: 1, fontSize: 13, padding: 11 }}
-                    onClick={() => {
-                      setEditando(sel);
-                      setModalAbierto(true);
-                    }}
-                    disabled={pending}
+                    disabled
+                    title="Todavía no existe la pantalla de historial de compras del cliente."
                   >
-                    Editar
+                    Ver historial
                   </button>
-                  {/* Las compras del cliente SE CUENTAN (la columna sale de
-                      sales.customer_id) pero no hay pantalla que las liste. */}
                   <button
                     type="button"
                     className="hbtn"
@@ -736,6 +853,75 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
               </>
             )}
           </div>
+
+          {/* Deudores — a quien hay que ir a cobrarle. Sale del mismo libro
+              que el KPI "Por cobrar", ordenado por monto. */}
+          {deudores.length > 0 ? (
+            <div className="card glass">
+              <div className="card-title">
+                <h3>
+                  <span
+                    className="ic"
+                    style={{ background: 'rgba(239,93,106,0.13)', color: '#c0384a' }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="2" y="5" width="20" height="14" rx="2" />
+                      <path d="M2 10h20" />
+                    </svg>
+                  </span>
+                  Deudores
+                </h3>
+                <span
+                  className="pill"
+                  style={{ background: 'rgba(239,93,106,0.12)', color: '#c0384a' }}
+                >
+                  {plata(kpis.porCobrar)}
+                </span>
+              </div>
+              {deudores.map((d) => (
+                <button
+                  type="button"
+                  key={d.id}
+                  className="stock-row"
+                  onClick={() => setSelId(d.id)}
+                >
+                  <div
+                    className="stock-thumb"
+                    style={{
+                      background: gradienteDe(d.name),
+                      color: '#fff',
+                      fontSize: 11,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {iniciales(d.name)}
+                  </div>
+                  <div className="stock-name">
+                    {d.name}
+                    <span
+                      style={{
+                        display: 'block',
+                        fontSize: 10.5,
+                        color: 'var(--ink-3)',
+                        fontWeight: 400,
+                      }}
+                    >
+                      {d.dias_deuda === null
+                        ? 'sin fecha'
+                        : d.dias_deuda === 0
+                          ? 'hoy'
+                          : d.dias_deuda === 1
+                            ? '1 día'
+                            : `${d.dias_deuda} días`}
+                    </span>
+                  </div>
+                  <span className="stock-q" style={{ color: '#c0384a' }}>
+                    {plata(d.saldo)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </aside>
       </div>
 

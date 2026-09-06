@@ -93,6 +93,99 @@ export async function getBalancesByCustomer(): Promise<Map<string, Decimal>> {
   return new Map(filas.map((f) => [f.customer_id, new Decimal(f.saldo)]));
 }
 
+export interface DeudaConEdad {
+  saldo: Decimal;
+  /** Días desde el cargo más viejo que TODAVÍA no está pagado. null si no debe. */
+  dias: number | null;
+}
+
+/**
+ * Saldo + **antigüedad** de la deuda, por cliente.
+ *
+ * La antigüedad no es "días desde el último movimiento": es la del cargo más
+ * viejo que sigue sin cubrir. Se imputan los pagos a los cargos **del más
+ * viejo al más nuevo** (FIFO), que es como lo piensa el comerciante — "me
+ * paga y le voy bajando lo de antes" — y como se lleva una cuenta corriente.
+ *
+ * Sin FIFO el número mentiría en el caso que más importa: alguien que debe de
+ * hace medio año y hace un pago chico hoy aparecería como deuda "de hoy", que
+ * es justo el cliente al que hay que ir a ver.
+ *
+ * Los ajustes cuentan como cargo, con su propia fecha.
+ *
+ * Trae el libro entero del comercio y calcula en TS. Es correcto para el
+ * volumen de F0 (un comercio de barrio no tiene cientos de miles de
+ * movimientos); si algún día pesa, se pasa a una window function en SQL.
+ */
+export async function getDebtorsWithAge(): Promise<Map<string, DeudaConEdad>> {
+  const { tenantId } = ctx();
+  const filas = await db.execute<{
+    customer_id: string;
+    type: string;
+    amount: string;
+    created_at: string;
+  }>(
+    sql`SELECT customer_id::text, type, amount::text, created_at::text
+        FROM customer_account_movements
+        WHERE tenant_id = ${tenantId}
+        ORDER BY customer_id, created_at ASC`
+  );
+
+  const porCliente = new Map<
+    string,
+    { cargos: { monto: Decimal; fecha: string }[]; pagos: Decimal }
+  >();
+
+  for (const f of filas) {
+    let acc = porCliente.get(f.customer_id);
+    if (!acc) {
+      acc = { cargos: [], pagos: new Decimal(0) };
+      porCliente.set(f.customer_id, acc);
+    }
+    const monto = new Decimal(f.amount);
+    if (f.type === 'payment') acc.pagos = acc.pagos.plus(monto);
+    else acc.cargos.push({ monto, fecha: f.created_at });
+  }
+
+  const ahora = Date.now();
+  const salida = new Map<string, DeudaConEdad>();
+
+  for (const [customerId, { cargos, pagos }] of porCliente) {
+    const totalCargos = cargos.reduce((a, c) => a.plus(c.monto), new Decimal(0));
+    const saldo = totalCargos.minus(pagos);
+
+    if (saldo.lte(0)) {
+      salida.set(customerId, { saldo, dias: null });
+      continue;
+    }
+
+    // Imputación FIFO: se va gastando el pago contra los cargos más viejos.
+    let restante = pagos;
+    let masViejoImpago: string | null = null;
+    for (const cargo of cargos) {
+      if (restante.gte(cargo.monto)) {
+        restante = restante.minus(cargo.monto);
+        continue;
+      }
+      masViejoImpago = cargo.fecha;
+      break;
+    }
+
+    salida.set(customerId, {
+      saldo,
+      dias:
+        masViejoImpago === null
+          ? null
+          : Math.max(
+              0,
+              Math.floor((ahora - new Date(masViejoImpago).getTime()) / 86400000)
+            ),
+    });
+  }
+
+  return salida;
+}
+
 /**
  * Cargo por una venta fiada. Lo llama `finalizeSale` cuando hay un pago con
  * method='cuenta_corriente'.
