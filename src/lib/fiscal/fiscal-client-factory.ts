@@ -1,32 +1,79 @@
 /**
  * Factory del cliente WSFEv1 (CaeRequester) por tenant.
  *
- * Devuelve el cliente listo para emitir, o `null` si todavía NO está configurado
- * (falta el certificado de homologación y/o los adaptadores reales). Mientras
- * devuelva `null`, la emisión se saltea y la venta queda en `pending`
- * (fail-closed A-2: el cobro no se bloquea, la factura se emite después).
+ * Arma la cadena real: certificado del tenant → firma CMS del TRA → WSAA (con
+ * cache en base) → WSFEv1 sobre TLS 1.2+.
  *
- * TODO (slice cert): construir el Wsfev1Client real:
- *   - TraSigner CMS (firma el TRA con el cert del tenant — node-forge)
- *   - LoginCmsTransport + Wsfev1Transport (fetch a WSAA/WSFEv1)
- *   - WsaaTokenCache sobre la tabla wsaa_tokens
- *   - AfipAuthProvider = WsaaClient.getCredentials + cuit de la company
- * Leer environment/cuit/cert de la company. Ver src/lib/fiscal/README.md.
+ * Devuelve `null` cuando el tenant **todavía no cargó su certificado**. Eso NO
+ * es un error: es el estado normal antes del onboarding, y aguas abajo se
+ * traduce en emisión diferida — el cobro no se bloquea y la venta queda
+ * `pending` (fail-closed A-2). Es lo que hace que el POS ande hoy sin AFIP.
  *
- * ⚠️ REQUISITO TLS (CLAUDE.md §11.4 — NO negociable): los transportes reales
- * (LoginCmsTransport y Wsfev1Transport) DEBEN configurarse con TLS mínimo 1.2
- * (`minVersion: 'TLSv1.2'`) y validación de certificado activa
- * (`rejectUnauthorized: true`). El bypass de validación TLS está PROHIBIDO
- * explícitamente. Por este canal viajan el certificado X.509 y el token WSAA
- * del tenant. Cumplirlo cierra el test T-SEC-06 del catálogo CLAUDE.md §18.3
- * (hoy faltante justamente porque el transporte no existe).
+ * ⚠️ TLS (CLAUDE.md §11.4, no negociable): los transportes fijan
+ * `minVersion: 'TLSv1.2'` + `rejectUnauthorized: true`. Por ese canal viajan
+ * el certificado X.509 y el token WSAA del tenant. Ver `soap-transport.ts` y
+ * el test T-SEC-06.
  */
+import { WsaaClient } from '../integrations/afip/wsaa-client.js';
+import { Wsfev1Client } from '../integrations/afip/wsfev1-client.js';
+import {
+  createLoginCmsTransport,
+  createWsfev1Transport,
+} from '../integrations/afip/soap-transport.js';
+import { createTraSigner } from '../integrations/afip/tra-signer.js';
+import { createWsaaTokenCache } from '../integrations/afip/wsaa-token-cache.js';
+import type { AfipEnvironment } from '../db/schema/_common.js';
+import { env } from '../env.js';
+import { logger } from '../observability/logger.js';
+import { getAfipCredentials } from './afip-credentials.js';
 import type { CaeRequester } from './emit-invoice.js';
 
+/**
+ * Cliente listo para emitir, o `null` si el tenant no tiene certificado.
+ *
+ * El environment sale del entorno del SERVIDOR, no de un parámetro: así no
+ * existe la posibilidad de que una llamada pida "produccion" desde un deploy
+ * de homologación (ADR-0019 S13, aislamiento duro).
+ */
 export async function getCaeRequester(
-  _tenantId: string
+  tenantId: string
 ): Promise<CaeRequester | null> {
-  // Sin cert/adaptadores wired → emisión diferida (la venta queda en pending
-  // y la resuelve el worker/operador cuando el cliente esté disponible).
-  return null;
+  const environment = env.AFIP_ENVIRONMENT as AfipEnvironment;
+
+  const cred = await getAfipCredentials(tenantId, environment);
+  if (cred === null) {
+    logger.info(
+      { tenant_id: tenantId, environment },
+      'afip.no_credentials_emission_deferred'
+    );
+    return null;
+  }
+
+  const wsaa = new WsaaClient({
+    signer: createTraSigner({
+      certPem: cred.certPem,
+      privateKeyPem: cred.privateKeyPem,
+    }),
+    transport: createLoginCmsTransport(),
+    cache: createWsaaTokenCache(),
+  });
+
+  const wsfev1 = new Wsfev1Client({
+    authProvider: {
+      async getAuth(tid, envr) {
+        const creds = await wsaa.getCredentials(tid, envr);
+        // El CUIT sale del CERTIFICADO, no de `companies.cuit`. AFIP valida
+        // que el Cuit del request sea el del cert que firmó: si alguien
+        // corrige un tipeo en la ficha de la empresa, la emisión tiene que
+        // seguir andando con el CUIT real, o fallar por la razón correcta.
+        return { token: creds.token, sign: creds.sign, cuit: cred.cuit };
+      },
+    },
+    transport: createWsfev1Transport(),
+  });
+
+  return {
+    requestCae: (tid, envr, ptoVta, cbteTipo, det) =>
+      wsfev1.requestCae(tid, envr, ptoVta, cbteTipo, det),
+  };
 }

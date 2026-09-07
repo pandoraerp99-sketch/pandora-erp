@@ -31,3 +31,42 @@ export function assertFiscalDbConnectionMode(databaseUrl: string): void {
     );
   }
 }
+
+/**
+ * El timeout de AFIP tiene que ser MENOR que el de la base.
+ *
+ * La otra mitad de HIGH-2. `emitInvoice` sostiene la transaccion (con el lock
+ * de la secuencia) mientras espera a AFIP. Si Postgres tiene
+ * `idle_in_transaction_session_timeout` y ese numero es MENOR que lo que
+ * esperamos a AFIP, la base corta la transaccion PRIMERO: el numero fiscal no
+ * avanza, el snapshot no se escribe, y si AFIP igual autorizo quedo un CAE
+ * emitido que la app no registro. Ese es el peor estado posible — hay que
+ * resolverlo a mano contra AFIP.
+ *
+ * Quien corta tiene que ser SIEMPRE nuestro timeout, que sabe transicionar la
+ * venta a `requires_reconciliation` y dejarle el trabajo al worker.
+ *
+ * `dbTimeoutMs = 0` significa "sin limite" en Postgres: no hay conflicto.
+ *
+ * Es puro para poder testear el orden sin depender de como este configurada la
+ * base de desarrollo (en local esta en 0 y no probaria nada).
+ */
+export function assertAfipTimeoutFitsDb(
+  afipTimeoutMs: number,
+  dbTimeoutMs: number,
+  /** Margen para que la transicion de estado alcance a escribirse. */
+  margenMs = 5_000
+): void {
+  if (dbTimeoutMs === 0) return; // sin limite en la base
+  if (afipTimeoutMs + margenMs >= dbTimeoutMs) {
+    throw new FiscalIntegrityError(
+      'El timeout de AFIP (' +
+        afipTimeoutMs / 1000 +
+        's) no entra en el idle_in_transaction_session_timeout de la base (' +
+        dbTimeoutMs / 1000 +
+        's). La base cortaria la transaccion antes que nosotros y el numero ' +
+        'fiscal quedaria en un limbo. Subi el timeout de la base o baja el de AFIP.',
+      { afipTimeoutMs, dbTimeoutMs, margenMs }
+    );
+  }
+}

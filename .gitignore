@@ -70,3 +70,14 @@ drizzle/migrations/meta/_journal.json.bak
 supabase/.branches/
 supabase/.temp/
 supabase/snippets/
+
+# ── Material criptografico de AFIP ────────────────────────────────────────
+# La clave privada del certificado permite facturar CON LA IDENTIDAD FISCAL
+# del comercio. Si se filtra, un tercero puede emitir en su nombre. No entra a
+# git ni una sola vez: git no olvida.
+secretos-afip/
+*.key
+*.crt
+*.csr
+*.p12
+*.pfx

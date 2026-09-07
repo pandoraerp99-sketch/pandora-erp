@@ -100,34 +100,48 @@ Tests: `fiscal-receptor` (5, unit) + `T-FISCAL-EMIT-01` (6, integración con DB 
 
 Tests: `T-FISCAL-EMIT-02` (4 integración). **Aditivo:** el POS hoy pasa `require_fiscal_invoice=false` → la venta queda `not_required` y esto es no-op. El cobro NUNCA se rompe por un fallo de emisión.
 
-## Próximos slices (pendientes) — todo gated por el CERTIFICADO
+## Slice 6 — Adaptadores reales — HECHO (2026-09-07)
 
-6. **Adaptadores reales del cliente** (en `getCaeRequester`): TraSigner CMS (node-forge, firma con el cert),
-   transports fetch (WSAA `LoginCms` + WSFEv1), `AfipAuthProvider` (WsaaClient + cuit de la company),
-   `WsaaTokenCache` sobre la tabla `wsaa_tokens`. Con esto `getCaeRequester` deja de devolver `null`.
+`getCaeRequester()` ya **no devuelve `null` cuando hay certificado**: arma la cadena
+completa cert → firma CMS → WSAA (cache en base) → WSFEv1 sobre TLS 1.2+.
 
-   > ⚠️ **REQUISITO TLS de los transports** (CLAUDE.md §11.4, no negociable): TLS mínimo 1.2
-   > (`minVersion: 'TLSv1.2'`) + `rejectUnauthorized: true`. El bypass de validación TLS está
-   > **PROHIBIDO explícitamente** — por este canal viajan el cert X.509 y el token WSAA del tenant.
-   > Al implementarlo, escribir el test **T-SEC-06** (catálogo CLAUDE.md §18.3), hoy faltante
-   > porque el transporte no existe.
-7. **POS UI**: pasar `require_fiscal_invoice=true` (o según cliente) + mostrar `data.fiscal` (CAE / "en proceso").
+| Archivo | Qué hace |
+|---|---|
+| `drizzle/.../0025_afip_credentials.sql` | Tabla del cert por (tenant, environment). Contenido CIFRADO con el vault; un CHECK rechaza un PEM en claro. Primer consumidor real del vault (escrito y sin usar desde Sprint 1). |
+| `fiscal/afip-credentials.ts` | `getAfipCredentials` / `saveAfipCredentials`. Único lugar que descifra. Falla si el cert está vencido (§8.12) en vez de dejar que AFIP conteste un error que no lo menciona. |
+| `afip/tra-signer.ts` | Firma CMS/PKCS#7 del TRA con **node-forge** (Node no arma CMS). Se descartó `openssl` por consola: en Vercel no hay binario garantizado. |
+| `afip/soap-transport.ts` | `postSoap` sobre `node:https` con `minVersion:'TLSv1.2'` + `rejectUnauthorized:true` + timeout obligatorio. La opción `ca` AGREGA confianza, nunca la saca. |
+| `afip/wsaa-token-cache.ts` | Cache sobre `wsaa_tokens`. En la BASE y no en memoria: WSAA da un token cada 12h y rechaza pedir otro antes de que venza; en serverless un cache en memoria pediría uno por cada arranque en frío. |
+| `fiscal-client-factory.ts` | Junta todo. El environment sale del SERVIDOR, no de un parámetro (ADR-0019 S13). El CUIT sale del CERTIFICADO, no de `companies.cuit`. |
+
+**Tests nuevos:** `tra-signer` (10 unit) · `fiscal-timeouts` (5 unit) ·
+**T-SEC-06** (4 integración, con servidores TLS reales) · **T-FISCAL-CRED-01**
+(10 integración).
+
+**HIGH-2 cerrado:** faltaba (c), el timeout de AFIP acotado y menor que el
+`idle_in_transaction_session_timeout`. `assertAfipTimeoutFitsDb` + su test. Se
+testea PURO a propósito: en desarrollo el timeout de la base está en 0 y un test
+contra la base real pasaría siempre sin probar nada. **(a) el pool fiscal dedicado
+sigue pendiente** — sólo importa en producción con pooler.
+
+## Próximos slices (pendientes)
+
+7. **POS UI**: pasar `require_fiscal_invoice=true` (o según cliente) + mostrar `data.fiscal`
+   (CAE / "en proceso"). **Ojo:** hoy el POS manda `false`, así que aunque haya certificado
+   la emisión sigue sin dispararse. Es el interruptor, y va aparte a propósito.
 8. **Homologación live**: primera factura de prueba de punta a punta. Recién con el cert.
+9. **Seeding de numeración**: cross-check con `FECompUltimoAutorizado` antes del primer
+   comprobante de un PV que ya facturó (ver arriba).
 
-## ⚠️ Dependencia externa que desbloquea el LIVE homologación: el certificado
+## Cómo obtener y cargar el certificado
 
-Para que WSAA autentique hace falta un **certificado X.509 de homologación** de AFIP.
-Es lo único que falta para probar de punta a punta. Cómo obtenerlo (owner, una vez):
+    ./scripts/afip-generar-csr.sh <cuit> "<razón social>" [alias]
 
-1. Generar clave privada + CSR:
-   `openssl req -new -newkey rsa:2048 -nodes -keyout pandora-homo.key -out pandora-homo.csr -subj "/C=AR/O=<razon social>/CN=pandora-homo/serialNumber=CUIT <cuit>"`
-2. En el portal AFIP (homologación / WSASS con clave fiscal): subir el CSR → descargar el certificado.
-3. Autorizar el servicio **wsfe** (WSFEv1) para ese certificado/CUIT en WSASS.
-4. Guardar cert + key. F0 piloto: env vars / vault cifrado (§11.8, nunca en git, nunca loguear).
+Genera la clave privada (que **nunca** sale de la máquina; `.gitignore` la bloquea)
+y el CSR, que es lo único que se sube a AFIP. El script imprime los pasos del portal:
+WSASS para homologación, autorizar el servicio `wsfe`, descargar el `.crt`.
 
-Env vars que se agregarán en el slice WSAA (aún no en `env.ts`):
-`AFIP_CUIT`, `AFIP_CERT` (o path/handle en storage cifrado), `AFIP_PRIVATE_KEY`.
+    pnpm tsx scripts/afip-cargar-certificado.ts --tenant <uuid> --cuit <11>       --cert <archivo.crt> --key <archivo.key> [--env homologacion|produccion]
 
-Endpoints homologación (constantes por environment):
-- WSAA: `https://wsaahomo.afip.gov.ar/ws/services/LoginCms`
-- WSFEv1: `https://wswhomo.afip.gov.ar/wsfev1/service.asmx`
+Lo guarda cifrado y lee el vencimiento del propio certificado.
+
