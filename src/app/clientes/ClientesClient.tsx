@@ -14,12 +14,15 @@
  * alguien va a tratar "Jubilados" como si fuera una condición fiscal.
  *
  * ── LO QUE LA MAQUETA MUESTRA Y ACÁ NO ESTÁ ──────────────────────────────
- *   - "Cta. corriente" y el KPI "Por cobrar": la DEUDA es un dominio de
- *     dinero que no existe (necesita libro append-only propio y toca el
- *     cierre de caja). No se pone ni apagado: no es un botón que falta, es un
- *     dominio entero. Un "$0" implicaría que hay un número calculado.
- *   - Sparkline "+8,3% este mes": necesita el histórico de clientes activos
- *     por mes, que no se guarda.
+ *   - "Ver historial": no existe la pantalla de historial de compras del
+ *     cliente. Se muestra el botón apagado con el motivo, no escondido.
+ *   - "Gestionar tipos…": los segmentos se DERIVAN de los clientes que ya los
+ *     tienen; no hay tabla de catálogo donde guardar uno suelto (migration
+ *     0023). Mismo criterio: apagado con el motivo.
+ *
+ * (Cta. corriente, "Por cobrar" y las curvas ya existen: ADR-0027 trajo el
+ * libro de fiado y las series salen de `sales`. Este bloque decía que faltaban
+ * — se corrigió el 2026-09-06 al construirlas.)
  */
 import { useMemo, useState, useTransition } from 'react';
 import Decimal from 'decimal.js';
@@ -167,28 +170,55 @@ const mesAno = (iso: string) =>
  * plana ABAJO y no en el medio: una linea al medio se lee como "compro algo
  * constante", que es exactamente lo contrario.
  */
-function Sparkline({ serie }: { serie: number[] }) {
-  const W = 252;
-  const H = 52;
+function Sparkline({
+  serie,
+  w = 252,
+  h = 52,
+  className,
+}: {
+  serie: number[];
+  w?: number;
+  h?: number;
+  className?: string;
+}) {
+  const W = w;
+  const H = h;
   const TECHO = 8; // margen arriba, para que el pico no toque el borde
   const max = Math.max(...serie, 0);
+  const min = Math.min(...serie, max);
   const paso = serie.length > 1 ? W / (serie.length - 1) : W;
 
   const puntos = serie.map((v, i) => {
     const x = i * paso;
-    const y = max === 0 ? H - 2 : TECHO + (1 - v / max) * (H - TECHO - 2);
+    // Tres casos, y los dos degenerados importan:
+    //   sin datos    -> plana ABAJO (una linea al medio se leeria como "algo
+    //                   constante", que es lo contrario de "no compro nada")
+    //   todo igual   -> plana AL MEDIO (escalar al maximo la pegaria arriba,
+    //                   como si estuviera siempre en su techo)
+    //   normal       -> escalada al maximo, con la BASE EN CERO. No al rango:
+    //                   escalar al rango convierte una caida de 100 a 95 en un
+    //                   derrumbe visual, y este grafico se mira de reojo.
+    const y =
+      max === 0
+        ? H - 2
+        : max === min
+          ? H / 2
+          : TECHO + (1 - v / max) * (H - TECHO - 2);
     return `${x.toFixed(1)} ${y.toFixed(1)}`;
   });
 
   const linea = 'M ' + puntos.join(' L ');
   const area = `M 0 ${H} L ${puntos.join(' L ')} L ${W} ${H} Z`;
-  const id = 'cdg-' + serie.length;
+  const id = `cdg-${W}-${serie.length}`;
 
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
       preserveAspectRatio="none"
-      style={{ width: '100%', height: 48, display: 'block' }}
+      className={className}
+      width={className ? W : undefined}
+      height={className ? H : undefined}
+      style={className ? undefined : { width: '100%', height: 48, display: 'block' }}
       role="img"
       aria-label={
         max === 0
@@ -336,8 +366,38 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
       }
     }
 
+    // Clientes ACTIVOS = los que compraron en el mes. Se deriva de la misma
+    // serie que dibuja el grafico, asi el numero y la curva no pueden
+    // contradecirse (salen del mismo dato, no de dos consultas).
+    const meses = lista[0]?.serie.length ?? 0;
+    const serieActivos = Array.from({ length: meses }, (_, i) =>
+      lista.reduce((n, c) => n + ((c.serie[i] ?? 0) > 0 ? 1 : 0), 0)
+    );
+    const activos = serieActivos[meses - 1] ?? 0;
+    const activosPrev = serieActivos[meses - 2] ?? 0;
+    // Sin mes anterior no hay porcentaje que calcular. Mostrar "0%" o un 100%
+    // inventado seria peor que decir que todavia no hay con que comparar.
+    const variacion =
+      activosPrev > 0
+        ? ((activos - activosPrev) / activosPrev) * 100
+        : null;
+
+    // "B2B" = el que factura como negocio (tiene condicion fiscal propia).
+    // "Mostrador" = consumidor final o sin definir.
+    const b2b = lista.filter(
+      (c) =>
+        c.tax_condition === 'responsable_inscripto' ||
+        c.tax_condition === 'monotributo' ||
+        c.tax_condition === 'exento'
+    ).length;
+
     return {
       total: lista.length,
+      serieActivos,
+      activos,
+      variacion,
+      b2b,
+      mostrador: lista.length - b2b,
       conDoc,
       sinDoc: lista.length - conDoc,
       nuevosMes,
@@ -512,14 +572,37 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
 
       <div className="kpis">
         <div className="k lead">
-          <div className="k-k">Clientes</div>
+          <div className="k-k">Clientes activos</div>
+          <div className="k-v">{kpis.activos}</div>
+          <div className="k-f">
+            {kpis.variacion === null ? (
+              // Primer mes con datos: no hay contra que comparar.
+              <span className="label-sm">compraron este mes</span>
+            ) : (
+              <>
+                <span className={kpis.variacion >= 0 ? 'up' : 'dn'}>
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <path d={kpis.variacion >= 0 ? 'm6 15 6-6 6 6' : 'm6 9 6 6 6-6'} />
+                  </svg>
+                  {Math.abs(kpis.variacion).toFixed(1).replace('.', ',')}%
+                </span>{' '}
+                este mes
+              </>
+            )}
+          </div>
+          <Sparkline serie={kpis.serieActivos} w={76} h={30} className="k-spark" />
+        </div>
+        <div className="k">
+          <div className="k-k">Total registrados</div>
           <div className="k-v">{kpis.total}</div>
           <div className="k-f">
-            {kpis.conDoc} con documento · {kpis.sinDoc} sin identificar
+            {/* "B2B" = el que factura como negocio (tiene condicion fiscal
+                propia). "Mostrador" = consumidor final o sin definir. */}
+            {kpis.b2b} B2B · {kpis.mostrador} mostrador
           </div>
         </div>
         <div className="k">
-          <div className="k-k">Nuevos este mes</div>
+          <div className="k-k">Nuevos del mes</div>
           <div className="k-v">{kpis.nuevosMes}</div>
           <div className="k-f">
             {/* Comparacion REAL contra el mes pasado: created_at existe, asi
@@ -528,7 +611,7 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
             {kpis.nuevosMesPasado > 0 ? (
               <>
                 <span
-                  className={kpis.nuevosMes >= kpis.nuevosMesPasado ? 'up' : 'down'}
+                  className={kpis.nuevosMes >= kpis.nuevosMesPasado ? 'up' : 'dn'}
                 >
                   <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                     <path
@@ -553,13 +636,6 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
             ) : (
               `${kpis.nuevosMesPasado} el mes pasado`
             )}
-          </div>
-        </div>
-        <div className="k">
-          <div className="k-k">Segmentos</div>
-          <div className="k-v">{kpis.segmentos}</div>
-          <div className="k-f">
-            {segmentos.length > 0 ? segmentos.slice(0, 3).join(' · ') : 'sin etiquetar'}
           </div>
         </div>
         {/* "Por cobrar" — ahora con datos REALES (ADR-0027). Suma de los

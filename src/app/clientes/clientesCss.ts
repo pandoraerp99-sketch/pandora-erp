@@ -552,4 +552,11 @@ button.tipo-btn:focus-visible{ outline:2px solid var(--purple); outline-offset:2
    Va acotado a .main a proposito: la barra lateral la pinta shellCss con los
    valores del POS y tiene que seguir viendose igual en todas las pantallas. */
 .main{ line-height:normal; gap:0; }
+
+/* Variante a la BAJA del indicador de tendencia. La maqueta solo trae .up
+   (verde) porque su dato de ejemplo siempre sube; un comercio real tiene meses
+   que caen, y pintarlos de verde con la flecha para arriba seria mentir. Mismo
+   formato que .up, con el rojo del sistema. */
+.kpis .dn{ display:inline-flex; align-items:center; gap:3px; color:#c0384a; font-weight:600; }
+html[data-theme="dark"] .kpis .dn{ color:#ff8b96; }
 `;
