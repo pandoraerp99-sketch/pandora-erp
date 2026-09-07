@@ -239,6 +239,16 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
           real (no un número inventado). */}
       <div className="bar">
         <div className="bar-id">
+          {/* El icono de caja de la maqueta. Sin el, la barra medía 77px
+              contra los 78 de la maqueta: es el elemento más alto de la
+              fila. */}
+          <span className="bar-icon">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+              <path d="m3.3 7 8.7 5 8.7-5" />
+              <path d="M12 22V12" />
+            </svg>
+          </span>
           <div>
             <div className="bar-title">Productos</div>
             <div className="bar-sub">
