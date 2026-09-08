@@ -121,8 +121,14 @@ export interface CloseSessionInput {
    *   initial_amount
    *   + Σ sale_payments.amount WHERE cash_session_id=X AND method='efectivo'
    *   + Σ cash_movements.amount WHERE type='deposit'
+   *   + Σ cash_movements.amount WHERE type='customer_payment'
    *   - Σ cash_movements.amount WHERE type='withdraw'
    *   - Σ cash_movements.amount WHERE type='provider_payment'
+   *
+   * `customer_payment` es el cobro de una cuenta corriente EN EFECTIVO
+   * (ADR-0027): plata que entra al cajón, así que suma. Los cobros por
+   * transferencia o tarjeta NO generan movimiento de caja — si todos entraran,
+   * el arqueo contaría plata que nunca estuvo. Cubierto por T-CTA-03.
    *
    * El caller puede pasar override para forzar un valor manual (ej: cuando
    * el cajero reconoce diferencias contables que el sistema no ve, o para

@@ -31,6 +31,7 @@ import { TipoDropdown } from '@/components/ui/tipo-dropdown';
 import { CLIENTES_CSS } from './clientesCss';
 import {
   createCustomerAction,
+  settleAccountAction,
   updateCustomerAction,
   type CustomerFormInput,
 } from './actions';
@@ -60,6 +61,8 @@ export interface ClienteDTO {
 
 interface Props {
   clientes: ClienteDTO[];
+  /** Si hay caja abierta. Decide si se puede cobrar en EFECTIVO. */
+  hayCajaAbierta: boolean;
   cashierName: string;
   salePointLabel: string;
 }
@@ -153,6 +156,22 @@ function haceCuanto(iso: string | null): string {
 }
 
 const DOC_TIPOS = ['none', 'DNI', 'CUIT', 'CUIL'] as const;
+
+/**
+ * Con que puede cancelar su cuenta el cliente.
+ *
+ * Es la misma lista que acepta `settleAccount` (SETTLEMENT_METHODS). No se
+ * importa de alla porque ese modulo toca la base y este archivo es 'use
+ * client'; el server igual valida contra la lista canonica, asi que si las dos
+ * se separan el pedido se rechaza en vez de guardar un medio inventado.
+ */
+type MedioCobro = 'efectivo' | 'transferencia' | 'debito' | 'credito';
+const MEDIOS_COBRO: Array<{ valor: MedioCobro; label: string }> = [
+  { valor: 'efectivo', label: 'Efectivo' },
+  { valor: 'transferencia', label: 'Transferencia' },
+  { valor: 'debito', label: 'Débito' },
+  { valor: 'credito', label: 'Crédito' },
+];
 
 /** "ago 2022", como la maqueta. */
 const mesAno = (iso: string) =>
@@ -255,7 +274,12 @@ const fechaCorta = (iso: string | null) =>
         timeZone: 'America/Argentina/Ushuaia',
       }).format(new Date(iso));
 
-export function ClientesClient({ clientes, cashierName, salePointLabel }: Props) {
+export function ClientesClient({
+  clientes,
+  hayCajaAbierta,
+  cashierName,
+  salePointLabel,
+}: Props) {
   const [lista, setLista] = useState<ClienteDTO[]>(clientes);
   const [condActiva, setCondActiva] = useState('Todos');
   const [segmentoActivo, setSegmentoActivo] = useState('');
@@ -271,6 +295,8 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
   const [modalAbierto, setModalAbierto] = useState(false);
   const [editando, setEditando] = useState<ClienteDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Cliente al que se le esta cobrando la cuenta. null = modal cerrado. */
+  const [cobrando, setCobrando] = useState<ClienteDTO | null>(null);
   const [pending, startTransition] = useTransition();
 
   /** Segmentos en uso — se derivan, no hay catálogo (ver migration 0023). */
@@ -902,19 +928,32 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
                 ) : null}
 
                 <div className="cd-btns">
-                  {/* La maqueta pone "Ver historial" aca, y "Editar" como el
-                      link chico de arriba — que ya funciona. Se muestra
-                      apagado con el motivo en vez de esconderlo: el historial
-                      de compras del cliente todavia no tiene pantalla. */}
-                  <button
-                    type="button"
-                    className="cta"
-                    style={{ flex: 1, fontSize: 13, padding: 11 }}
-                    disabled
-                    title="Todavía no existe la pantalla de historial de compras del cliente."
-                  >
-                    Ver historial
-                  </button>
+                  {/* El boton principal es el que sirve EN ESE MOMENTO: si el
+                      cliente debe, cobrarle; si no, la maqueta pone "Ver
+                      historial" (apagado, esa pantalla no existe). Asi el
+                      boton muerto desaparece justo cuando hay algo mejor que
+                      ofrecer, sin agregar un tercer boton a una fila de dos. */}
+                  {debe(sel.saldo) ? (
+                    <button
+                      type="button"
+                      className="cta"
+                      style={{ flex: 1, fontSize: 13, padding: 11 }}
+                      onClick={() => setCobrando(sel)}
+                      disabled={pending}
+                    >
+                      Cobrar {plata(sel.saldo)}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="cta"
+                      style={{ flex: 1, fontSize: 13, padding: 11 }}
+                      disabled
+                      title="Todavía no existe la pantalla de historial de compras del cliente."
+                    >
+                      Ver historial
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="hbtn"
@@ -1001,6 +1040,39 @@ export function ClientesClient({ clientes, cashierName, salePointLabel }: Props)
         </aside>
       </div>
 
+      {cobrando !== null ? (
+        <CobroModal
+          cliente={cobrando}
+          hayCajaAbierta={hayCajaAbierta}
+          pending={pending}
+          onCancelar={() => setCobrando(null)}
+          onCobrar={(monto, medio) => {
+            setError(null);
+            startTransition(async () => {
+              const res = await settleAccountAction({
+                customerId: cobrando.id,
+                amount: monto,
+                method: medio,
+              });
+              if (!res.ok) {
+                setError(res.error);
+                return;
+              }
+              // El saldo y la antiguedad los recalcula el SERVIDOR (salen del
+              // libro, y la antiguedad depende de a que cargos se imputo el
+              // pago). Restar aca daria un numero que no coincide al recargar.
+              const { saldo, dias } = res.data;
+              setLista((prev) =>
+                prev.map((c) =>
+                  c.id === cobrando.id ? { ...c, saldo, dias_deuda: dias } : c
+                )
+              );
+              setCobrando(null);
+            });
+          }}
+        />
+      ) : null}
+
       {modalAbierto ? (
         <ClienteModal
           cliente={editando}
@@ -1042,6 +1114,162 @@ interface ModalProps {
   pending: boolean;
   onCancelar: () => void;
   onGuardar: (form: CustomerFormInput) => void;
+}
+
+/**
+ * Cobro de cuenta corriente.
+ *
+ * La maqueta de Clientes NO tiene este flujo — muestra la deuda y no ofrece
+ * dónde registrar el pago. Así que esto se compone con las piezas de la
+ * maqueta (.pmov / .pmod / .pm-fld / .pm-acts), no con un lenguaje visual
+ * nuevo.
+ */
+function CobroModal({
+  cliente,
+  hayCajaAbierta,
+  pending,
+  onCancelar,
+  onCobrar,
+}: {
+  cliente: ClienteDTO;
+  hayCajaAbierta: boolean;
+  pending: boolean;
+  onCancelar: () => void;
+  onCobrar: (monto: string, medio: MedioCobro) => void;
+}) {
+  // Arranca con la deuda ENTERA: pagar todo es el caso común, y así el cajero
+  // no tipea un número que ya está en pantalla (ni se equivoca al copiarlo).
+  const [monto, setMonto] = useState(() =>
+    new Decimal(cliente.saldo).toFixed(2)
+  );
+  // Si no hay caja abierta el efectivo no se puede registrar, así que ni
+  // siquiera arranca elegido.
+  const [medio, setMedio] = useState<MedioCobro>(
+    hayCajaAbierta ? 'efectivo' : 'transferencia'
+  );
+
+  const deuda = new Decimal(cliente.saldo);
+  const ingresado = (() => {
+    try {
+      return new Decimal(monto === '' ? '0' : monto);
+    } catch {
+      return null; // lo que tipeó no es un número
+    }
+  })();
+
+  const montoInvalido =
+    ingresado === null || !ingresado.isFinite() || ingresado.lte(0);
+  const pagaDeMas = ingresado !== null && ingresado.gt(deuda);
+  const restante =
+    ingresado !== null && !montoInvalido ? deuda.minus(ingresado) : deuda;
+
+  const efectivoBloqueado = medio === 'efectivo' && !hayCajaAbierta;
+  const puedeCobrar = !montoInvalido && !efectivoBloqueado && !pending;
+
+  return (
+    <div className="pmov open" onClick={onCancelar}>
+      <div
+        className="pmod"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Cobrar cuenta de ${cliente.name}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="pm-head">
+          <div>
+            <div className="pm-title">Cobrar cuenta</div>
+            <div className="pm-sub">
+              {cliente.name} · debe <b>{plata(cliente.saldo)}</b>
+              {cliente.dias_deuda !== null && cliente.dias_deuda > 0
+                ? ` desde hace ${cliente.dias_deuda} ${cliente.dias_deuda === 1 ? 'día' : 'días'}`
+                : ''}
+            </div>
+          </div>
+          <button type="button" className="pm-x" onClick={onCancelar} aria-label="Cerrar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="pm-fld">
+          <label htmlFor="cbMonto">Cuánto paga</label>
+          <input
+            id="cbMonto"
+            value={monto}
+            onChange={(e) => setMonto(e.target.value)}
+            inputMode="decimal"
+            autoFocus
+            aria-describedby="cbResto"
+          />
+          <div id="cbResto" className="pm-note" style={{ margin: '6px 0 0' }}>
+            {montoInvalido ? (
+              'Poné un importe mayor a cero.'
+            ) : pagaDeMas ? (
+              <>
+                Paga <b>{plata(ingresado!.minus(deuda).toFixed(2))}</b> de más:
+                le queda a favor.
+              </>
+            ) : restante.lte(0) ? (
+              'Con esto queda al día.'
+            ) : (
+              <>
+                Le va a quedar debiendo <b>{plata(restante.toFixed(2))}</b>.
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="pm-fld">
+          <label htmlFor="cbMedio">Con qué paga</label>
+          <select
+            id="cbMedio"
+            value={medio}
+            onChange={(e) => setMedio(e.target.value as MedioCobro)}
+          >
+            {MEDIOS_COBRO.map((m) => (
+              <option key={m.valor} value={m.valor}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Sólo el efectivo entra a la caja: es plata que va al cajón. Los
+            otros medios no la tocan — si todo cobro fuera al arqueo, la caja
+            contaría plata que nunca entró. */}
+        {medio === 'efectivo' ? (
+          hayCajaAbierta ? (
+            <p className="pm-note">
+              Entra a la <b>caja del día</b> y suma al arqueo.
+            </p>
+          ) : (
+            <p className="pm-note" style={{ color: '#c0384a' }}>
+              <b>No hay una caja abierta.</b> Un cobro en efectivo tiene que
+              entrar a la caja del día. Abrila desde Caja, o cobrá por otro
+              medio.
+            </p>
+          )
+        ) : (
+          <p className="pm-note">No toca la caja: no es plata del cajón.</p>
+        )}
+
+        <div className="pm-acts">
+          <button type="button" className="pm-btn ghost" onClick={onCancelar}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className="pm-btn primary"
+            disabled={!puedeCobrar}
+            onClick={() => onCobrar(ingresado!.toFixed(2), medio)}
+          >
+            {pending ? 'Registrando…' : 'Registrar cobro'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ClienteModal({

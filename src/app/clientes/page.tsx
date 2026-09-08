@@ -18,6 +18,7 @@ import {
   listCustomers,
 } from '@/lib/services/customers/customer.service';
 import { getDebtorsWithAge } from '@/lib/services/customers/account.service';
+import { getActiveCashSession } from '@/lib/cash/sessions';
 import { ClientesClient, type ClienteDTO } from './ClientesClient';
 
 export default async function ClientesPage() {
@@ -49,6 +50,15 @@ export default async function ClientesPage() {
     { requireAuth: true }
   );
   const SERIE_VACIA = Array.from({ length: MESES_SERIE }, () => 0);
+
+  // Hay caja abierta? Lo necesita la pantalla para poder DECIRLO antes de que
+  // el usuario elija efectivo, en vez de dejarlo completar el formulario y
+  // rebotarlo al confirmar. La accion igual lo vuelve a chequear: esto es UX,
+  // no la defensa.
+  const cajaAbierta = await withServerActionTracing(
+    async () => (await getActiveCashSession(1)) !== null,
+    { requireAuth: true }
+  );
 
   const [company] = await db
     .select({ name: companies.name })
@@ -82,6 +92,7 @@ export default async function ClientesPage() {
   return (
     <ClientesClient
       clientes={dtos}
+      hayCajaAbierta={cajaAbierta}
       cashierName={session.email.replace(/@.*/, '')}
       salePointLabel={company?.name ?? 'Mi comercio'}
     />
