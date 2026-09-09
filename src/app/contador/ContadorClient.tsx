@@ -36,6 +36,7 @@ export interface ResumenDTO {
   medios: Array<{ medio: string; total: string; cantidad: number }>;
   cuentasCorrientes: { porCobrar: string; deudores: number };
   caja: { cierres: number; conDescuadre: number; descuadreTotal: string };
+  gastos: { total: string; cantidad: number; credito: string; comprobantes: number };
 }
 
 interface Props {
@@ -98,6 +99,10 @@ const PENDIENTES: Array<{ que: string; porque: string }> = [
   {
     que: 'Retenciones y percepciones · SICORE',
     porque: 'no se registran todavía',
+  },
+  {
+    que: 'Detalle de proveedores/acreedores al cierre',
+    porque: 'el gasto se registra pagado; no hay cuenta corriente de proveedores',
   },
   {
     que: 'IIBB · Tierra del Fuego (AREF)',
@@ -384,26 +389,60 @@ export function ContadorClient({
               <span className="k">IVA Débito Fiscal (ventas)</span>
               <span className="v">{plata(resumen.ventas.iva)}</span>
             </div>
-            {/* NO va un $0: sería afirmar que no hubo compras, y lo cierto es
-                que no se cargan. */}
-            <LineaSinDato
-              k="IVA Crédito Fiscal (compras)"
-              porque="no se cargan facturas de compra"
-            />
+            {/* Con gastos cargados el crédito es REAL. Sin ellos NO va un $0:
+                sería afirmar que no hubo compras, y lo cierto es que no se
+                cargaron. */}
+            {resumen.gastos.comprobantes > 0 ? (
+              <div className="kv">
+                <span className="k">
+                  IVA Crédito Fiscal (compras)
+                  <span className="label-sm">
+                    {' '}
+                    ·{' '}
+                    {resumen.gastos.comprobantes === 1
+                      ? '1 comprobante'
+                      : `${resumen.gastos.comprobantes} comprobantes`}
+                  </span>
+                </span>
+                <span className="v">−{plata(resumen.gastos.credito)}</span>
+              </div>
+            ) : (
+              <LineaSinDato
+                k="IVA Crédito Fiscal (compras)"
+                porque="todavía no se cargaron gastos con factura"
+              />
+            )}
             <LineaSinDato
               k="Retenciones/percepciones sufridas"
               porque="no se registran todavía"
             />
             <div className="divider" />
-            <div className="iva-pos">
-              <span>Saldo a pagar</span>
-              <span
-                className="label-sm"
-                style={{ color: '#b96c1a', textAlign: 'right', maxWidth: 200 }}
-              >
-                no se puede calcular sin el crédito fiscal
-              </span>
-            </div>
+            {resumen.gastos.comprobantes > 0 ? (
+              <div className="iva-pos">
+                <span>Saldo a pagar</span>
+                <span className="iva-amt tnum">
+                  {plata(
+                    (
+                      Number(resumen.ventas.iva) - Number(resumen.gastos.credito)
+                    ).toFixed(2)
+                  )}
+                </span>
+              </div>
+            ) : (
+              <div className="iva-pos">
+                <span>Saldo a pagar</span>
+                <span
+                  className="label-sm"
+                  style={{ color: '#b96c1a', textAlign: 'right', maxWidth: 200 }}
+                >
+                  no se puede calcular sin el crédito fiscal
+                </span>
+              </div>
+            )}
+            <p className="label-sm" style={{ marginTop: 10 }}>
+              Es un <b>borrador</b>: no incluye retenciones ni percepciones
+              sufridas. La posición definitiva la arma la contadora.
+            </p>
           </section>
 
           <section className="card glass">
@@ -503,6 +542,44 @@ export function ContadorClient({
             )}
           </section>
         </div>
+
+        <div className="sec-h2">{H2_ICONO}Gastos del período</div>
+        <section className="card glass">
+          <div className="card-title">
+            <h3>Gastos</h3>
+            <span className="upper-mini">{resumen.periodo.etiqueta}</span>
+          </div>
+          {resumen.gastos.cantidad === 0 ? (
+            <p className="label-sm">
+              No se cargaron gastos en el período. Es lo que hoy el comercio le
+              manda a la contadora clasificado a mano.
+            </p>
+          ) : (
+            <>
+              <div className="conc-stats">
+                <div>
+                  <div className="cs-k">Total</div>
+                  <div className="cs-v tnum">{plata(resumen.gastos.total)}</div>
+                </div>
+                <div>
+                  <div className="cs-k">Comprobantes</div>
+                  <div className="cs-v tnum">{resumen.gastos.cantidad}</div>
+                </div>
+                <div>
+                  <div className="cs-k">Con factura (IVA compras)</div>
+                  <div className="cs-v tnum">{resumen.gastos.comprobantes}</div>
+                </div>
+              </div>
+              <p className="label-sm">
+                Los que tienen factura el estudio ya los baja de ARCA; los otros{' '}
+                <b>
+                  {resumen.gastos.cantidad - resumen.gastos.comprobantes}
+                </b>{' '}
+                son los que hay que mandarle.
+              </p>
+            </>
+          )}
+        </section>
 
         <div className="sec-h2">{H2_ICONO}Cuentas corrientes</div>
         <section className="card glass">

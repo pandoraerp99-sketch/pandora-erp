@@ -119,6 +119,18 @@ export interface ResumenContable {
     /** Suma de los descuadres en valor absoluto. */
     descuadreTotal: string;
   };
+  /**
+   * Gastos del período. `credito` es el IVA computable: SOLO de los gastos con
+   * comprobante fiscal (`en_iva_compras`). Un gasto sin factura no da credito
+   * por mas IVA que tenga adentro el precio.
+   */
+  gastos: {
+    total: string;
+    cantidad: number;
+    credito: string;
+    /** Cuantos gastos aportan credito fiscal. */
+    comprobantes: number;
+  };
 }
 
 /**
@@ -216,6 +228,21 @@ export async function getResumenContable(
           AND closed_at <  ${hasta}::timestamptz`
   );
 
+  const [gastos] = await db.execute<{
+    total: string;
+    cantidad: number;
+    credito: string;
+    comprobantes: number;
+  }>(
+    sql`SELECT coalesce(sum(total), 0)::text AS total,
+               count(*)::int                 AS cantidad,
+               coalesce(sum(iva) FILTER (WHERE en_iva_compras), 0)::text AS credito,
+               count(*) FILTER (WHERE en_iva_compras)::int              AS comprobantes
+        FROM expenses
+        WHERE tenant_id = ${tenantId}
+          AND fecha >= ${desde}::date AND fecha < ${hasta}::date`
+  );
+
   return {
     periodo,
     ventas: {
@@ -238,6 +265,12 @@ export async function getResumenContable(
       cierres: caja?.cierres ?? 0,
       conDescuadre: caja?.con_descuadre ?? 0,
       descuadreTotal: caja?.descuadre_total ?? '0',
+    },
+    gastos: {
+      total: gastos?.total ?? '0',
+      cantidad: gastos?.cantidad ?? 0,
+      credito: gastos?.credito ?? '0',
+      comprobantes: gastos?.comprobantes ?? 0,
     },
   };
 }
