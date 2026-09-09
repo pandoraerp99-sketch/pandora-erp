@@ -9,6 +9,12 @@
  * Los importes llevan CENTAVOS a propósito: con miles redondos, un error de
  * suma en float pasaría inadvertido (CLAUDE.md §9.8).
  *
+ * OJO: inserta DIRECTO en la tabla, sin pasar por registerExpense(). O sea que
+ * los que dicen 'efectivo' NO generan su movimiento de caja. La pantalla no
+ * miente por eso — la leyenda "salio de la caja" sale de cash_movement_id, que
+ * en estos es null — pero no tomes esta data como prueba de que el efectivo
+ * funciona: eso lo prueban T-GASTO-01 y la carga real desde la pantalla.
+ *
  * NO es data productiva. Idempotente: borra los suyos antes de insertar.
  * Correr:  node scripts/seed-dev-gastos.mjs
  */
