@@ -18,6 +18,7 @@
  * listado al final, con el motivo de cada uno.
  */
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/shell/AppShell';
 import { CONTADOR_CSS } from './contadorCss';
 import { cambiarEmpresaAction, exportarVentasCsvAction } from './actions';
@@ -150,13 +151,16 @@ export function ContadorClient({
   deudores,
   usuario,
 }: Props) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
+  // Cambiar de período es NAVEGAR: vive en la URL. Antes esto asignaba
+  // `window.location.href`, que recarga la app entera (y el linter lo marcaba,
+  // con razón: muta algo de afuera del componente). Con el router de Next se
+  // vuelve a renderizar sólo esta página, en el servidor.
   const cambiarGrano = (g: Grano) => {
-    const url = new URL(window.location.href);
-    url.searchParams.set('periodo', g);
-    window.location.href = url.toString();
+    router.push(`/contador?periodo=${g}`);
   };
 
   const cambiarEmpresa = (id: string) => {

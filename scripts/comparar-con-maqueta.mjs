@@ -8,6 +8,17 @@
  * pero no se nombran. Esto las nombra.
  *
  *   node comparar.mjs <ruta-app> <archivo-maqueta.html>
+ *
+ * ── TAMBIEN COMPARA DOS PANTALLAS DE LA APP ───────────────────────────────
+ * Si el segundo argumento empieza con "/", se interpreta como OTRA RUTA de la
+ * app en vez de un archivo de maqueta:
+ *
+ *   node comparar.mjs /gastos /clientes
+ *
+ * Hace falta porque Gastos no nace de una maqueta (nace del pedido de la
+ * contadora) y comparte la base de CSS con Clientes. Sin referencia contra la
+ * cual medir, la unica verificacion posible seria mirar una captura — que es
+ * exactamente lo que este script existe para no volver a hacer.
  */
 import { spawn } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
@@ -190,9 +201,18 @@ const huecosApp = await evaluar(HUECOS);
 const crudoApp = await evaluar(CRUDO);
 const fuenteApp = await evaluar(FUENTE);
 
-// ── Maqueta ──
-const fileUrl = 'file:///' + MAQUETA.replace(/\\/g, '/');
-await ir(fileUrl);
+// ── Referencia: maqueta (file://) u otra pantalla de la app ──
+const esRuta = MAQUETA.startsWith('/');
+const refUrl = esRuta
+  ? `${BASE}${MAQUETA}`
+  : 'file:///' + MAQUETA.replace(/\\/g, '/');
+await ir(refUrl);
+if (esRuta) {
+  console.log(
+    'REF EN:',
+    await evaluar(`location.pathname + ' | topbar=' + !!document.querySelector('.topbar')`)
+  );
+}
 const maq = JSON.parse(await evaluar(MEDIR(OBJETIVOS)));
 const huecosMaq = await evaluar(HUECOS);
 const crudoMaq = await evaluar(CRUDO);
@@ -200,7 +220,8 @@ const fuenteMaq = await evaluar(FUENTE);
 
 // ── Diff ──
 let dif = 0;
-console.log('SELECTOR / PROP'.padEnd(42), 'APP'.padEnd(22), 'MAQUETA');
+const ETIQ_REF = esRuta ? MAQUETA.toUpperCase() : 'MAQUETA';
+console.log('SELECTOR / PROP'.padEnd(42), RUTA.toUpperCase().padEnd(22), ETIQ_REF);
 console.log('-'.repeat(92));
 for (const [sel] of OBJETIVOS) {
   const a = app[sel];
@@ -223,11 +244,11 @@ for (const [sel] of OBJETIVOS) {
 console.log('-'.repeat(92));
 console.log(dif === 0 ? 'IDENTICOS' : `${dif} diferencias`);
 console.log('HUECOS app    :', huecosApp);
-console.log('HUECOS maqueta:', huecosMaq);
+console.log('HUECOS ref    :', huecosMaq);
 console.log('CRUDO app    :', crudoApp);
-console.log('CRUDO maqueta:', crudoMaq);
+console.log('CRUDO ref    :', crudoMaq);
 console.log('FUENTE app    :', fuenteApp);
-console.log('FUENTE maqueta:', fuenteMaq);
+console.log('FUENTE ref    :', fuenteMaq);
 
 ws.close();
 chrome.kill();

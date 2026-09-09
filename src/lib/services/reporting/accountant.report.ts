@@ -17,10 +17,10 @@
  * exporta. Pandora prepara borradores, la matriculada firma (Ley 20.488).
  */
 import { sql } from 'drizzle-orm';
-import Decimal from 'decimal.js';
 import { db } from '../../db/client.js';
 import { requireTracingContext } from '../../tracing/context.js';
 import { CrossTenantAccessError } from '../../multi_tenant/errors.js';
+import { csvArmar, csvNum, csvTxt } from './csv.js';
 
 function requireTenantId(): string {
   const ctx = requireTracingContext();
@@ -334,38 +334,33 @@ export async function getVentasParaExport(
  * trabajo que esto viene a sacarle.
  */
 export function armarCsv(filas: FilaExport[]): string {
-  const cabecera = [
-    'Fecha',
-    'Cliente',
-    'Documento',
-    'Condición IVA',
-    'Neto',
-    'IVA',
-    'Exento',
-    'Total',
-    'Medio de pago',
-  ];
-
-  const num = (v: string) => new Decimal(v || '0').toFixed(2).replace('.', ',');
-  const txt = (v: string) =>
-    /[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
-
-  const lineas = filas.map((f) =>
+  // La receta (separador, decimales, CRLF, BOM) vive en `csv.ts` y la comparte
+  // con el export de gastos. Dos copias derivan, y el test de cada una pasa
+  // igual porque mide su propio archivo, no el otro.
+  return csvArmar(
     [
+      'Fecha',
+      'Cliente',
+      'Documento',
+      'Condición IVA',
+      'Neto',
+      'IVA',
+      'Exento',
+      'Total',
+      'Medio de pago',
+    ],
+    filas.map((f) => [
       f.fecha,
-      txt(f.cliente),
-      txt(f.doc),
-      txt(f.condicion),
-      num(f.neto),
-      num(f.iva),
-      num(f.exento),
-      num(f.total),
-      txt(f.medio),
-    ].join(';')
+      csvTxt(f.cliente),
+      csvTxt(f.doc),
+      csvTxt(f.condicion),
+      csvNum(f.neto),
+      csvNum(f.iva),
+      csvNum(f.exento),
+      csvNum(f.total),
+      csvTxt(f.medio),
+    ])
   );
-
-  // BOM: sin el, Excel abre el archivo en ANSI y rompe los acentos y la ñ.
-  return '﻿' + [cabecera.join(';'), ...lineas].join('\r\n') + '\r\n';
 }
 
 export interface DeudorDelPeriodo {

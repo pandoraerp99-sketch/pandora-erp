@@ -30,6 +30,7 @@ import { cash_sessions } from '../../db/schema/cash_sessions.js';
 import { requireTracingContext } from '../../tracing/context.js';
 import { CrossTenantAccessError, DomainError } from '../../multi_tenant/errors.js';
 import { logger } from '../../observability/logger.js';
+import { csvArmar, csvNum, csvTxt } from '../reporting/csv.js';
 
 export class ExpenseError extends DomainError {
   constructor(code: string, messageEs: string) {
@@ -283,7 +284,109 @@ export async function getExpenseTotals(
           AND fecha >= ${desde}::date AND fecha < ${hasta}::date
           ${soloFueraDeArca ? sql`AND en_iva_compras = false` : sql``}
         GROUP BY categoria
-        ORDER BY 2 DESC`
+        -- ORDER BY sum(total), NO 'ORDER BY 2'. La columna 2 es el total ya
+        -- casteado a TEXT, y ordenar texto compara caracter por caracter:
+        -- '95000' sale antes que '400000' porque '9' > '4'. Se veia en
+        -- pantalla — Honorarios arriba de Alquiler — y el numero de cada fila
+        -- estaba bien, asi que no habia nada que delatara el error salvo
+        -- mirar el orden.
+        ORDER BY sum(total) DESC`
+  );
+}
+
+export interface ResumenGastos {
+  [k: string]: string;
+  /** Todo el período. */
+  total: string;
+  cantidad: string;
+  /** Los que el estudio YA baja de ARCA. */
+  arca_total: string;
+  arca_cantidad: string;
+  /** IVA computable: sale sólo de los de arriba. */
+  arca_credito: string;
+  /** Los que el comercio tiene que MANDAR. Es lo que va en el export. */
+  fuera_total: string;
+  fuera_cantidad: string;
+}
+
+/**
+ * Totales del período en UNA consulta.
+ *
+ * Existe para que la pantalla NO sume plata en el navegador. Sumar los totales
+ * por categoría con `+=` sobre strings arrastra el error de punto flotante y
+ * además pasa desapercibido: con importes redondos da bien, y el número roto
+ * recién aparece con centavos de verdad (CLAUDE.md §9.8 — ya pasó una vez con
+ * el KPI "Por cobrar" de Clientes).
+ */
+export async function getExpenseSummary(
+  desde: string,
+  hasta: string
+): Promise<ResumenGastos> {
+  const { tenantId } = ctx();
+  const [fila] = await db.execute<ResumenGastos>(
+    sql`SELECT coalesce(sum(total), 0)::text AS total,
+               count(*)::text                AS cantidad,
+               coalesce(sum(total) FILTER (WHERE en_iva_compras), 0)::text AS arca_total,
+               count(*)   FILTER (WHERE en_iva_compras)::text              AS arca_cantidad,
+               coalesce(sum(iva)   FILTER (WHERE en_iva_compras), 0)::text AS arca_credito,
+               coalesce(sum(total) FILTER (WHERE NOT en_iva_compras), 0)::text AS fuera_total,
+               count(*)   FILTER (WHERE NOT en_iva_compras)::text          AS fuera_cantidad
+        FROM expenses
+        WHERE tenant_id = ${tenantId}
+          AND fecha >= ${desde}::date AND fecha < ${hasta}::date`
+  );
+  const cero: ResumenGastos = {
+    total: '0',
+    cantidad: '0',
+    arca_total: '0',
+    arca_cantidad: '0',
+    arca_credito: '0',
+    fuera_total: '0',
+    fuera_cantidad: '0',
+  };
+  return fila ?? cero;
+}
+
+/**
+ * CSV de gastos para el estudio.
+ *
+ * El caso que motiva todo esto es el de los que NO entran al IVA compras
+ * (`soloFueraDeArca`): los otros el estudio ya los baja de ARCA, y mandarlos
+ * de nuevo le hace revisar dos veces lo mismo.
+ *
+ * Lleva el CUIT del proveedor: la contadora lo pide explícitamente en el
+ * detalle, y es la columna más fácil de dejar afuera.
+ */
+export function armarCsvGastos(gastos: Expense[]): string {
+  return csvArmar(
+    [
+      'Fecha',
+      'Categoría',
+      'Proveedor',
+      'CUIT',
+      'Comprobante',
+      'Neto',
+      'IVA',
+      'Total',
+      'Medio de pago',
+      'En IVA compras',
+      'Detalle',
+    ],
+    gastos.map((g) => [
+      g.fecha,
+      csvTxt(g.categoria),
+      csvTxt(g.payee_name ?? ''),
+      csvTxt(g.payee_doc ?? ''),
+      csvTxt(
+        [g.comprobante_tipo, g.comprobante_numero].filter(Boolean).join(' ')
+      ),
+      csvNum(g.neto),
+      csvNum(g.iva),
+      csvNum(g.total),
+      csvTxt(g.medio_pago),
+      g.en_iva_compras ? 'Sí' : 'No',
+      csvTxt(g.descripcion ?? ''),
+    ])
   );
 }
 

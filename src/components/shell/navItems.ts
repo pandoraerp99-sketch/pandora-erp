@@ -15,6 +15,15 @@
  * para no reconvertirlos a JSX a mano (fuente de drift visual).
  *
  * NO editar a mano: regenerar desde la maqueta.
+ *
+ * ── LA UNICA EXCEPCION: "Gastos" (2026-09-09) ─────────────────────────────
+ * Gastos NO sale de ninguna maqueta. Sale del pedido real de la contadora (ver
+ * EVIDENCIA-pedido-contadora-2026-09.md): las maquetas se dibujaron antes de
+ * que ese pedido existiera. Es deliberado y va DESPUES de Facturas, que es su
+ * contracara — Facturas es lo que entra, Gastos lo que sale.
+ *
+ * Si algun dia se regenera este archivo desde la maqueta, este item hay que
+ * volver a agregarlo a mano: una regeneracion a ciegas lo borra.
  */
 export interface NavItem {
   label: string;
@@ -31,6 +40,9 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Stock", href: "/stock", icon: "<svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z\"/><path d=\"m3.3 7 8.7 5 8.7-5\"/><path d=\"M12 22V12\"/></svg>" },
   { label: "Ofertas", href: "/ofertas", icon: "<svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z\"/><path d=\"m15 9-6 6\"/><path d=\"M9 9h.01\"/><path d=\"M15 15h.01\"/></svg>" },
   { label: "Facturas", href: "/facturas", icon: "<svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 3h12v18l-3-2-3 2-3-2-3 2z\"/><path d=\"M9 8h6\"/><path d=\"M9 12h6\"/><path d=\"M9 16h4\"/></svg>" },
+  // No viene de la maqueta — ver la nota del encabezado. El icono sigue el
+  // mismo lenguaje que el resto (stroke 1.7, 15x15, currentColor).
+  { label: "Gastos", href: "/gastos", icon: "<svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 6a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"/><path d=\"M16 4v5h5\"/><path d=\"M8 14h8\"/><path d=\"M8 18h5\"/></svg>" },
   { label: "Presupuestos", href: "/presupuestos", icon: "<svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"8\" y=\"2\" width=\"8\" height=\"4\" rx=\"1\"/><path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\"/><path d=\"M9 12h6\"/><path d=\"M9 16h4\"/></svg>" },
   { label: "Pedidos", href: "/pedidos", icon: "<svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z\"/><path d=\"M3 6h18\"/><path d=\"M16 10a4 4 0 0 1-8 0\"/></svg>" },
   { label: "Señas", href: "/senas", icon: "<svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8\" cy=\"8\" r=\"6\"/><path d=\"M18.09 10.37A6 6 0 1 1 10.34 18\"/><path d=\"M7 6h1v4\"/><path d=\"m16.71 13.88.7.71-2.82 2.82\"/></svg>" },
@@ -57,4 +69,5 @@ export const IMPLEMENTED_ROUTES = new Set([
   '/productos',
   '/clientes',
   '/contador',
+  '/gastos',
 ]);
