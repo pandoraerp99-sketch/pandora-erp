@@ -34,6 +34,31 @@ function requireTenantId(): string {
   return ctx.tenant_id;
 }
 
+/**
+ * Mes de cierre de ejercicio de la empresa de la sesión (migration 0027).
+ *
+ * ── POR QUE VIVE ACA Y NO EN CADA PANTALLA ────────────────────────────────
+ * Estaba duplicado en `gastos/actions.ts` y en `contador/actions.ts`, ocho
+ * líneas idénticas cada una. Es el mismo riesgo que tenía el CSV antes de
+ * `csv.ts`: si una de las dos deriva, el test de ese archivo pasa igual porque
+ * mide su propio camino.
+ *
+ * Y acá el costo de derivar es alto: este número define QUÉ DOCE MESES salen en
+ * el archivo que se le manda a la contadora. Con el mes equivocado, la pantalla
+ * dice un rango y el CSV trae otro — perfectamente bien formado.
+ *
+ * El `?? 12` es el default de la columna, no un invento: una empresa sin el
+ * dato cargado cierra el 31/12. La etiqueta del período muestra el rango
+ * completo, así que si estuviera mal se ve.
+ */
+export async function getMesCierreEjercicio(): Promise<number> {
+  const tenantId = requireTenantId();
+  const [c] = await db.execute<{ mes: number }>(
+    sql`SELECT fiscal_year_end_month AS mes FROM companies WHERE id = ${tenantId}`
+  );
+  return c?.mes ?? 12;
+}
+
 export interface Periodo {
   /** Primer día, inclusive. */
   desde: Date;

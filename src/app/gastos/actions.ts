@@ -5,11 +5,7 @@
  * cero lógica de negocio (eso vive en expense.service.ts).
  */
 import { revalidatePath } from 'next/cache';
-import { eq } from 'drizzle-orm';
 import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
-import { requireTracingContext } from '@/lib/tracing/context';
-import { db } from '@/lib/db/client';
-import { companies } from '@/lib/db/schema/companies';
 import { DomainError } from '@/lib/multi_tenant/errors';
 import {
   armarCsvGastos,
@@ -19,7 +15,12 @@ import {
   type NuevoGasto,
 } from '@/lib/services/expenses/expense.service';
 import { getActiveCashSession } from '@/lib/cash/sessions';
-import { periodoDe, GRANOS, type Grano } from '@/lib/services/reporting/accountant.report';
+import {
+  getMesCierreEjercicio,
+  periodoDe,
+  GRANOS,
+  type Grano,
+} from '@/lib/services/reporting/accountant.report';
 
 export type ActionResult<T> =
   | { ok: true; data: T }
@@ -40,22 +41,6 @@ async function runAction<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
 // F0: un único punto de venta (Caja 1), igual que /caja, /clientes y el POS.
 const SALE_POINT = 1;
 
-/**
- * Mes de cierre de ejercicio de la empresa de la sesión (migration 0027).
- *
- * Va acá y no como parámetro del cliente a propósito: define QUÉ DOCE MESES
- * salen en el CSV que se le manda a la contadora.
- */
-async function getMesCierreEjercicio(): Promise<number> {
-  const tenantId = requireTracingContext().tenant_id;
-  if (tenantId === null || tenantId === undefined) return 12;
-  const [c] = await db
-    .select({ mes: companies.fiscal_year_end_month })
-    .from(companies)
-    .where(eq(companies.id, tenantId))
-    .limit(1);
-  return c?.mes ?? 12;
-}
 
 /** Lo que llega del formulario. El `cash_session_id` NO viaja: lo pone el server. */
 export type GastoFormInput = Omit<NuevoGasto, 'cash_session_id'>;

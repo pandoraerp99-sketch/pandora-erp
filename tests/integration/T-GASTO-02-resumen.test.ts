@@ -29,6 +29,10 @@ import {
   getExpenseTotals,
   registerExpense,
 } from '@/lib/services/expenses/expense.service';
+import {
+  getMesCierreEjercicio,
+  periodoDe,
+} from '@/lib/services/reporting/accountant.report';
 
 const HOY = new Date().toISOString().slice(0, 10);
 const DESDE = HOY.slice(0, 8) + '01';
@@ -216,6 +220,73 @@ describe('T-GASTO-02 — resumen del período', () => {
 
     const filas = await withCtx(() => getExpenseTotals(DESDE, HASTA));
     expect(filas.map((f) => f.categoria)).toEqual(['alquiler', 'honorarios']);
+  });
+
+  describe('mes de cierre de ejercicio → qué doce meses se exportan', () => {
+    // Es el camino donde una respuesta equivocada llega a la contadora
+    // PARECIENDO correcta: el archivo sale perfectamente bien formado, con
+    // otros doce meses adentro. Por eso se prueba de punta a punta — del dato
+    // de la empresa al rango que termina en el nombre del CSV.
+
+    it('lee el mes de cierre de la empresa, no un default', async () => {
+      await db
+        .update(companies)
+        .set({ fiscal_year_end_month: 7 })
+        .where(eq(companies.id, tenantId));
+      expect(await withCtx(getMesCierreEjercicio)).toBe(7);
+    });
+
+    it('con cierre en julio, el ejercicio va del 01/08 al 31/07', async () => {
+      // El caso textual del pedido: "iniciado el 01/08/2025 y finalizado el
+      // 31/07/2026".
+      await db
+        .update(companies)
+        .set({ fiscal_year_end_month: 7 })
+        .where(eq(companies.id, tenantId));
+
+      const mes = await withCtx(getMesCierreEjercicio);
+      const p = periodoDe('ejercicio', new Date('2026-09-09T12:00:00Z'), mes);
+      expect(p.desde.toISOString().slice(0, 10)).toBe('2025-08-01');
+      expect(p.hasta.toISOString().slice(0, 10)).toBe('2026-08-01');
+
+      // El nombre del archivo lleva el último día INCLUIDO, que es lo que ve
+      // la contadora en su carpeta.
+      const ultimo = new Date(p.hasta.getTime() - 86400000)
+        .toISOString()
+        .slice(0, 10);
+      expect(`gastos-todos-${p.desde.toISOString().slice(0, 10)}_a_${ultimo}.csv`).toBe(
+        'gastos-todos-2025-08-01_a_2026-07-31.csv'
+      );
+    });
+
+    it('otra empresa con otro cierre da OTROS doce meses', async () => {
+      // Si el mes de cierre no se leyera de la empresa, las dos darían igual.
+      await db
+        .update(companies)
+        .set({ fiscal_year_end_month: 7 })
+        .where(eq(companies.id, tenantId));
+      await db
+        .update(companies)
+        .set({ fiscal_year_end_month: 3 })
+        .where(eq(companies.id, otroTenant));
+
+      const hoy = new Date('2026-09-09T12:00:00Z');
+      const unaJulio = periodoDe('ejercicio', hoy, await withCtx(getMesCierreEjercicio));
+      const otraMarzo = periodoDe(
+        'ejercicio',
+        hoy,
+        await withCtx(getMesCierreEjercicio, otroTenant)
+      );
+
+      expect(unaJulio.desde.toISOString().slice(0, 10)).toBe('2025-08-01');
+      expect(otraMarzo.desde.toISOString().slice(0, 10)).toBe('2025-04-01');
+      expect(unaJulio.desde.getTime()).not.toBe(otraMarzo.desde.getTime());
+    });
+
+    it('una empresa sin el dato cargado cierra en diciembre', async () => {
+      // Es el default de la columna (migration 0027), no un invento del código.
+      expect(await withCtx(getMesCierreEjercicio)).toBe(12);
+    });
   });
 
   it('no suma los gastos de otro comercio', async () => {

@@ -9,14 +9,11 @@
  */
 import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
-import { eq } from 'drizzle-orm';
 import { COOKIE_EMPRESA, requireSession } from '@/lib/auth/session';
 import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
-import { requireTracingContext } from '@/lib/tracing/context';
-import { db } from '@/lib/db/client';
-import { companies } from '@/lib/db/schema/companies';
 import {
   armarCsv,
+  getMesCierreEjercicio,
   getVentasParaExport,
   periodoDe,
   GRANOS,
@@ -61,23 +58,6 @@ export async function cambiarEmpresaAction(
  * un Blob. Servir un archivo desde el server obligaría a una route handler y a
  * pensar dónde se guarda; esto es un string que ya existe en memoria.
  */
-/**
- * Mes de cierre de ejercicio de la empresa de la sesión (migration 0027).
- *
- * Va acá y no como parámetro del cliente: define QUÉ DOCE MESES salen en el
- * CSV. Mismo criterio que el `cash_session_id` del cobro.
- */
-async function getMesCierreEjercicio(): Promise<number> {
-  const tenantId = requireTracingContext().tenant_id;
-  if (tenantId === null || tenantId === undefined) return 12;
-  const [c] = await db
-    .select({ mes: companies.fiscal_year_end_month })
-    .from(companies)
-    .where(eq(companies.id, tenantId))
-    .limit(1);
-  return c?.mes ?? 12;
-}
-
 export async function exportarVentasCsvAction(
   desdeIso?: string,
   grano?: string
