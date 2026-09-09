@@ -123,6 +123,37 @@ html[data-theme="dark"] .pm-warn.red{ color:#ff9aa4; }
 /* El importe del modal se lee en grande: es el dato que se tipea mal. */
 .pm-fld input.big{ font-family:var(--mono); font-size:19px; font-weight:700; letter-spacing:-0.02em; padding:12px; }
 
+/* ── MENU DE EXPORTAR ─────────────────────────────────────────────────────
+   Reusa .tipo-dd / .tipo-menu / .tm-item de Clientes. Es un MENU (acciones),
+   no un listbox (filtro), asi que el markup usa role=menu / menuitem.
+
+   Por que un menu y no dos botones en la barra: la contadora pide DOS cosas
+   distintas de los gastos, y ninguna de las dos se explica sola con un rotulo
+   corto. Dos botones obligarian a rotulos largos que no entran; el menu deja
+   nombrar cada una con su linea de abajo, y deja lugar para la del ejercicio
+   sin volver a tocar la barra. */
+/* La barra tiene que apilar POR ENCIMA de los KPIs, o el menu sale roto.
+   Medido: el menu se abria y las tarjetas de KPI le pasaban por arriba. La
+   causa no es el z-index del menu (tiene 40) sino que .bar usa
+   backdrop-filter, y eso CREA UN CONTEXTO DE APILAMIENTO: el 40 del menu solo
+   compite adentro de la barra, y la barra entera —con z-index auto— queda
+   debajo de los .kpis .k, que son position:relative y vienen despues en el
+   DOM. Se arregla dandole a la barra su propio z-index, que ademas es lo
+   correcto para un encabezado: lo que cuelga de el va arriba del contenido. */
+.bar{ position:relative; z-index:50; }
+/* Mas opaco que el .tipo-menu de Clientes, a proposito: aquel se despliega
+   sobre una lista y el glass ahi funciona; este cae justo encima de los KPIs,
+   que son numeros grandes en mono, y con 0.72 se leian A TRAVES del texto del
+   menu. La sombra tambien sube, para que se despegue del fondo. */
+.tipo-menu.der{ left:auto; right:0; min-width:296px;
+  background:rgba(255,255,255,0.95);
+  box-shadow:0 22px 52px rgba(20,26,44,0.30), 0 2px 8px rgba(20,26,44,0.12); }
+html[data-theme="dark"] .tipo-menu.der{ background:rgba(26,33,60,0.97); }
+.tm-item .tt{ display:block; font-size:12.5px; font-weight:600; color:var(--ink-1); }
+.tm-item .ss{ display:block; font-size:11px; color:var(--ink-3); margin-top:3px; line-height:1.4; white-space:normal; }
+.tm-item[disabled] .tt{ color:var(--ink-3); }
+button.tm-item:focus-visible{ outline:2px solid var(--purple); outline-offset:-2px; }
+
 /* El filtro de la lista, a la derecha del titulo de la seccion. */
 .gfilters{ display:flex; align-items:center; gap:7px; }
 .gf{ font-size:11.5px; font-weight:600; color:var(--ink-2); background:rgba(13,20,36,0.05); border:1px solid transparent; padding:6px 11px; border-radius:9px; cursor:pointer; transition:all 130ms; font-family:inherit; }

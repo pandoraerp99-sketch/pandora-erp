@@ -19,11 +19,12 @@
  */
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import Decimal from 'decimal.js';
 import { AppShell } from '@/components/shell/AppShell';
 import { CONTADOR_CSS } from './contadorCss';
 import { cambiarEmpresaAction, exportarVentasCsvAction } from './actions';
 
-export type Grano = 'mes' | 'trimestre' | 'anio';
+export type Grano = 'mes' | 'trimestre' | 'anio' | 'ejercicio';
 
 export interface ResumenDTO {
   periodo: { etiqueta: string; desde: string };
@@ -75,10 +76,17 @@ const MEDIO_LABEL: Record<string, string> = {
   mixto: 'Mixto',
 };
 
+/**
+ * "Ejercicio" (el último CERRADO) se agregó el 2026-09-09: es el recorte con el
+ * que la contadora efectivamente arma el balance, y no tiene por qué coincidir
+ * con el año calendario — el de ROMERO & RUIZ SAS va del 01/08 al 31/07. Sale
+ * de `companies.fiscal_year_end_month` (migration 0027).
+ */
 const GRANOS: Array<{ valor: Grano; label: string }> = [
   { valor: 'mes', label: 'Mes' },
   { valor: 'trimestre', label: 'Trimestre' },
   { valor: 'anio', label: 'Año' },
+  { valor: 'ejercicio', label: 'Ejercicio' },
 ];
 
 /** Iniciales para el avatar de la fila de deudor, como la maqueta. */
@@ -422,16 +430,31 @@ export function ContadorClient({
             />
             <div className="divider" />
             {resumen.gastos.comprobantes > 0 ? (
-              <div className="iva-pos">
-                <span>Saldo a pagar</span>
-                <span className="iva-amt tnum">
-                  {plata(
-                    (
-                      Number(resumen.ventas.iva) - Number(resumen.gastos.credito)
-                    ).toFixed(2)
-                  )}
-                </span>
-              </div>
+              (() => {
+                // ── DOS COSAS QUE ESTABAN MAL ACA (corregido 2026-09-09) ──
+                //
+                // 1. La resta se hacia con `Number(a) - Number(b)`. Es plata, y
+                //    CLAUDE.md §9.8 lo prohibe: el float arrastra centavos y no
+                //    se nota, porque con importes redondos da bien. Va Decimal.
+                //
+                // 2. Decia "Saldo a pagar" SIEMPRE, incluso cuando el crédito
+                //    supera al débito — y ahi no hay nada que pagar, hay saldo
+                //    A FAVOR. Se veia en pantalla como "Saldo a pagar −$70.463".
+                //    A un contador un signo menos ahi no lo confunde, pero a la
+                //    persona del comercio le dice lo contrario de lo que pasa.
+                const posicion = new Decimal(resumen.ventas.iva).minus(
+                  resumen.gastos.credito
+                );
+                const aFavor = posicion.isNegative();
+                return (
+                  <div className="iva-pos">
+                    <span>{aFavor ? 'Saldo a favor' : 'Saldo a pagar'}</span>
+                    <span className="iva-amt tnum">
+                      {plata(posicion.abs().toFixed(2))}
+                    </span>
+                  </div>
+                );
+              })()
             ) : (
               <div className="iva-pos">
                 <span>Saldo a pagar</span>

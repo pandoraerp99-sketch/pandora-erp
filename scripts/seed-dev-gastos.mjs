@@ -34,11 +34,34 @@ const env = Object.fromEntries(
 const COMPANY_ID = '11111111-1111-4111-8111-111111111111';
 const sql = postgres(env.DATABASE_URL, { max: 1 });
 
+/**
+ * La demo cierra ejercicio en JULIO, como el caso real del pedido
+ * (ROMERO & RUIZ SAS: 01/08/2025 → 31/07/2026). Con el default 12 el grano
+ * "Ejercicio" sería el año calendario y no se distinguiría de "Año".
+ */
+const MES_CIERRE = 7;
+
 /** Un día de ESTE mes, para que caiga en el período por defecto. */
 const dia = (n) => {
   const h = new Date();
   const d = new Date(Date.UTC(h.getUTCFullYear(), h.getUTCMonth(), n));
   return d.toISOString().slice(0, 10);
+};
+
+/**
+ * Un día DENTRO del último ejercicio cerrado, o sea antes del 01/08 de este
+ * año. Sin estos, el grano "Ejercicio" mostraría cero y no verificaría nada:
+ * los del mes corriente caen DESPUES del cierre.
+ */
+const diaDelEjercicio = (mes, n) => {
+  const h = new Date();
+  // Si ya pasamos el mes de cierre, el ejercicio cerrado termina este año.
+  const anioFin = h.getUTCMonth() + 1 > MES_CIERRE
+    ? h.getUTCFullYear()
+    : h.getUTCFullYear() - 1;
+  // Meses posteriores al de cierre pertenecen al año ANTERIOR del rango.
+  const anio = mes > MES_CIERRE ? anioFin - 1 : anioFin;
+  return new Date(Date.UTC(anio, mes - 1, n)).toISOString().slice(0, 10);
 };
 
 const GASTOS = [
@@ -92,6 +115,36 @@ const GASTOS = [
     comprobante_tipo: null, comprobante_numero: null,
     en_iva_compras: false, medio_pago: 'efectivo', descripcion: 'Flete de la reposición',
   },
+
+  // ── Dentro del ULTIMO EJERCICIO CERRADO (01/08 al 31/07) ────────────────
+  // Estos NO aparecen en "Mes": estan para que el grano "Ejercicio" tenga algo
+  // que mostrar y se vea que es un recorte distinto del ano calendario.
+  {
+    fecha: diaDelEjercicio(11, 5), categoria: 'alquiler', payee_name: 'Inmobiliaria Del Sur',
+    payee_doc: '30-71234567-4', neto: '289256.20', iva: '60743.80', total: '350000.00',
+    comprobante_tipo: 'Factura', comprobante_numero: '0003-00003980',
+    en_iva_compras: true, medio_pago: 'transferencia', descripcion: 'Alquiler de noviembre',
+  },
+  {
+    fecha: diaDelEjercicio(3, 18), categoria: 'impuestos_y_tasas',
+    payee_name: 'Municipalidad de Río Grande',
+    payee_doc: null, neto: '0', iva: '0', total: '24800.60',
+    comprobante_tipo: 'Recibo', comprobante_numero: null,
+    en_iva_compras: false, medio_pago: 'transferencia', descripcion: 'Tasa de comercio',
+  },
+  {
+    fecha: diaDelEjercicio(6, 27), categoria: 'seguros', payee_name: 'Sancor Seguros',
+    payee_doc: '30-50001427-5', neto: '46280.99', iva: '9719.01', total: '56000.00',
+    comprobante_tipo: 'Factura', comprobante_numero: '0002-00701122',
+    en_iva_compras: true, medio_pago: 'credito', descripcion: 'Póliza anual',
+  },
+  {
+    fecha: diaDelEjercicio(7, 30), categoria: 'honorarios', payee_name: 'Estudio contable',
+    payee_doc: null, neto: '0', iva: '0', total: '88500.25',
+    comprobante_tipo: null, comprobante_numero: null,
+    en_iva_compras: false, medio_pago: 'transferencia',
+    descripcion: 'Honorarios del cierre — último día del ejercicio',
+  },
 ];
 
 // Los gastos son append-only: el trigger bloquea UPDATE y DELETE. Para poder
@@ -101,6 +154,10 @@ await sql.begin(async (tx) => {
   await tx`SET LOCAL session_replication_role = 'replica'`;
   await tx`DELETE FROM expenses WHERE tenant_id = ${COMPANY_ID}`;
 });
+
+// La demo cierra en julio, como el caso real. Si quedara en el default 12, el
+// grano "Ejercicio" daría el año calendario y no se distinguiría de "Año".
+await sql`UPDATE companies SET fiscal_year_end_month = ${MES_CIERRE} WHERE id = ${COMPANY_ID}`;
 
 for (const g of GASTOS) {
   await sql`
@@ -122,7 +179,20 @@ const [r] = await sql`
          count(*) FILTER (WHERE NOT en_iva_compras)::int            AS fuera
   FROM expenses WHERE tenant_id = ${COMPANY_ID}`;
 
+// El mes corriente y el ejercicio cerrado, por separado: son los dos recortes
+// que la pantalla ofrece y no se pisan.
+const mesDesde = dia(1);
+const [m] = await sql`
+  SELECT count(*)::int AS n, coalesce(sum(total),0)::text AS total
+  FROM expenses WHERE tenant_id = ${COMPANY_ID} AND fecha >= ${mesDesde}::date`;
+const [e] = await sql`
+  SELECT count(*)::int AS n, coalesce(sum(total),0)::text AS total
+  FROM expenses WHERE tenant_id = ${COMPANY_ID} AND fecha < ${mesDesde}::date`;
+
 console.log(
   `OK · ${r.n} gastos · total ${r.total} · IVA crédito ${r.credito} · ${r.fuera} para mandar`
+);
+console.log(
+  `     mes corriente: ${m.n} ($${m.total}) · ejercicio cerrado: ${e.n} ($${e.total}) · cierre mes ${MES_CIERRE}`
 );
 await sql.end();

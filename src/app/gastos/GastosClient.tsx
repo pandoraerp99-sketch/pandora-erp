@@ -20,7 +20,7 @@
  * el vocabulario de Clientes (.bar / .kpis / .clrow / .pmod), igual que se hizo
  * con el modal de cobro, en vez de inventar un lenguaje visual nuevo.
  */
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Decimal from 'decimal.js';
 import { AppShell } from '@/components/shell/AppShell';
@@ -75,7 +75,7 @@ interface ProveedorDTO {
   doc: string | null;
 }
 
-type Grano = 'mes' | 'trimestre' | 'anio';
+type Grano = 'mes' | 'trimestre' | 'anio' | 'ejercicio';
 
 interface Props {
   gastos: GastoDTO[];
@@ -91,19 +91,22 @@ interface Props {
 }
 
 /**
- * Los tres períodos.
+ * Los períodos.
  *
- * "Año" dice **calendario** a propósito: `periodoDe('anio')` es enero-diciembre,
- * y el ejercicio comercial de una sociedad NO tiene por qué cerrar el 31/12 (el
- * de ROMERO & RUIZ SAS no cierra ahí). Llamarlo "el año" a secas invitaría a
- * leer estos totales como los del ejercicio y mandarle al estudio un período
- * equivocado. Cuando `companies` tenga fecha de cierre de ejercicio, se agrega
- * la opción de verdad.
+ * "Año" dice **calendario** a propósito, y "Ejercicio" existe por eso mismo: el
+ * ejercicio comercial de una sociedad no tiene por qué cerrar el 31/12 (el de
+ * ROMERO & RUIZ SAS cierra el 31/07). Con sólo "Año", quien mandara ese recorte
+ * al estudio le estaría mandando doce meses que no son los del balance.
+ *
+ * **"Ejercicio" es el último CERRADO**, no el que está en curso — es el único
+ * que tiene destinatario. Rompe la simetría con los otros tres, que son el
+ * período corriente, así que el rango exacto se muestra al lado del título.
  */
 const GRANOS: Array<{ valor: Grano; label: string }> = [
   { valor: 'mes', label: 'Mes' },
   { valor: 'trimestre', label: 'Trimestre' },
   { valor: 'anio', label: 'Año calendario' },
+  { valor: 'ejercicio', label: 'Ejercicio' },
 ];
 
 /** Categorías tomadas del pedido de la contadora (schema `expenses`). */
@@ -208,10 +211,10 @@ export function GastosClient({
     });
   };
 
-  const exportar = () => {
+  const exportar = (soloFueraDeArca: boolean) => {
     setError(null);
     startTransition(async () => {
-      const res = await exportarGastosCsvAction(grano, true);
+      const res = await exportarGastosCsvAction(grano, soloFueraDeArca);
       if (!res.ok) {
         setError(res.error);
         return;
@@ -225,8 +228,6 @@ export function GastosClient({
       URL.revokeObjectURL(url);
     });
   };
-
-  const hayParaMandar = Number(resumen.fuera_cantidad) > 0;
 
   // Selector de período, en la topbar — igual que /contador.
   const topbarIzq = (
@@ -266,24 +267,12 @@ export function GastosClient({
           </div>
         </div>
         <div className="bar-actions">
-          <button
-            type="button"
-            className="b ghost"
-            onClick={exportar}
-            disabled={pending || !hayParaMandar}
-            title={
-              hayParaMandar
-                ? 'Baja un CSV con los gastos que el estudio no ve en ARCA'
-                : 'En este período no hay gastos fuera del IVA compras: no hay nada que mandar'
-            }
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <path d="M7 10l5 5 5-5" />
-              <path d="M12 15V3" />
-            </svg>
-            Exportar para el estudio
-          </button>
+          <MenuExportar
+            pending={pending}
+            cantidadFuera={Number(resumen.fuera_cantidad)}
+            cantidadTotal={Number(resumen.cantidad)}
+            onExportar={exportar}
+          />
           <button
             type="button"
             className="b primary"
@@ -538,6 +527,139 @@ export function GastosClient({
         />
       ) : null}
     </AppShell>
+  );
+}
+
+// ════════════════════════ Menú de exportar ════════════════════════
+
+/**
+ * Las DOS cosas que la contadora pide de los gastos.
+ *
+ * En su pedido hay dos líneas distintas, y es fácil leerlas como una sola:
+ *
+ *   1. "Otros gastos NO INCLUIDOS en el IVA COMPRAS" — los que ella no ve,
+ *      porque no los baja de ARCA. Es la rutina mensual.
+ *   2. "Comprobantes de PAGO de: alquileres, seguros, servicios, impuestos y
+ *      tasas, honorarios" — esos los pide IGUAL, tengan factura o no. El libro
+ *      IVA compras le dice qué se facturó; esto le dice qué se pagó.
+ *
+ * Si sólo existiera la primera, para el balance habría que armar la segunda a
+ * mano — que es exactamente el trabajo que este módulo vino a sacar.
+ *
+ * Es un menú de ACCIONES (role=menu), no un filtro: teclado y cierre van a
+ * mano, porque un <button> suelto no los regala. Mismo criterio y mismas
+ * clases que `TipoDropdown`.
+ */
+function MenuExportar({
+  pending,
+  cantidadFuera,
+  cantidadTotal,
+  onExportar,
+}: {
+  pending: boolean;
+  cantidadFuera: number;
+  cantidadTotal: number;
+  onExportar: (soloFueraDeArca: boolean) => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const caja = useRef<HTMLDivElement>(null);
+  const boton = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!abierto) return;
+    const afuera = (e: MouseEvent) => {
+      if (!caja.current?.contains(e.target as Node)) setAbierto(false);
+    };
+    const tecla = (e: KeyboardEvent) => {
+      // Esc cierra y devuelve el foco al botón; Tab cierra para no dejar un
+      // menú flotando sobre la pantalla.
+      if (e.key === 'Escape') {
+        setAbierto(false);
+        boton.current?.focus();
+      } else if (e.key === 'Tab') {
+        setAbierto(false);
+      }
+    };
+    document.addEventListener('mousedown', afuera);
+    document.addEventListener('keydown', tecla);
+    return () => {
+      document.removeEventListener('mousedown', afuera);
+      document.removeEventListener('keydown', tecla);
+    };
+  }, [abierto]);
+
+  const elegir = (soloFueraDeArca: boolean) => {
+    setAbierto(false);
+    onExportar(soloFueraDeArca);
+  };
+
+  const nada = cantidadTotal === 0;
+
+  return (
+    <div className={abierto ? 'tipo-dd open' : 'tipo-dd'} ref={caja}>
+      <button
+        ref={boton}
+        type="button"
+        className="b ghost"
+        aria-haspopup="menu"
+        aria-expanded={abierto}
+        disabled={pending || nada}
+        title={
+          nada
+            ? 'En este período no hay gastos cargados: no hay nada que exportar'
+            : 'Bajar un CSV para mandarle al estudio'
+        }
+        onClick={() => setAbierto((v) => !v)}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <path d="M7 10l5 5 5-5" />
+          <path d="M12 15V3" />
+        </svg>
+        {pending ? 'Generando…' : 'Exportar para el estudio'}
+      </button>
+
+      <div className="tipo-menu der" role="menu" aria-label="Qué exportar">
+        <button
+          type="button"
+          role="menuitem"
+          className="tm-item"
+          disabled={cantidadFuera === 0}
+          onClick={() => elegir(true)}
+          title={
+            cantidadFuera === 0
+              ? 'En este período todos los gastos tienen factura: el estudio ya los baja de ARCA'
+              : undefined
+          }
+        >
+          <span className="tt">
+            Lo que hay que mandar ({cantidadFuera})
+          </span>
+          <span className="ss">
+            {cantidadFuera === 0
+              ? 'Todos los del período tienen factura: el estudio ya los ve.'
+              : 'Sólo los que no entran al IVA compras. Es la rutina de todos los meses.'}
+          </span>
+        </button>
+
+        <div className="tm-div" />
+
+        <button
+          type="button"
+          role="menuitem"
+          className="tm-item"
+          onClick={() => elegir(false)}
+          disabled={nada}
+        >
+          <span className="tt">Todos los gastos ({cantidadTotal})</span>
+          <span className="ss">
+            Para el balance: son los comprobantes de <b>pago</b> de alquiler,
+            seguros, servicios, tasas y honorarios, que se piden con factura o
+            sin ella.
+          </span>
+        </button>
+      </div>
+    </div>
   );
 }
 

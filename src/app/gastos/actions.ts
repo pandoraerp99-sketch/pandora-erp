@@ -5,7 +5,11 @@
  * cero lógica de negocio (eso vive en expense.service.ts).
  */
 import { revalidatePath } from 'next/cache';
+import { eq } from 'drizzle-orm';
 import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
+import { requireTracingContext } from '@/lib/tracing/context';
+import { db } from '@/lib/db/client';
+import { companies } from '@/lib/db/schema/companies';
 import { DomainError } from '@/lib/multi_tenant/errors';
 import {
   armarCsvGastos,
@@ -35,6 +39,23 @@ async function runAction<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
 
 // F0: un único punto de venta (Caja 1), igual que /caja, /clientes y el POS.
 const SALE_POINT = 1;
+
+/**
+ * Mes de cierre de ejercicio de la empresa de la sesión (migration 0027).
+ *
+ * Va acá y no como parámetro del cliente a propósito: define QUÉ DOCE MESES
+ * salen en el CSV que se le manda a la contadora.
+ */
+async function getMesCierreEjercicio(): Promise<number> {
+  const tenantId = requireTracingContext().tenant_id;
+  if (tenantId === null || tenantId === undefined) return 12;
+  const [c] = await db
+    .select({ mes: companies.fiscal_year_end_month })
+    .from(companies)
+    .where(eq(companies.id, tenantId))
+    .limit(1);
+  return c?.mes ?? 12;
+}
 
 /** Lo que llega del formulario. El `cash_session_id` NO viaja: lo pone el server. */
 export type GastoFormInput = Omit<NuevoGasto, 'cash_session_id'>;
@@ -95,7 +116,18 @@ export async function exportarGastosCsvAction(
 ): Promise<{ ok: true; csv: string; nombre: string } | { ok: false; error: string }> {
   try {
     const g: Grano = GRANOS.includes(grano as Grano) ? (grano as Grano) : 'mes';
-    const periodo = periodoDe(g);
+
+    // El mes de cierre lo resuelve el SERVIDOR desde la empresa de la sesión,
+    // no viaja del navegador — mismo criterio que el `cash_session_id`.
+    //
+    // Y no es sólo seguridad: si esta acción usara el default 12 mientras la
+    // pantalla muestra el ejercicio real, el CSV traería OTROS doce meses que
+    // los que dice el título. Se vería perfectamente bien formado.
+    const mesCierre = await withServerActionTracing(getMesCierreEjercicio, {
+      requireAuth: true,
+    });
+
+    const periodo = periodoDe(g, new Date(), mesCierre);
     const desde = periodo.desde.toISOString().slice(0, 10);
     const hasta = periodo.hasta.toISOString().slice(0, 10);
 

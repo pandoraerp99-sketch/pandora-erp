@@ -7,8 +7,11 @@
  * cliente: así el contador puede guardar el link de "el trimestre" o mandarlo
  * por mail, y el resumen se calcula en el servidor una sola vez.
  */
+import { eq } from 'drizzle-orm';
 import { requireSessionWithCompany } from '@/lib/auth/session';
 import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
+import { db } from '@/lib/db/client';
+import { companies } from '@/lib/db/schema/companies';
 import { listCompaniesForUser } from '@/lib/services/identity/accountant.service';
 import {
   getDeudores,
@@ -34,7 +37,17 @@ export default async function ContadorPage({
     : 'mes';
 
   const empresas = await listCompaniesForUser(session.user_id);
-  const periodo = periodoDe(grano);
+
+  // El mes de cierre de ejercicio de la empresa ACTIVA (migration 0027). Sin
+  // esto el grano `ejercicio` caería en el default 12 y le mostraría a la
+  // contadora un año calendario diciendo que es el ejercicio.
+  const [empresa] = await db
+    .select({ mesCierre: companies.fiscal_year_end_month })
+    .from(companies)
+    .where(eq(companies.id, session.active_company_id))
+    .limit(1);
+
+  const periodo = periodoDe(grano, new Date(), empresa?.mesCierre ?? 12);
 
   const [resumen, deudores] = await withServerActionTracing(
     async () =>

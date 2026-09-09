@@ -39,7 +39,21 @@ export default async function GastosPage({
   // Un valor raro en la URL cae al mes en vez de romper: la URL la escribe
   // cualquiera. Mismo criterio que /contador.
   const grano: Grano = GRANOS.includes(pedido as Grano) ? (pedido as Grano) : 'mes';
-  const periodo = periodoDe(grano);
+
+  // El mes de cierre de ejercicio sale de la empresa (migration 0027). Se lee
+  // ANTES del período porque el grano `ejercicio` depende de él: el de esta
+  // empresa puede no ser diciembre, y ahí el año calendario no sirve.
+  const [company] = await db
+    .select({
+      name: companies.name,
+      mesCierre: companies.fiscal_year_end_month,
+    })
+    .from(companies)
+    .where(eq(companies.id, session.active_company_id))
+    .limit(1);
+
+  const mesCierre = company?.mesCierre ?? 12;
+  const periodo = periodoDe(grano, new Date(), mesCierre);
   const desde = soloFecha(periodo.desde);
   const hasta = soloFecha(periodo.hasta);
 
@@ -58,12 +72,6 @@ export default async function GastosPage({
         ]),
       { requireAuth: true }
     );
-
-  const [company] = await db
-    .select({ name: companies.name })
-    .from(companies)
-    .where(eq(companies.id, session.active_company_id))
-    .limit(1);
 
   // DTO explícito, no la fila de Drizzle: `cash_movement_id` es un BigInt y
   // React no lo puede serializar hacia el cliente. Además la pantalla no

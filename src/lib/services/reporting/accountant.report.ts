@@ -42,8 +42,14 @@ export interface Periodo {
   etiqueta: string;
 }
 
-/** Los tres que ofrece la maqueta. */
-export const GRANOS = ['mes', 'trimestre', 'anio'] as const;
+/**
+ * Los tres de la maqueta, más `ejercicio`.
+ *
+ * `ejercicio` NO estaba: lo trajo el pedido real de la contadora, que es por el
+ * "ejercicio iniciado el 01/08/2025 y finalizado el 31/07/2026". Para esa
+ * empresa, ninguno de los otros tres coincide con el balance.
+ */
+export const GRANOS = ['mes', 'trimestre', 'anio', 'ejercicio'] as const;
 export type Grano = (typeof GRANOS)[number];
 
 /**
@@ -53,8 +59,19 @@ export type Grano = (typeof GRANOS)[number];
  * meses": el contador declara por trimestre calendario, y un rango movil le
  * daria un numero que no coincide con ninguna presentacion.
  */
-export function periodoDe(grano: Grano, fecha: Date = new Date()): Periodo {
+export function periodoDe(
+  grano: Grano,
+  fecha: Date = new Date(),
+  /**
+   * Mes de cierre del ejercicio (1-12), de `companies.fiscal_year_end_month`.
+   * Sólo lo usa el grano `ejercicio`. El default 12 hace que sin el dato el
+   * ejercicio sea el año calendario anterior — que es lo correcto para la
+   * mayoría, y visible en la etiqueta si no lo fuera.
+   */
+  mesCierreEjercicio = 12
+): Periodo {
   if (grano === 'mes') return mesDe(fecha);
+  if (grano === 'ejercicio') return periodoDeEjercicio(mesCierreEjercicio, fecha);
 
   const y = fecha.getUTCFullYear();
   if (grano === 'anio') {
@@ -71,6 +88,62 @@ export function periodoDe(grano: Grano, fecha: Date = new Date()): Periodo {
     desde: new Date(Date.UTC(y, primerMes, 1)),
     hasta: new Date(Date.UTC(y, primerMes + 3, 1)),
     etiqueta: `${trimestre}º trimestre ${y}`,
+  };
+}
+
+/**
+ * El último ejercicio CERRADO, dado el mes en que la empresa cierra.
+ *
+ * ── POR QUE EL CERRADO Y NO EL EN CURSO ───────────────────────────────────
+ * Los otros tres granos devuelven el período CORRIENTE (este mes, este
+ * trimestre, este año). Éste devuelve el ANTERIOR, a propósito: un ejercicio
+ * sirve cuando terminó. Es el recorte con el que la contadora arma el balance
+ * y el que pide por escrito; el ejercicio en curso no tiene destinatario.
+ *
+ * Que rompa la simetría con los otros tres es incómodo, y por eso la pantalla
+ * muestra el rango exacto al lado del título en vez de decir sólo "Ejercicio".
+ *
+ * ── EL MES, NO LA FECHA ───────────────────────────────────────────────────
+ * `mesCierre` es 1-12 y se asume el ÚLTIMO DÍA de ese mes (ver migration
+ * 0027). Con mesCierre=7 y hoy en septiembre de 2026, el último cerrado va del
+ * 01/08/2025 al 31/07/2026 — que es exactamente el del pedido.
+ *
+ * `hasta` es EXCLUSIVE (el 01/08/2026), como en el resto de este archivo: así
+ * el rango no depende de cuántos días tiene el mes ni de la hora del día.
+ */
+export function periodoDeEjercicio(
+  mesCierre: number,
+  fecha: Date = new Date()
+): Periodo {
+  if (!Number.isInteger(mesCierre) || mesCierre < 1 || mesCierre > 12) {
+    throw new RangeError(
+      `mesCierre tiene que ser un mes (1-12), llegó ${String(mesCierre)}`
+    );
+  }
+
+  // El ejercicio en curso TERMINA el último día de `mesCierre`. Si hoy ya pasó
+  // ese mes, el último cerrado es el de este año; si todavía no llegó, es el
+  // del año pasado.
+  //   mesCierre=7, hoy sep-2026  -> cerró el 31/07/2026 (ya pasó)
+  //   mesCierre=7, hoy may-2026  -> cerró el 31/07/2025 (todavía no llegó)
+  const y = fecha.getUTCFullYear();
+  const mesActual = fecha.getUTCMonth() + 1; // 1-12
+  const anioDeCierre = mesActual > mesCierre ? y : y - 1;
+
+  // Fin EXCLUSIVE = el día 1 del mes SIGUIENTE al de cierre. `Date.UTC` con
+  // mes 12 rueda solo al enero siguiente, así que diciembre no es un caso
+  // aparte.
+  const hasta = new Date(Date.UTC(anioDeCierre, mesCierre, 1));
+  const desde = new Date(Date.UTC(anioDeCierre - 1, mesCierre, 1));
+
+  const ultimoDia = new Date(hasta.getTime() - 86400000);
+  const dma = (d: Date) =>
+    `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
+
+  return {
+    desde,
+    hasta,
+    etiqueta: `ejercicio ${dma(desde)} al ${dma(ultimoDia)}`,
   };
 }
 

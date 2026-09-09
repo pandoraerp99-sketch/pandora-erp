@@ -3,7 +3,7 @@
  * ADR-0002 multi-tenant + ADR-0022 jurisdiction context.
  */
 import { sql } from 'drizzle-orm';
-import { boolean, check, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { boolean, check, pgTable, smallint, text, timestamp } from 'drizzle-orm/pg-core';
 import {
   AFIP_ENVIRONMENTS,
   DEMO_STATUSES,
@@ -31,6 +31,20 @@ export const companies = pgTable(
 
     afip_environment: text('afip_environment').notNull().default('homologacion'),
     afip_sale_point: text('afip_sale_point').notNull().default('0001'),
+
+    /**
+     * Mes en que cierra el ejercicio comercial (1-12), migration 0027.
+     *
+     * NO es el año calendario: el pedido de la contadora es por el "ejercicio
+     * iniciado el 01/08/2025 y finalizado el 31/07/2026". Sin este dato la app
+     * sólo sabe ofrecer mes/trimestre/año, y para esa empresa ninguno coincide
+     * con el balance.
+     *
+     * Se asume el ÚLTIMO DÍA del mes. Es una simplificación consciente (el
+     * estatuto fija la fecha, y en la práctica se fija a fin de mes); si
+     * aparece una que cierra a mitad de mes hay que agregar el día.
+     */
+    fiscal_year_end_month: smallint('fiscal_year_end_month').notNull().default(12),
 
     demo_status: text('demo_status').notNull().default('trial'),
     demo_trial_started_at: timestamp('demo_trial_started_at', {
@@ -67,6 +81,10 @@ export const companies = pgTable(
     cuitFormatCheck: check(
       'companies_cuit_format_check',
       sql`${table.cuit} ~ '^[0-9]{11}$'`
+    ),
+    fiscalYearEndMonthCheck: check(
+      'companies_fiscal_year_end_month_check',
+      sql`${table.fiscal_year_end_month} BETWEEN 1 AND 12`
     ),
   })
 );

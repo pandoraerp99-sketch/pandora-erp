@@ -9,8 +9,12 @@
  */
 import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
+import { eq } from 'drizzle-orm';
 import { COOKIE_EMPRESA, requireSession } from '@/lib/auth/session';
 import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
+import { requireTracingContext } from '@/lib/tracing/context';
+import { db } from '@/lib/db/client';
+import { companies } from '@/lib/db/schema/companies';
 import {
   armarCsv,
   getVentasParaExport,
@@ -57,6 +61,23 @@ export async function cambiarEmpresaAction(
  * un Blob. Servir un archivo desde el server obligaría a una route handler y a
  * pensar dónde se guarda; esto es un string que ya existe en memoria.
  */
+/**
+ * Mes de cierre de ejercicio de la empresa de la sesión (migration 0027).
+ *
+ * Va acá y no como parámetro del cliente: define QUÉ DOCE MESES salen en el
+ * CSV. Mismo criterio que el `cash_session_id` del cobro.
+ */
+async function getMesCierreEjercicio(): Promise<number> {
+  const tenantId = requireTracingContext().tenant_id;
+  if (tenantId === null || tenantId === undefined) return 12;
+  const [c] = await db
+    .select({ mes: companies.fiscal_year_end_month })
+    .from(companies)
+    .where(eq(companies.id, tenantId))
+    .limit(1);
+  return c?.mes ?? 12;
+}
+
 export async function exportarVentasCsvAction(
   desdeIso?: string,
   grano?: string
@@ -66,7 +87,22 @@ export async function exportarVentasCsvAction(
     // romper. La fecha viene del propio periodo que se esta mirando, asi que
     // el CSV es SIEMPRE el del periodo en pantalla.
     const g: Grano = GRANOS.includes(grano as Grano) ? (grano as Grano) : 'mes';
-    const periodo = periodoDe(g, desdeIso ? new Date(desdeIso) : new Date());
+
+    // El mes de cierre lo resuelve el SERVIDOR desde la empresa de la sesión:
+    // define QUÉ DOCE MESES salen en el archivo.
+    const mesCierre = await withServerActionTracing(getMesCierreEjercicio, {
+      requireAuth: true,
+    });
+
+    // OJO con `ejercicio`. Los otros granos se fijan pasando una fecha DENTRO
+    // del período en pantalla, y eso funciona porque son el período CORRIENTE
+    // de esa fecha. `ejercicio` no: es el último CERRADO respecto de la fecha
+    // de referencia, así que pasarle un día de adentro del ejercicio cerrado
+    // devolvería el ANTERIOR. Un año entero corrido, en un CSV que se ve
+    // perfectamente bien formado.
+    const referencia =
+      g === 'ejercicio' ? new Date() : desdeIso ? new Date(desdeIso) : new Date();
+    const periodo = periodoDe(g, referencia, mesCierre);
     const csv = await withServerActionTracing(
       async () => armarCsv(await getVentasParaExport(periodo)),
       { requireAuth: true }
