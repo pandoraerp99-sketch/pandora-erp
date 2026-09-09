@@ -42,6 +42,38 @@ export interface Periodo {
   etiqueta: string;
 }
 
+/** Los tres que ofrece la maqueta. */
+export const GRANOS = ['mes', 'trimestre', 'anio'] as const;
+export type Grano = (typeof GRANOS)[number];
+
+/**
+ * El período que corresponde a un grano.
+ *
+ * Trimestre y año son CALENDARIO (ene-mar, abr-jun...), no "los ultimos 3
+ * meses": el contador declara por trimestre calendario, y un rango movil le
+ * daria un numero que no coincide con ninguna presentacion.
+ */
+export function periodoDe(grano: Grano, fecha: Date = new Date()): Periodo {
+  if (grano === 'mes') return mesDe(fecha);
+
+  const y = fecha.getUTCFullYear();
+  if (grano === 'anio') {
+    return {
+      desde: new Date(Date.UTC(y, 0, 1)),
+      hasta: new Date(Date.UTC(y + 1, 0, 1)),
+      etiqueta: String(y),
+    };
+  }
+
+  const primerMes = Math.floor(fecha.getUTCMonth() / 3) * 3;
+  const trimestre = primerMes / 3 + 1;
+  return {
+    desde: new Date(Date.UTC(y, primerMes, 1)),
+    hasta: new Date(Date.UTC(y, primerMes + 3, 1)),
+    etiqueta: `${trimestre}º trimestre ${y}`,
+  };
+}
+
 /** El mes calendario de una fecha. Por defecto, el corriente. */
 export function mesDe(fecha: Date = new Date()): Periodo {
   const desde = new Date(
@@ -301,4 +333,32 @@ export function armarCsv(filas: FilaExport[]): string {
 
   // BOM: sin el, Excel abre el archivo en ANSI y rompe los acentos y la ñ.
   return '﻿' + [cabecera.join(';'), ...lineas].join('\r\n') + '\r\n';
+}
+
+export interface DeudorDelPeriodo {
+  // Index signature: db.execute<T> exige que T sea indexable por string.
+  [k: string]: string;
+  nombre: string;
+  saldo: string;
+}
+
+/**
+ * Los que deben, con nombre, para la tarjeta de cuentas corrientes.
+ *
+ * Es un STOCK (lo que deben hoy), no del periodo: la deuda no se reinicia
+ * cada mes. Va aparte del resumen porque son filas, no un total.
+ */
+export async function getDeudores(limite = 6): Promise<DeudorDelPeriodo[]> {
+  const tenantId = requireTenantId();
+  return db.execute<DeudorDelPeriodo>(
+    sql`SELECT c.name AS nombre,
+               sum(CASE WHEN m.type = 'payment' THEN -m.amount ELSE m.amount END)::text AS saldo
+        FROM customer_account_movements m
+        JOIN customers c ON c.id = m.customer_id
+        WHERE m.tenant_id = ${tenantId}
+        GROUP BY c.id, c.name
+        HAVING sum(CASE WHEN m.type = 'payment' THEN -m.amount ELSE m.amount END) > 0
+        ORDER BY 2 DESC
+        LIMIT ${limite}`
+  );
 }

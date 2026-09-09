@@ -14,7 +14,9 @@ import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
 import {
   armarCsv,
   getVentasParaExport,
-  mesDe,
+  periodoDe,
+  GRANOS,
+  type Grano,
 } from '@/lib/services/reporting/accountant.report';
 
 /**
@@ -56,16 +58,27 @@ export async function cambiarEmpresaAction(
  * pensar dónde se guarda; esto es un string que ya existe en memoria.
  */
 export async function exportarVentasCsvAction(
-  mesIso?: string
+  desdeIso?: string,
+  grano?: string
 ): Promise<{ ok: true; csv: string; nombre: string } | { ok: false; error: string }> {
   try {
-    const periodo = mesDe(mesIso ? new Date(mesIso) : new Date());
+    // Mismo criterio que la pantalla: un grano raro cae al mes en vez de
+    // romper. La fecha viene del propio periodo que se esta mirando, asi que
+    // el CSV es SIEMPRE el del periodo en pantalla.
+    const g: Grano = GRANOS.includes(grano as Grano) ? (grano as Grano) : 'mes';
+    const periodo = periodoDe(g, desdeIso ? new Date(desdeIso) : new Date());
     const csv = await withServerActionTracing(
       async () => armarCsv(await getVentasParaExport(periodo)),
       { requireAuth: true }
     );
-    const yyyymm = periodo.desde.toISOString().slice(0, 7);
-    return { ok: true, csv, nombre: `ventas-${yyyymm}.csv` };
+    // El nombre lleva el rango COMPLETO, no el mes de inicio: bajando el año
+    // el archivo se llamaría "ventas-2026-01" y en la carpeta del contador
+    // pasaría por el de enero.
+    const desde = periodo.desde.toISOString().slice(0, 10);
+    const hasta = new Date(periodo.hasta.getTime() - 86400000)
+      .toISOString()
+      .slice(0, 10);
+    return { ok: true, csv, nombre: `ventas-${desde}_a_${hasta}.csv` };
   } catch (e) {
     return {
       ok: false,

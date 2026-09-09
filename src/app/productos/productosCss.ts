@@ -17,6 +17,8 @@
 // OJO: esto es UN TEMPLATE LITERAL. Nada de backticks aca adentro, ni siquiera
 // en comentarios — cierran el string y rompen toda la app con un error que
 // apunta al CSS y no al culpable.
+import { RESET_CARD_POS } from '../_css/reset-card-pos';
+
 export const PRODUCTOS_CSS = `
 /* ============================================================
    Pandora · Panel — adaptado del app.jsx (mismo sistema glass)
@@ -467,4 +469,4 @@ button.stock-row:hover{ background:rgba(107,95,255,0.04); }
    Va acotado a .main a proposito: la barra lateral la pinta shellCss con los
    valores del POS y tiene que seguir viendose igual en todas las pantallas. */
 .main{ line-height:normal; gap:0; }
-`;
+` + RESET_CARD_POS;

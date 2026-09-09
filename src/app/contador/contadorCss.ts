@@ -8,6 +8,8 @@
 // Verificar con: node scripts/comparar-con-maqueta.mjs /contador <maqueta>
 //
 // OJO: esto es UN TEMPLATE LITERAL. Nada de backticks aca adentro.
+import { RESET_CARD_POS } from '../_css/reset-card-pos';
+
 export const CONTADOR_CSS = `
 /* ============================================================
    Pandora · Panel — adaptado del app.jsx (mismo sistema glass)
@@ -294,4 +296,4 @@ body{ font-family:'Inter',ui-sans-serif,system-ui,sans-serif; -webkit-font-smoot
 /* Los chips de empresa y las filas son <button> de verdad; reset acotado, con
    font-FAMILY y no font, para no pisar los font-size de cada clase. */
 button.emp-chip{ font-family:inherit; border:none; outline:none; cursor:pointer; }
-`;
+` + RESET_CARD_POS;

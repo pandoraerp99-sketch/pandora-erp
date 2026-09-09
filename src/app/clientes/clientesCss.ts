@@ -10,6 +10,8 @@
 // monta despues del shell, gana donde difieran.
 //
 // OJO: es UN TEMPLATE LITERAL. Ni un backtick aca adentro.
+import { RESET_CARD_POS } from '../_css/reset-card-pos';
+
 export const CLIENTES_CSS = `
 
 /* ============================================================
@@ -559,4 +561,4 @@ button.tipo-btn:focus-visible{ outline:2px solid var(--purple); outline-offset:2
    formato que .up, con el rojo del sistema. */
 .kpis .dn{ display:inline-flex; align-items:center; gap:3px; color:#c0384a; font-weight:600; }
 html[data-theme="dark"] .kpis .dn{ color:#ff8b96; }
-`;
+` + RESET_CARD_POS;
