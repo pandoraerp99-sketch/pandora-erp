@@ -9,6 +9,8 @@ import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
 import { DomainError } from '@/lib/multi_tenant/errors';
 import {
   armarCsvGastos,
+  armarCsvProveedores,
+  getProveedoresDelPeriodo,
   listExpenses,
   registerExpense,
   ExpenseError,
@@ -135,6 +137,52 @@ export async function exportarGastosCsvAction(
       .slice(0, 10);
     const que = soloFueraDeArca ? 'fuera-de-arca' : 'todos';
     return { ok: true, csv, nombre: `gastos-${que}-${desde}_a_${ultimo}.csv` };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : 'No se pudo exportar',
+    };
+  }
+}
+
+/**
+ * CSV de proveedores del período — ítem 9 de la carta de la contadora
+ * ("detalle de proveedores... razón social, CUIT e importe").
+ *
+ * Es MEDIO ítem: la carta pide "proveedores **y/o acreedores** a la fecha de
+ * cierre", y los acreedores —lo que se debe y no se pagó— Pandora no los sabe.
+ * El propio CSV lo aclara adentro; ver `armarCsvProveedores`.
+ */
+export async function exportarProveedoresCsvAction(
+  grano?: string
+): Promise<{ ok: true; csv: string; nombre: string } | { ok: false; error: string }> {
+  try {
+    const g: Grano = GRANOS.includes(grano as Grano) ? (grano as Grano) : 'mes';
+    const mesCierre = await withServerActionTracing(getMesCierreEjercicio, {
+      requireAuth: true,
+    });
+
+    const periodo = periodoDe(g, new Date(), mesCierre);
+    const desde = periodo.desde.toISOString().slice(0, 10);
+    const hasta = periodo.hasta.toISOString().slice(0, 10);
+
+    const csv = await withServerActionTracing(
+      async () =>
+        armarCsvProveedores(
+          await getProveedoresDelPeriodo(desde, hasta),
+          periodo.etiqueta
+        ),
+      { requireAuth: true }
+    );
+
+    const ultimo = new Date(periodo.hasta.getTime() - 86400000)
+      .toISOString()
+      .slice(0, 10);
+    return {
+      ok: true,
+      csv,
+      nombre: `proveedores-${desde}_a_${ultimo}.csv`,
+    };
   } catch (e) {
     return {
       ok: false,

@@ -27,6 +27,7 @@ import { AppShell } from '@/components/shell/AppShell';
 import { GASTOS_CSS } from './gastosCss';
 import {
   exportarGastosCsvAction,
+  exportarProveedoresCsvAction,
   registrarGastoAction,
   type GastoFormInput,
 } from './actions';
@@ -69,6 +70,16 @@ export interface TotalCategoriaDTO {
   cantidad: string;
 }
 
+/** Ítem 9 de la carta: razón social, CUIT e importe. */
+export interface ProveedorPeriodoDTO {
+  nombre: string;
+  cuit: string;
+  /** CUIT distintos agrupados. > 1 = hay algo para revisar antes de mandarlo. */
+  cuits: string;
+  comprobantes: string;
+  total: string;
+}
+
 interface ProveedorDTO {
   id: string;
   name: string;
@@ -81,6 +92,7 @@ interface Props {
   gastos: GastoDTO[];
   resumen: ResumenGastosDTO;
   porCategoria: TotalCategoriaDTO[];
+  porProveedor: ProveedorPeriodoDTO[];
   proveedores: ProveedorDTO[];
   grano: Grano;
   periodoEtiqueta: string;
@@ -172,6 +184,7 @@ export function GastosClient({
   gastos,
   resumen,
   porCategoria,
+  porProveedor,
   proveedores,
   grano,
   periodoEtiqueta,
@@ -211,10 +224,14 @@ export function GastosClient({
     });
   };
 
-  const exportar = (soloFueraDeArca: boolean) => {
+  /** Baja lo que devuelva la acción. La descarga la arma el navegador. */
+  const bajar = (
+    pedir: () =>
+      Promise<{ ok: true; csv: string; nombre: string } | { ok: false; error: string }>
+  ) => {
     setError(null);
     startTransition(async () => {
-      const res = await exportarGastosCsvAction(grano, soloFueraDeArca);
+      const res = await pedir();
       if (!res.ok) {
         setError(res.error);
         return;
@@ -228,6 +245,12 @@ export function GastosClient({
       URL.revokeObjectURL(url);
     });
   };
+
+  const exportar = (soloFueraDeArca: boolean) =>
+    bajar(() => exportarGastosCsvAction(grano, soloFueraDeArca));
+
+  const exportarProveedores = () =>
+    bajar(() => exportarProveedoresCsvAction(grano));
 
   // Selector de período, en la topbar — igual que /contador.
   const topbarIzq = (
@@ -271,7 +294,9 @@ export function GastosClient({
             pending={pending}
             cantidadFuera={Number(resumen.fuera_cantidad)}
             cantidadTotal={Number(resumen.cantidad)}
+            cantidadProveedores={porProveedor.length}
             onExportar={exportar}
+            onExportarProveedores={exportarProveedores}
           />
           <button
             type="button"
@@ -467,6 +492,48 @@ export function GastosClient({
             )}
           </div>
 
+          {/* Ítem 9 de la carta. Va en pantalla y no sólo en el export para
+              poder REVISARLO antes de mandarlo: acá se ve si a un proveedor le
+              quedaron dos CUIT distintos, que es lo que nadie chequea en un
+              CSV ya enviado. */}
+          {porProveedor.length > 0 ? (
+            <div className="card glass">
+              <div className="card-title">
+                <h3>Por proveedor</h3>
+              </div>
+              {porProveedor.map((p) => (
+                <div key={p.nombre} className="gprov">
+                  <div className="gprov-id">
+                    {/* La columna es angosta y una razón social larga se corta.
+                        El CSV la lleva entera; acá el title deja verla sin
+                        tener que exportar. */}
+                    <div className="gprov-n" title={p.nombre}>
+                      {p.nombre}
+                    </div>
+                    <div className="gprov-c">
+                      {p.cuit === '' ? (
+                        <span className="gprov-sin">sin CUIT</span>
+                      ) : Number(p.cuits) > 1 ? (
+                        <span className="gprov-ojo">
+                          {p.cuits} CUIT distintos · revisar
+                        </span>
+                      ) : (
+                        p.cuit
+                      )}
+                    </div>
+                  </div>
+                  <span className="gcatn">{p.comprobantes}</span>
+                  <span className="gcatv">{plata(p.total)}</span>
+                </div>
+              ))}
+              <p className="label-sm" style={{ marginTop: 10, lineHeight: 1.5 }}>
+                Es lo que se le pagó a cada uno. <b>No</b> es el detalle de
+                acreedores al cierre: acá todo gasto se registra ya pagado, así
+                que Pandora no sabe qué quedó debiendo.
+              </p>
+            </div>
+          ) : null}
+
           <div className="card glass">
             <div className="card-title">
               <h3>Qué se manda al estudio</h3>
@@ -554,12 +621,16 @@ function MenuExportar({
   pending,
   cantidadFuera,
   cantidadTotal,
+  cantidadProveedores,
   onExportar,
+  onExportarProveedores,
 }: {
   pending: boolean;
   cantidadFuera: number;
   cantidadTotal: number;
+  cantidadProveedores: number;
   onExportar: (soloFueraDeArca: boolean) => void;
+  onExportarProveedores: () => void;
 }) {
   const [abierto, setAbierto] = useState(false);
   const caja = useRef<HTMLDivElement>(null);
@@ -656,6 +727,25 @@ function MenuExportar({
             Para el balance: son los comprobantes de <b>pago</b> de alquiler,
             seguros, servicios, tasas y honorarios, que se piden con factura o
             sin ella.
+          </span>
+        </button>
+
+        <div className="tm-div" />
+
+        <button
+          type="button"
+          role="menuitem"
+          className="tm-item"
+          onClick={() => {
+            setAbierto(false);
+            onExportarProveedores();
+          }}
+          disabled={nada}
+        >
+          <span className="tt">Proveedores ({cantidadProveedores})</span>
+          <span className="ss">
+            Razón social, CUIT e importe. <b>No</b> incluye saldos pendientes de
+            pago — el archivo lo aclara adentro.
           </span>
         </button>
       </div>

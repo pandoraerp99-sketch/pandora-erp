@@ -19,6 +19,7 @@ import { periodoDe, GRANOS, type Grano } from '@/lib/services/reporting/accounta
 import {
   getExpenseSummary,
   getExpenseTotals,
+  getProveedoresDelPeriodo,
   listExpenses,
 } from '@/lib/services/expenses/expense.service';
 import { listTerceros } from '@/lib/cash/terceros';
@@ -57,8 +58,14 @@ export default async function GastosPage({
   const desde = soloFecha(periodo.desde);
   const hasta = soloFecha(periodo.hasta);
 
-  const [gastos, resumen, porCategoria, proveedores, cajaAbierta] =
-    await withServerActionTracing(
+  const [
+    gastos,
+    resumen,
+    porCategoria,
+    porProveedor,
+    proveedores,
+    cajaAbierta,
+  ] = await withServerActionTracing(
       async () =>
         Promise.all([
           listExpenses(desde, hasta),
@@ -67,6 +74,10 @@ export default async function GastosPage({
           // redondos y mal con centavos, que es la peor forma de estar mal.
           getExpenseSummary(desde, hasta),
           getExpenseTotals(desde, hasta),
+          // Ítem 9 de la carta: razón social, CUIT e importe. Va en pantalla y
+          // no sólo en el export para poder REVISARLO antes de mandarlo — es
+          // donde se ve si un CUIT quedó mal cargado.
+          getProveedoresDelPeriodo(desde, hasta),
           listTerceros('proveedor'),
           getActiveCashSession(1).then((s) => s !== null),
         ]),
@@ -99,6 +110,7 @@ export default async function GastosPage({
       gastos={dtos}
       resumen={resumen}
       porCategoria={porCategoria}
+      porProveedor={porProveedor}
       proveedores={proveedores.map((p) => ({
         id: p.id,
         name: p.name,

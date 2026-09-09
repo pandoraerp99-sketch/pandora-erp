@@ -390,6 +390,98 @@ export function armarCsvGastos(gastos: Expense[]): string {
   );
 }
 
+export interface ProveedorDelPeriodo {
+  [k: string]: string;
+  /** Razón social. Si difiere entre gastos del mismo proveedor, van las dos. */
+  nombre: string;
+  /** CUIT. Vacío si no se cargó; si hay más de uno, van todos separados por " / ". */
+  cuit: string;
+  /** Cuántos CUIT distintos se agruparon. > 1 = hay algo para revisar. */
+  cuits: string;
+  comprobantes: string;
+  total: string;
+}
+
+/**
+ * Proveedores del período: razón social, CUIT e importe.
+ *
+ * ── ES MEDIO ITEM DE LA CARTA, NO EL ITEM ENTERO ──────────────────────────
+ * La contadora pide "detalle de proveedores **y/o acreedores** a la fecha de
+ * cierre". Son dos cosas:
+ *   - PROVEEDORES: a quién se le pagó. Es esto.
+ *   - ACREEDORES al cierre: lo que se DEBE y todavía no se pagó. Eso Pandora
+ *     no lo sabe: todo gasto nace pagado (tiene `medio_pago`), y la cuenta
+ *     corriente de proveedores está diferida.
+ *
+ * Por eso el CSV lo dice adentro (ver `armarCsvProveedores`). Un archivo que la
+ * contadora lea como "no hay saldos pendientes" cuando Pandora simplemente no
+ * puede saberlo es peor que no mandarle nada.
+ *
+ * ── COMO SE AGRUPA ────────────────────────────────────────────────────────
+ * Por `tercero_id` si el gasto lo tiene, y si no por el nombre normalizado: el
+ * mismo proveedor puede estar una vez elegido del catálogo y otra escrito a
+ * mano. Agrupar sólo por nombre juntaría dos proveedores distintos que se
+ * llaman parecido.
+ *
+ * Cuando el grupo trae más de un CUIT (un tipeo, o la ficha del catálogo más
+ * una entrada suelta), se muestran TODOS en vez de elegir uno: un CUIT
+ * equivocado al lado del nombre correcto es exactamente lo que nadie revisa.
+ *
+ * Los gastos sin proveedor cargado NO se descartan: van juntos en una fila
+ * "(sin proveedor indicado)". Si se cayeran, la suma del listado daría menos
+ * que el total del período y nadie sabría por qué.
+ *
+ * Cubre TODO el período, con factura o sin ella: el ítem 9 no es sobre IVA
+ * compras (a diferencia de `getExpenseTotals`, que sí ofrece ese recorte).
+ */
+export async function getProveedoresDelPeriodo(
+  desde: string,
+  hasta: string
+): Promise<ProveedorDelPeriodo[]> {
+  const { tenantId } = ctx();
+  return db.execute<ProveedorDelPeriodo>(
+    sql`SELECT coalesce(string_agg(DISTINCT payee_name, ' / '), '(sin proveedor indicado)') AS nombre,
+               coalesce(string_agg(DISTINCT payee_doc, ' / '), '')                          AS cuit,
+               count(DISTINCT payee_doc)::text                                              AS cuits,
+               count(*)::text                                                               AS comprobantes,
+               sum(total)::text                                                             AS total
+        FROM expenses
+        WHERE tenant_id = ${tenantId}
+          AND fecha >= ${desde}::date AND fecha < ${hasta}::date
+        GROUP BY coalesce(tercero_id::text, lower(trim(payee_name)))
+        ORDER BY sum(total) DESC`
+  );
+}
+
+/**
+ * CSV de proveedores para el ítem 9 de la carta.
+ *
+ * Lleva una nota AL FINAL DEL ARCHIVO, no sólo en la pantalla: la pantalla la
+ * lee una vez quien exporta; el archivo es el que llega al estudio, se guarda y
+ * se abre tres semanas después. La advertencia tiene que sobrevivir ahí.
+ */
+export function armarCsvProveedores(
+  filas: ProveedorDelPeriodo[],
+  periodoEtiqueta: string
+): string {
+  const tabla = csvArmar(
+    ['Proveedor', 'CUIT', 'Comprobantes', 'Total pagado'],
+    filas.map((p) => [
+      csvTxt(p.nombre),
+      csvTxt(Number(p.cuits) > 1 ? `${p.cuit} (revisar: ${p.cuits} CUIT)` : p.cuit),
+      p.comprobantes,
+      csvNum(p.total),
+    ])
+  );
+
+  const nota =
+    `Gastos PAGADOS en el período (${periodoEtiqueta}). ` +
+    'NO incluye saldos pendientes de pago: en este sistema todo gasto se ' +
+    'registra ya pagado, así que esta lista no es el detalle de acreedores al ' +
+    'cierre.';
+  return `${tabla}\r\n${csvTxt(nota)}\r\n`;
+}
+
 /**
  * IVA crédito fiscal del período: sólo de los gastos que están en el IVA
  * compras.

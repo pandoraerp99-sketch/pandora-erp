@@ -97,6 +97,19 @@ html[data-theme="dark"] .cat-otros           { --gcat-fg:#98a2be; --gcat-bg:rgba
 .gcatn{ font-size:10.5px; color:var(--ink-4); font-family:var(--mono); flex:0 0 auto; }
 .gcatv{ font-family:var(--mono); font-weight:700; font-size:12.5px; color:var(--ink); flex:0 0 auto; }
 
+/* Por proveedor (item 9 de la carta): razon social, CUIT e importe. */
+.gprov{ display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid rgba(13,20,36,0.05); }
+.gprov:first-of-type{ border-top:none; }
+.gprov-id{ flex:1; min-width:0; }
+.gprov-n{ font-size:12.5px; font-weight:600; color:var(--ink-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.gprov-c{ font-size:10.5px; font-family:var(--mono); color:var(--ink-3); margin-top:2px; }
+.gprov-sin{ color:var(--ink-4); font-style:italic; font-family:inherit; }
+/* Dos CUIT en el mismo proveedor no es un error del sistema, es algo que hay
+   que mirar antes de mandarlo. Ambar, como "hay que mandar": es una tarea. */
+.gprov-ojo{ color:#8a520c; font-weight:700; }
+html[data-theme="dark"] .gprov{ border-top-color:rgba(255,255,255,0.06); }
+html[data-theme="dark"] .gprov-ojo{ color:#ffc79a; }
+
 /* Vacio con MOTIVO. Un cero pelado se lee como "no hubo gastos"; el texto
    distingue "todavia no cargaste ninguno" de "en este periodo no hubo". */
 .gempty{ padding:38px 24px; text-align:center; }
