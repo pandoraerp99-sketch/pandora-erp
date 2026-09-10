@@ -26,7 +26,16 @@ export interface PanelProps {
     mejorHora: number | null;
     mejorHoraTotal: string;
   };
-  mes: { total: string; tickets: number; totalMesPasado: string; variacion: number | null };
+  mes: {
+    total: string;
+    tickets: number;
+    totalMesPasado: string;
+    variacion: number | null;
+    totalMesPasadoCompleto: string;
+    diaDelMes: number;
+    mesActual: string;
+    mesAnterior: string;
+  };
   serie: Array<{ dia: string; total: string; tickets: string }>;
   ingresosGastos: Array<{ mes: string; ingresos: string; gastos: string }>;
   medios: Array<{ medio: string; total: string; operaciones: string }>;
@@ -41,7 +50,16 @@ export interface PanelProps {
   }>;
   stockBajo: Array<{ nombre: string; stock: string; minimo: string }>;
   cuentaCorriente: { porCobrar: string; deudores: number };
-  caja: { abierta_at: string; inicial: string; esperado: string } | null;
+  caja: {
+    abierta_at: string;
+    initial: string;
+    cashSales: string;
+    deposits: string;
+    customerPayments: string;
+    withdraws: string;
+    providerPayments: string;
+    expected: string;
+  } | null;
   comercio: string;
   usuario: string;
 }
@@ -93,6 +111,30 @@ function diaCorto(iso: string): string {
 function mesCorto(iso: string): string {
   const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
   return MESES[Number(iso.split('-')[1]) - 1] ?? '';
+}
+
+/** '2026-08-01' → 'agosto'. */
+function mesLargo(iso: string): string {
+  const MESES = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+  ];
+  return MESES[Number(iso.split('-')[1]) - 1] ?? '';
+}
+
+/**
+ * Ancho de una barra contra la otra, en porcentaje.
+ *
+ * Se escala al MAYOR de las dos, no a cada una por su cuenta: si cada barra
+ * usara todo el ancho, dos meses muy distintos se verían iguales y la
+ * comparación —que es todo el punto del bloque— no diría nada. El mínimo de 4%
+ * es para que un mes casi en cero siga siendo una barra visible y no un vacío
+ * que se lee como "no hay dato".
+ */
+function anchoRelativo(valor: string, otro: string): number {
+  const max = Math.max(Number(valor), Number(otro));
+  if (max === 0) return 0;
+  return Math.max(4, (Number(valor) / max) * 100);
 }
 
 /**
@@ -148,12 +190,18 @@ export function PanelClient({
   comercio,
   usuario,
 }: PanelProps) {
-  const serieTotales = serie.map((d) => Number(d.total));
+  // "Facturación del mes" ya no lleva sparkline: las dos barras comparativas
+  // dicen lo mismo y además muestran contra qué se compara. Las otras dos
+  // tarjetas del trío sí la conservan.
   const serieTickets = serie.map((d) => Number(d.tickets));
   const seriePromedio = ticketPromedioPorDia(serie);
 
   const totalMedios = medios.reduce((a, m) => a + Number(m.total), 0);
+  const totalOperaciones = medios.reduce((a, m) => a + Number(m.operaciones), 0);
   const hayVentasHoy = hoy.tickets > 0;
+  // Para las barras de "más vendidos": relativas al primero, que es el que más
+  // facturó. Escalar cada una a su propio ancho no compararía nada.
+  const topVendido = Math.max(...masVendidos.map((p) => Number(p.total)), 1);
 
   // Anillo: el día contra el mismo día de la semana pasada. Reemplaza a la
   // "meta del día" de la maqueta, que no existe como concepto en ningún lado.
@@ -167,6 +215,9 @@ export function PanelClient({
     ...ingresosGastos.map((m) => Math.max(Number(m.ingresos), Number(m.gastos))),
     1
   );
+  const ultimoIG = ingresosGastos[ingresosGastos.length - 1];
+  const resultadoMes =
+    ultimoIG === undefined ? 0 : Number(ultimoIG.ingresos) - Number(ultimoIG.gastos);
 
   const contenido = (
     <>
@@ -352,9 +403,50 @@ export function PanelClient({
                 <Delta v={mes.variacion} />
               </div>
               <div className="label-sm" style={{ marginTop: 2 }}>
-                vs el mismo tramo del mes pasado
+                vs los mismos días de {mesLargo(mes.mesAnterior)}
               </div>
-              <Sparkline serie={serieTotales} w={280} h={64} className="spark" />
+
+              {/* Las dos barras hacen VISIBLE de dónde sale el porcentaje de
+                  arriba. Antes estaba el "+22,3%" pelado y había que creerle. */}
+              <div className="cmp">
+                <div className="cmp-fila">
+                  <span className="cmp-rot">
+                    1–{mes.diaDelMes} {mesCorto(mes.mesAnterior)}
+                  </span>
+                  <span className="cmp-val tnum">{plata(mes.totalMesPasado)}</span>
+                </div>
+                <div className="cmp-pista">
+                  <div
+                    className="cmp-barra ant"
+                    style={{ width: `${anchoRelativo(mes.totalMesPasado, mes.total)}%` }}
+                  />
+                </div>
+                <div className="cmp-fila" style={{ marginTop: 9 }}>
+                  <span className="cmp-rot">
+                    1–{mes.diaDelMes} {mesCorto(mes.mesActual)}
+                  </span>
+                  <span className="cmp-val tnum">{plata(mes.total)}</span>
+                </div>
+                <div className="cmp-pista">
+                  <div
+                    className="cmp-barra act"
+                    style={{ width: `${anchoRelativo(mes.total, mes.totalMesPasado)}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="label-sm" style={{ marginTop: 12 }}>
+                {Number(mes.totalMesPasadoCompleto) > 0 ? (
+                  <>
+                    {mesLargo(mes.mesAnterior)} cerró en{' '}
+                    <b className="tnum" style={{ color: 'var(--ink-2)' }}>
+                      {plata(mes.totalMesPasadoCompleto)}
+                    </b>
+                  </>
+                ) : (
+                  <>Todavía no hay un mes anterior con el que comparar.</>
+                )}
+              </div>
             </div>
 
             <div className="card glass">
@@ -453,16 +545,41 @@ export function PanelClient({
                         style={{ height: `${(Number(m.ingresos) / maxIG) * 100}%` }}
                         title={`Ingresos ${plata(m.ingresos)}`}
                       />
-                      <div
-                        className="ig-b gas"
-                        style={{ height: `${(Number(m.gastos) / maxIG) * 100}%` }}
-                        title={`Gastos ${plata(m.gastos)}`}
-                      />
+                      {/* En CERO no se dibuja nada. El `min-height:2px` que
+                          hace visible un valor chico convertía un mes sin
+                          gastos en una astilla naranja que se lee como un error
+                          de render — y hay cinco meses así, porque el módulo de
+                          gastos es de la semana pasada. Un hueco dice mejor
+                          "acá todavía no había nada". */}
+                      {Number(m.gastos) > 0 ? (
+                        <div
+                          className="ig-b gas"
+                          style={{ height: `${(Number(m.gastos) / maxIG) * 100}%` }}
+                          title={`Gastos ${plata(m.gastos)}`}
+                        />
+                      ) : (
+                        <div className="ig-b vacia" title="Sin gastos cargados" />
+                      )}
                     </div>
                     <div className="ig-rot">{mesCorto(m.mes)}</div>
                   </div>
                 ))}
               </div>
+              {/* Resultado = ingresos − gastos. Las dos series son reales, así
+                  que la resta también. NO se muestra "margen %": eso necesita
+                  el costo de la mercadería vendida, y `sale_items` no guarda el
+                  costo — calcularlo con el costo de HOY daría un margen
+                  histórico falso (si sube el precio de compra, cambiaría el
+                  margen de una venta de marzo). */}
+              {ultimoIG !== undefined ? (
+                <div className="ig-res">
+                  <span className="label-sm">Resultado de {mesLargo(ultimoIG.mes)}</span>
+                  <span className={resultadoMes >= 0 ? 'ig-res-v pos' : 'ig-res-v neg'}>
+                    {resultadoMes >= 0 ? '+' : '−'}
+                    {plata(String(Math.abs(resultadoMes)))}
+                  </span>
+                </div>
+              ) : null}
             </div>
 
             <div className="card glass">
@@ -495,12 +612,18 @@ export function PanelClient({
                     }}
                   >
                     <div className="ctr">
-                      <div className="upper-mini">Hoy</div>
+                      {/* En el centro va la CANTIDAD de cobros, no el monto: el
+                          monto ya está en cada fila de la leyenda, y repetirlo
+                          desperdicia el único lugar que queda para un dato que
+                          no está en ningún otro lado. */}
                       <div
                         className="tnum"
-                        style={{ fontSize: 15, fontWeight: 700, marginTop: 1 }}
+                        style={{ fontSize: 21, fontWeight: 700, lineHeight: 1 }}
                       >
-                        {plata(String(totalMedios))}
+                        {totalOperaciones}
+                      </div>
+                      <div style={{ fontSize: 10, color: 'var(--ink-3)', marginTop: 2 }}>
+                        cobros hoy
                       </div>
                     </div>
                   </div>
@@ -512,7 +635,8 @@ export function PanelClient({
                           style={{ background: medioColor(m.medio) }}
                         />
                         {medioLabel(m.medio)}
-                        <span className="val">
+                        <span className="val">{plata(m.total)}</span>
+                        <span className="pct">
                           {Math.round((Number(m.total) / totalMedios) * 100)}%
                         </span>
                       </div>
@@ -522,6 +646,36 @@ export function PanelClient({
               )}
             </div>
           </div>
+
+          {/* ═══ MÁS VENDIDOS ═══ */}
+          {masVendidos.length > 0 ? (
+            <div className="card glass" style={{ marginTop: 16 }}>
+              <div className="card-title">
+                <h3>Más vendidos · hoy</h3>
+                <Link className="label-sm" href="/productos">
+                  Ver productos →
+                </Link>
+              </div>
+              {masVendidos.map((p, i) => (
+                <div key={p.nombre} className="mv-row">
+                  <span className="mv-pos">{i + 1}</span>
+                  <div className="mv-cuerpo">
+                    <div className="mv-top">
+                      <span className="mv-nombre">{p.nombre}</span>
+                      <span className="mv-u tnum">{Number(p.unidades)} u</span>
+                    </div>
+                    <div className="mv-pista">
+                      <div
+                        className="mv-barra"
+                        style={{ width: `${(Number(p.total) / topVendido) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                  <span className="mv-monto tnum">{plata(p.total)}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
 
           {/* ═══ ÚLTIMAS VENTAS ═══ */}
           <div className="card glass" style={{ marginTop: 16 }}>
@@ -697,13 +851,9 @@ export function PanelClient({
               </>
             ) : (
               <>
-                <div className="kv">
-                  <span className="k">Esperado en caja</span>
-                  <span className="v" style={{ fontSize: 18 }}>
-                    {plata(caja.esperado)}
-                  </span>
-                </div>
-                <div className="divider" />
+                {/* La CUENTA, no sólo el resultado. Este número se verifica
+                    después contra el cajón: mostrando de qué se compone, el
+                    cajero puede cuadrarlo en el momento en vez de confiar. */}
                 <div className="kv">
                   <span className="k">Apertura</span>
                   <span className="v">
@@ -712,7 +862,44 @@ export function PanelClient({
                       minute: '2-digit',
                       timeZone: 'America/Argentina/Ushuaia',
                     }).format(new Date(caja.abierta_at))}{' '}
-                    · {plata(caja.inicial)}
+                    · {plata(caja.initial)}
+                  </span>
+                </div>
+                <div className="kv">
+                  <span className="k">Cobrado en efectivo</span>
+                  <span className="v">{plata(caja.cashSales)}</span>
+                </div>
+                {Number(caja.customerPayments) > 0 ? (
+                  <div className="kv">
+                    <span className="k">Cobros de fiado</span>
+                    <span className="v">{plata(caja.customerPayments)}</span>
+                  </div>
+                ) : null}
+                {Number(caja.deposits) > 0 ? (
+                  <div className="kv">
+                    <span className="k">Ingresos a caja</span>
+                    <span className="v">{plata(caja.deposits)}</span>
+                  </div>
+                ) : null}
+                {Number(caja.withdraws) > 0 ? (
+                  <div className="kv">
+                    <span className="k">Retiros</span>
+                    <span className="v neg">−{plata(caja.withdraws)}</span>
+                  </div>
+                ) : null}
+                {Number(caja.providerPayments) > 0 ? (
+                  <div className="kv">
+                    <span className="k">Pagos a proveedores</span>
+                    <span className="v neg">−{plata(caja.providerPayments)}</span>
+                  </div>
+                ) : null}
+                <div className="divider" />
+                <div className="kv">
+                  <span className="k" style={{ fontWeight: 600, color: 'var(--ink-1)' }}>
+                    Efectivo en caja
+                  </span>
+                  <span className="v" style={{ fontSize: 19 }}>
+                    {plata(caja.expected)}
                   </span>
                 </div>
                 <Link

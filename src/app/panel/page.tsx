@@ -43,10 +43,7 @@ import {
   getStockBajo,
   getUltimasVentas,
 } from '@/lib/services/reporting/panel.report';
-import {
-  computeExpectedAmountFromActivity,
-  getActiveCashSession,
-} from '@/lib/cash/sessions';
+import { computeCashBreakdown, getActiveCashSession } from '@/lib/cash/sessions';
 import { PanelClient } from './PanelClient';
 
 // F0: un único punto de venta, igual que el resto de la app.
@@ -81,18 +78,19 @@ export default async function PanelPage() {
         getActiveCashSession(SALE_POINT),
       ]);
 
-      // Lo esperado en caja sale de `computeExpectedAmountFromActivity`, que es
-      // la MISMA fórmula que usa el cierre: inicial + ventas en efectivo +
-      // depósitos − retiros − pagos a proveedor.
+      // El desglose de la caja sale de `computeCashBreakdown`, que es LA MISMA
+      // fórmula que usa el cierre. La pantalla muestra la cuenta entera —
+      // cobrado en efectivo, cobros de fiado, retiros— y no sólo el resultado:
+      // así el cajero la puede verificar contra el cajón en vez de confiar.
       //
       // NO se usa `getCashSessionSummary().totals.expected_from_movements`: ése
       // ignora las ventas (lo dice su propio docstring), y en pantalla daba
       // "esperado $49.800" contra una apertura de $50.000 después de un día
       // entero de ventas en efectivo.
-      const esperado =
+      const desglose =
         caja === null
           ? null
-          : await computeExpectedAmountFromActivity(
+          : await computeCashBreakdown(
               db,
               caja.id,
               session.active_company_id,
@@ -110,13 +108,9 @@ export default async function PanelPage() {
         stockBajo,
         cuentaCorriente,
         caja:
-          caja === null || esperado === null
+          caja === null || desglose === null
             ? null
-            : {
-                abierta_at: caja.opened_at.toISOString(),
-                inicial: caja.initial_amount,
-                esperado,
-              },
+            : { abierta_at: caja.opened_at.toISOString(), ...desglose },
       };
     },
     { requireAuth: true }

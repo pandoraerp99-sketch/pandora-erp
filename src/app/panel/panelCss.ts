@@ -451,7 +451,56 @@ html[data-theme="dark"] .ring-pct{ color:var(--ink); }
        animation:grow 900ms cubic-bezier(.2,.7,.2,1) backwards; transform-origin:bottom; }
 .ig-b.ing{ background:linear-gradient(180deg,var(--purple),rgba(107,95,255,0.55)); }
 .ig-b.gas{ background:linear-gradient(180deg,var(--orange),rgba(247,152,74,0.5)); }
+/* Mes sin gastos cargados: se reserva el LUGAR pero no se pinta nada, para que
+   la barra de ingresos no se corra de columna y el hueco se lea como hueco. */
+.ig-b.vacia{ background:none; animation:none; min-height:0; }
 .ig-rot{ font-size:10.5px; color:var(--ink-3); font-family:var(--mono); }
+
+/* ═══ FACTURACION DEL MES — las dos barras comparativas ═══
+   Hacen visible de donde sale el porcentaje de arriba. Antes estaba el
+   "+22,3%" pelado y habia que creerle. */
+.cmp{ margin-top:14px; }
+.cmp-fila{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:5px; }
+.cmp-rot{ font-size:11.5px; color:var(--ink-3); }
+.cmp-val{ font-size:12.5px; font-weight:700; color:var(--ink-2); }
+.cmp-pista{ height:8px; border-radius:999px; background:rgba(13,20,36,0.06); overflow:hidden; }
+.cmp-barra{ height:100%; border-radius:999px; animation:crecerAncho 800ms cubic-bezier(.2,.7,.2,1) backwards; }
+.cmp-barra.ant{ background:rgba(122,130,155,0.45); }
+.cmp-barra.act{ background:linear-gradient(90deg,var(--purple),var(--purple-2)); }
+@keyframes crecerAncho{ from{ width:0 !important; } }
+html[data-theme="dark"] .cmp-pista{ background:rgba(255,255,255,0.08); }
+
+/* ═══ MAS VENDIDOS ═══ */
+.mv-row{ display:flex; align-items:center; gap:11px; padding:9px 0; border-top:1px solid rgba(13,20,36,0.05); }
+.mv-row:first-of-type{ border-top:none; }
+.mv-pos{ width:20px; height:20px; flex:0 0 auto; border-radius:6px; display:flex; align-items:center;
+         justify-content:center; font-size:10.5px; font-weight:700; font-family:var(--mono);
+         background:rgba(107,95,255,0.11); color:var(--purple); }
+.mv-cuerpo{ flex:1; min-width:0; }
+.mv-top{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:5px; }
+.mv-nombre{ font-size:12.5px; font-weight:500; color:var(--ink-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mv-u{ font-size:10.5px; color:var(--ink-3); flex:0 0 auto; }
+.mv-pista{ height:6px; border-radius:999px; background:rgba(13,20,36,0.05); overflow:hidden; }
+.mv-barra{ height:100%; border-radius:999px; background:linear-gradient(90deg,var(--purple),var(--purple-2));
+           animation:crecerAncho 800ms cubic-bezier(.2,.7,.2,1) backwards; }
+.mv-monto{ font-size:12.5px; font-weight:700; color:var(--ink); flex:0 0 auto; width:88px; text-align:right; }
+html[data-theme="dark"] .mv-row{ border-top-color:rgba(255,255,255,0.06); }
+html[data-theme="dark"] .mv-pista{ background:rgba(255,255,255,0.07); }
+
+/* ═══ RESULTADO DEL MES (ingresos - gastos) ═══ */
+.ig-res{ display:flex; align-items:baseline; justify-content:space-between; margin-top:14px;
+         padding-top:12px; border-top:1px solid rgba(13,20,36,0.06); }
+.ig-res-v{ font-family:var(--mono); font-size:16px; font-weight:700; letter-spacing:-0.02em; }
+.ig-res-v.pos{ color:#116b40; } .ig-res-v.neg{ color:#a72c3a; }
+html[data-theme="dark"] .ig-res{ border-top-color:rgba(255,255,255,0.08); }
+html[data-theme="dark"] .ig-res-v.pos{ color:#7fe0ae; }
+html[data-theme="dark"] .ig-res-v.neg{ color:#ff9aa4; }
+
+/* Monto + porcentaje en la leyenda del donut: el monto es el dato, el
+   porcentaje el contexto, asi que el porcentaje va mas chico y apagado. */
+.legend .pct{ font-size:10.5px; color:var(--ink-3); font-family:var(--mono); width:34px; text-align:right; }
+.kv .v.neg{ color:#a72c3a; }
+html[data-theme="dark"] .kv .v.neg{ color:#ff9aa4; }
 
 /* Chip de estado de AFIP. Ambar y no rojo: que falte el certificado no es un
    error del sistema, es un paso que todavia no se dio. */

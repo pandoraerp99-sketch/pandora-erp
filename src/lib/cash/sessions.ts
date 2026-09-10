@@ -710,6 +710,44 @@ export async function computeExpectedAmountFromActivity(
   tenant_id: string,
   initial_amount: string
 ): Promise<string> {
+  return (await computeCashBreakdown(tx, session_id, tenant_id, initial_amount))
+    .expected;
+}
+
+/**
+ * Lo mismo que arriba, pero DEVOLVIENDO LAS PARTES además del total.
+ *
+ * ── POR QUE ─────────────────────────────────────────────────────────────
+ * El Panel mostraba sólo el resultado ("Esperado en caja $287.287") y el
+ * cajero tenía que confiar. Mostrando la cuenta —cobrado en efectivo, más los
+ * cobros de fiado, menos los retiros— se puede VERIFICAR de un vistazo, que es
+ * lo que se hace igual contra el cajón.
+ *
+ * Las partes salen de acá y no de una consulta nueva en el Panel: la suma que
+ * se muestra tiene que ser exactamente la que se usa al cerrar, o la pantalla
+ * enseñaría una cuenta que no da.
+ */
+export interface CashBreakdown {
+  /** Con lo que se abrió. */
+  initial: string;
+  /** Ventas cobradas en efectivo en esta sesión. */
+  cashSales: string;
+  /** Ingresos manuales al cajón. */
+  deposits: string;
+  /** Cobros de cuenta corriente en efectivo (ADR-0027): entran al cajón. */
+  customerPayments: string;
+  withdraws: string;
+  providerPayments: string;
+  /** initial + cashSales + deposits + customerPayments − withdraws − providerPayments */
+  expected: string;
+}
+
+export async function computeCashBreakdown(
+  tx: DbOrTransaction,
+  session_id: string,
+  tenant_id: string,
+  initial_amount: string
+): Promise<CashBreakdown> {
   const SCALE = 10000;
   const initialInt = Math.round(parseFloat(initial_amount) * SCALE);
   if (!Number.isFinite(initialInt)) {
@@ -789,7 +827,17 @@ export async function computeExpectedAmountFromActivity(
     customerPaymentsInt -
     withdrawsInt -
     providerPaymentsInt;
-  return (expectedInt / SCALE).toFixed(4);
+
+  const desescalar = (n: number) => (n / SCALE).toFixed(4);
+  return {
+    initial: desescalar(initialInt),
+    cashSales: desescalar(cashSalesInt),
+    deposits: desescalar(depositsInt),
+    customerPayments: desescalar(customerPaymentsInt),
+    withdraws: desescalar(withdrawsInt),
+    providerPayments: desescalar(providerPaymentsInt),
+    expected: desescalar(expectedInt),
+  };
 }
 
 /**

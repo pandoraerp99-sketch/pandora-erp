@@ -166,6 +166,13 @@ export interface PanelMes {
   /** El mismo tramo del mes pasado: hasta el mismo día, para comparar justo. */
   totalMesPasado: string;
   variacion: number | null;
+  /** El mes pasado ENTERO. Es contexto, no la base de la comparación. */
+  totalMesPasadoCompleto: string;
+  /** Qué día del mes es hoy: "1–10 sep" en la barra comparativa. */
+  diaDelMes: number;
+  /** 'AAAA-MM-01' del mes corriente y del anterior, para rotular. */
+  mesActual: string;
+  mesAnterior: string;
 }
 
 /**
@@ -181,6 +188,10 @@ export async function getPanelMes(): Promise<PanelMes> {
     total: string;
     tickets: string;
     mes_pasado: string;
+    mes_pasado_completo: string;
+    dia_del_mes: string;
+    mes_actual: string;
+    mes_anterior: string;
   }>(
     sql`WITH ref AS (
           SELECT date_trunc('month', ${hoyLocal})::date                       AS ini_mes,
@@ -190,13 +201,32 @@ export async function getPanelMes(): Promise<PanelMes> {
         SELECT
           coalesce(sum(total) FILTER (WHERE ${diaLocal} >= ref.ini_mes), 0)::text AS total,
           count(*)            FILTER (WHERE ${diaLocal} >= ref.ini_mes)::text     AS tickets,
+          -- El MISMO TRAMO del mes pasado: hasta el mismo día del mes.
           coalesce(sum(total) FILTER (
             WHERE ${diaLocal} >= ref.ini_ant
               AND ${diaLocal} <  ref.ini_ant + ref.dia_del_mes
-          ), 0)::text AS mes_pasado
+          ), 0)::text AS mes_pasado,
+          -- Y el mes pasado ENTERO. Es contexto ("agosto cerró en X"), NO la
+          -- base de la comparación: comparar un mes a medio andar contra un mes
+          -- completo daría siempre una caída falsa.
+          coalesce(sum(total) FILTER (
+            WHERE ${diaLocal} >= ref.ini_ant AND ${diaLocal} < ref.ini_mes
+          ), 0)::text AS mes_pasado_completo,
+          max(ref.dia_del_mes)::text AS dia_del_mes,
+          max(ref.ini_mes)::text     AS mes_actual,
+          max(ref.ini_ant)::text     AS mes_anterior
         FROM sales, ref
         WHERE tenant_id = ${tenantId} AND ${VENTA_CERRADA}
           AND ${diaLocal} >= ref.ini_ant`
+  );
+
+  // Sin NINGUNA venta desde el mes pasado, el FROM no devuelve filas y los
+  // rótulos quedarían vacíos. Se recalculan las fechas para que la pantalla
+  // igual sepa qué meses está mostrando.
+  const [ref] = await db.execute<{ dia: string; actual: string; anterior: string }>(
+    sql`SELECT extract(day FROM ${hoyLocal})::text                             AS dia,
+               date_trunc('month', ${hoyLocal})::date::text                     AS actual,
+               (date_trunc('month', ${hoyLocal}) - interval '1 month')::date::text AS anterior`
   );
 
   const total = fila?.total ?? '0';
@@ -206,6 +236,10 @@ export async function getPanelMes(): Promise<PanelMes> {
     tickets: Number(fila?.tickets ?? '0'),
     totalMesPasado: fila?.mes_pasado ?? '0',
     variacion: mesPasado === 0 ? null : ((Number(total) - mesPasado) / mesPasado) * 100,
+    totalMesPasadoCompleto: fila?.mes_pasado_completo ?? '0',
+    diaDelMes: Number(fila?.dia_del_mes ?? ref?.dia ?? '1'),
+    mesActual: fila?.mes_actual ?? ref?.actual ?? '',
+    mesAnterior: fila?.mes_anterior ?? ref?.anterior ?? '',
   };
 }
 

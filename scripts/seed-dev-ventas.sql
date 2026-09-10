@@ -11,6 +11,13 @@
 -- realista (pico 18-20h), con medios mezclados y con clientes asignados a una
 -- parte. El mes corriente va mas denso, que es lo que el Panel muestra.
 --
+-- OJO — LO QUE ESTE SEED **NO** HACE:
+--   * No genera stock_movements, asi que el stock de products NO baja con las
+--     ventas. En el Panel se ve como "Coca-Cola 600ml 0/24" en Reponer y al
+--     mismo tiempo entre los mas vendidos del dia. Es data de desarrollo, no un
+--     bug de la pantalla: una venta real SI mueve el stock.
+--   * No genera facturas (fiscal_snapshots): falta el certificado de ARCA.
+--
 -- NO es data productiva. Idempotente: borra lo suyo antes de generar.
 -- Correr:  docker exec -i supabase_db_pandora-erp psql -U postgres < este.sql
 
