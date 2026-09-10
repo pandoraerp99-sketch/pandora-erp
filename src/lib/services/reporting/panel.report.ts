@@ -160,6 +160,47 @@ export async function getSerieDiaria(dias = 30): Promise<SerieDia[]> {
   );
 }
 
+export interface PuntoHora {
+  [k: string]: string;
+  /** Hora local, 0-23. */
+  hora: string;
+  total: string;
+  tickets: string;
+}
+
+/**
+ * Ventas de hoy, hora por hora.
+ *
+ * ── EL RANGO SALE DE LOS DATOS, NO DE UN HORARIO CONFIGURADO ──────────────
+ * No existe el concepto de "horario de atención" en Pandora, así que el eje va
+ * de la primera a la última venta del día. Es más honesto que una constante y
+ * además dice algo: a qué hora abrió de verdad.
+ *
+ * Los huecos se rellenan con cero (`generate_series`): una hora sin ventas
+ * TIENE que ser un cero en la curva. Si se salteara, la línea uniría las 12 con
+ * las 15 en una recta y dibujaría ventas en horas muertas.
+ */
+export async function getSerieHoraria(): Promise<PuntoHora[]> {
+  const tenantId = requireTenantId();
+  return db.execute<PuntoHora>(
+    sql`WITH v AS (
+          SELECT extract(hour FROM created_at AT TIME ZONE ${TZ_COMERCIO})::int AS hora,
+                 total
+          FROM sales
+          WHERE tenant_id = ${tenantId} AND ${VENTA_CERRADA}
+            AND ${diaLocal} = ${hoyLocal}
+        ),
+        rango AS (SELECT min(hora) AS desde, max(hora) AS hasta FROM v)
+        SELECT h::text                          AS hora,
+               coalesce(sum(v.total), 0)::text  AS total,
+               count(v.total)::text             AS tickets
+        FROM rango, generate_series(rango.desde, rango.hasta) AS h
+        LEFT JOIN v ON v.hora = h
+        GROUP BY h
+        ORDER BY h`
+  );
+}
+
 export interface PanelMes {
   total: string;
   tickets: number;

@@ -14,6 +14,7 @@
 import Link from 'next/link';
 import { AppShell } from '@/components/shell/AppShell';
 import { Sparkline } from '@/components/charts/Sparkline';
+import { EvolucionVentas } from '@/components/charts/EvolucionVentas';
 import { PANEL_CSS } from './panelCss';
 
 export interface PanelProps {
@@ -37,6 +38,7 @@ export interface PanelProps {
     mesAnterior: string;
   };
   serie: Array<{ dia: string; total: string; tickets: string }>;
+  serieHoraria: Array<{ hora: string; total: string; tickets: string }>;
   ingresosGastos: Array<{ mes: string; ingresos: string; gastos: string }>;
   medios: Array<{ medio: string; total: string; operaciones: string }>;
   masVendidos: Array<{ nombre: string; unidades: string; total: string }>;
@@ -180,6 +182,7 @@ export function PanelClient({
   hoy,
   mes,
   serie,
+  serieHoraria,
   ingresosGastos,
   medios,
   masVendidos,
@@ -215,6 +218,14 @@ export function PanelClient({
     ...ingresosGastos.map((m) => Math.max(Number(m.ingresos), Number(m.gastos))),
     1
   );
+  // El rango del día sale de los DATOS, no de un horario configurado: no
+  // existe el concepto de "horario de atención" en Pandora. Dice a qué hora
+  // abrió de verdad, que además es más interesante que una constante.
+  const rangoDelDia =
+    serieHoraria.length === 0
+      ? null
+      : `primera venta ${serieHoraria[0]!.hora}h · última ${serieHoraria[serieHoraria.length - 1]!.hora}h`;
+
   const ultimoIG = ingresosGastos[ingresosGastos.length - 1];
   const resultadoMes =
     ultimoIG === undefined ? 0 : Number(ultimoIG.ingresos) - Number(ultimoIG.gastos);
@@ -488,6 +499,28 @@ export function PanelClient({
                 fill="91,140,255"
               />
             </div>
+          </div>
+
+          {/* ═══ EVOLUCIÓN DE VENTAS ═══
+              El bloque más útil para quien atiende: contesta "cuándo vendo".
+              Las tres series van cargadas y el toggle es estado local. */}
+          <div className="card glass" style={{ marginTop: 16 }}>
+            <EvolucionVentas
+              dia={serieHoraria.map((p) => ({
+                etiqueta: `${p.hora}h`,
+                valor: Number(p.total),
+              }))}
+              semana={serie.slice(-7).map((d) => ({
+                etiqueta: diaCorto(d.dia),
+                valor: Number(d.total),
+              }))}
+              mes={serie.map((d) => ({
+                etiqueta: diaCorto(d.dia),
+                valor: Number(d.total),
+              }))}
+              formato={(v) => plata(String(v))}
+              {...(rangoDelDia !== null ? { notaDia: rangoDelDia } : {})}
+            />
           </div>
 
           {/* ═══ INGRESOS VS GASTOS + MEDIOS DE PAGO ═══ */}

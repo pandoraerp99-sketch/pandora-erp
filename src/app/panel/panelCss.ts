@@ -470,6 +470,55 @@ html[data-theme="dark"] .ring-pct{ color:var(--ink); }
 @keyframes crecerAncho{ from{ width:0 !important; } }
 html[data-theme="dark"] .cmp-pista{ background:rgba(255,255,255,0.08); }
 
+/* ═══════════════ EVOLUCION DE VENTAS ═══════════════ */
+.ev-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+.ev-head h3{ font-size:14px; font-weight:600; color:var(--ink); display:flex; align-items:center; gap:8px; }
+.ev-head .ic{ width:24px; height:24px; border-radius:7px; display:flex; align-items:center; justify-content:center; }
+
+/* El toggle. Mismo lenguaje que .seg de la topbar, mas chico. */
+.ev-seg{ display:inline-flex; padding:4px; gap:2px; border-radius:999px; background:rgba(13,20,36,0.05); }
+.ev-seg button{ padding:6px 15px; border-radius:999px; font-size:12px; font-weight:600; color:var(--ink-3);
+                font-family:inherit; border:none; background:none; cursor:pointer; transition:all 180ms; }
+.ev-seg button:hover{ color:var(--ink-1); }
+.ev-seg button.on{ background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(54,70,120,0.14); }
+.ev-seg button:focus-visible{ outline:2px solid var(--purple); outline-offset:1px; }
+html[data-theme="dark"] .ev-seg{ background:rgba(255,255,255,0.07); }
+html[data-theme="dark"] .ev-seg button.on{ background:rgba(255,255,255,0.14); }
+
+.ev-caja{ position:relative; margin-top:10px; }
+.ev-svg{ width:100%; height:190px; display:block; overflow:visible; cursor:crosshair; }
+.ev-guia{ stroke:rgba(13,20,36,0.06); stroke-width:1; }
+.ev-linea{ stroke:var(--purple); stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round;
+           filter:drop-shadow(0 4px 10px rgba(107,95,255,0.28)); }
+.ev-vertical{ stroke:rgba(13,20,36,0.22); stroke-width:1; stroke-dasharray:3 4; }
+.ev-punto{ fill:var(--purple); stroke:#fff; stroke-width:2.5; }
+html[data-theme="dark"] .ev-guia{ stroke:rgba(255,255,255,0.07); }
+html[data-theme="dark"] .ev-vertical{ stroke:rgba(255,255,255,0.24); }
+html[data-theme="dark"] .ev-punto{ stroke:#141c33; }
+
+/* El tooltip es HTML: el SVG estira todo lo que tenga adentro, tipografia
+   incluida, porque usa preserveAspectRatio="none". */
+.ev-tip{ position:absolute; transform:translate(-50%,-125%); pointer-events:none; z-index:3;
+         background:var(--ink); color:#fff; border-radius:10px; padding:7px 11px; white-space:nowrap;
+         box-shadow:0 10px 24px rgba(13,20,36,0.30); }
+.ev-tip::after{ content:''; position:absolute; left:50%; bottom:-4px; width:9px; height:9px;
+                transform:translateX(-50%) rotate(45deg); background:var(--ink); }
+.ev-tip-h{ font-family:var(--mono); font-size:10.5px; opacity:0.62; }
+.ev-tip-v{ font-family:var(--mono); font-size:14px; font-weight:700; margin-top:1px; }
+html[data-theme="dark"] .ev-tip{ background:#0a1024; }
+html[data-theme="dark"] .ev-tip::after{ background:#0a1024; }
+
+.ev-eje{ position:relative; height:16px; margin-top:2px; }
+.ev-eje-t{ position:absolute; transform:translateX(-50%); font-size:10.5px; color:var(--ink-3);
+           font-family:var(--mono); white-space:nowrap; }
+
+.ev-pie{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-top:16px;
+         padding-top:12px; border-top:1px solid rgba(13,20,36,0.06); font-size:12.5px; color:var(--ink-2); }
+.ev-pie b{ color:var(--ink); font-weight:700; }
+.ev-nota{ font-size:11.5px; color:var(--ink-3); }
+.ev-vacio{ padding:36px 8px; text-align:center; font-size:12.5px; color:var(--ink-3); }
+html[data-theme="dark"] .ev-pie{ border-top-color:rgba(255,255,255,0.08); }
+
 /* ═══ MAS VENDIDOS ═══ */
 .mv-row{ display:flex; align-items:center; gap:11px; padding:9px 0; border-top:1px solid rgba(13,20,36,0.05); }
 .mv-row:first-of-type{ border-top:none; }

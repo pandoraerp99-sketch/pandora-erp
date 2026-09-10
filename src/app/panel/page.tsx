@@ -40,6 +40,7 @@ import {
   getPanelMes,
   getResumenCuentaCorriente,
   getSerieDiaria,
+  getSerieHoraria,
   getStockBajo,
   getUltimasVentas,
 } from '@/lib/services/reporting/panel.report';
@@ -65,9 +66,12 @@ export default async function PanelPage() {
         stockBajo,
         cuentaCorriente,
         caja,
+        serieHoraria,
       ] = await Promise.all([
         getPanelHoy(),
         getPanelMes(),
+        // 30 días alcanza para las tres vistas del gráfico: "Semana" son los
+        // últimos 7 y "Mes" los 30. Una consulta, no tres.
         getSerieDiaria(30),
         getIngresosVsGastos(6),
         getMediosDePagoHoy(),
@@ -76,6 +80,7 @@ export default async function PanelPage() {
         getStockBajo(4),
         getResumenCuentaCorriente(),
         getActiveCashSession(SALE_POINT),
+        getSerieHoraria(),
       ]);
 
       // El desglose de la caja sale de `computeCashBreakdown`, que es LA MISMA
@@ -101,6 +106,7 @@ export default async function PanelPage() {
         hoy,
         mes,
         serie,
+        serieHoraria,
         ingresosGastos,
         medios,
         masVendidos,
