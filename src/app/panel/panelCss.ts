@@ -257,14 +257,7 @@ html[data-theme="dark"] .quick{ background:rgba(255,255,255,0.05); border-color:
 html[data-theme="dark"] .quick:hover{ box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 18px rgba(3,7,20,0.5); }
 
 /* calendario */
-html[data-theme="dark"] .cal-nav button{ background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.12); }
-html[data-theme="dark"] .cal-day{ border-color:rgba(255,255,255,0.08); }
-html[data-theme="dark"] .cal-day.today{ color:var(--ink); }
-html[data-theme="dark"] .cal-day.feriado.nac{ color:#9ec5ff; }
-html[data-theme="dark"] .cal-day.feriado.prov{ color:#6fd8e4; }
 html[data-theme="dark"] .cal-agenda{ border-top-color:rgba(255,255,255,0.07); }
-html[data-theme="dark"] .cal-detail{ border-top-color:rgba(255,255,255,0.07); }
-html[data-theme="dark"] .cal-detail-day{ color:var(--ink); }
 html[data-theme="dark"] .cd-ic.ret{ color:#e79ad0; }
 html[data-theme="dark"] .cd-ic.note{ color:#ffb87a; }
 
@@ -302,20 +295,7 @@ html[data-theme="dark"] .ring-pct{ color:var(--ink); }
 #themeBtn svg{ transition:transform 400ms cubic-bezier(.2,.7,.2,1); }
 #themeBtn:hover svg{ transform:rotate(20deg); }
 
-.cal-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:13px; }
-            .cal-nav{ display:flex; gap:6px; }
-            .cal-nav button{ width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--ink-2);background:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.85);font-size:14px;line-height:1; }
-            .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:5px; }
-            .cal-dow{ font-size:9px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-3); text-align:center; font-family:var(--mono); font-weight:600; padding-bottom:3px; }
-            .cal-day{ aspect-ratio:1; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:11.5px; font-weight:500; color:var(--ink-1); position:relative; border:1px solid rgba(255,255,255,0.45); }
-            .cal-day.empty{ background:transparent!important; border:none; }
-            .cal-day.today{ box-shadow:0 0 0 2px var(--purple); color:var(--ink); font-weight:700; }
-            .cal-day .ev{ position:absolute; bottom:5px; left:50%; transform:translateX(-50%); display:flex; gap:2px; }
-            .cal-day .ev i{ width:4.5px; height:4.5px; border-radius:50%; }
             .ev .pay{ background:var(--red); } .ev .col{ background:var(--green); } .ev .tax{ background:var(--orange); }
-            .cal-legend{ display:flex; gap:15px; margin-top:13px; flex-wrap:wrap; }
-            .cal-legend span{ font-size:10.5px; color:var(--ink-3); display:inline-flex; align-items:center; gap:5px; }
-            .cal-legend i{ width:7px; height:7px; border-radius:50%; }
             .cal-agenda{ margin-top:14px; padding-top:13px; border-top:1px solid rgba(13,20,36,0.06); display:flex; flex-direction:column; gap:11px; }
             .ag-row{ display:flex; align-items:center; gap:11px; }
             .ag-date{ font-family:var(--mono); font-size:11px; font-weight:700; color:var(--ink-2); width:40px; flex:0 0 auto; }
@@ -391,13 +371,8 @@ html[data-theme="dark"] .ring-pct{ color:var(--ink); }
             .tf-menu button.on{ background:rgba(107,95,255,0.12); color:var(--ink); font-weight:600; }
             .tf-dot{ width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
             .ev .ret{ background:#d65db1; } .ev .note{ background:#f7984a; } .ev .ret.over{ background:var(--red); }
-            .cal-day{ cursor:pointer; transition:background 120ms, box-shadow 120ms; }
-            .cal-day.sel{ background:var(--purple)!important; color:#fff!important; box-shadow:0 0 0 2px var(--purple); font-weight:700; }
-            .cal-day.sel .ev i{ box-shadow:0 0 0 1.5px rgba(255,255,255,0.55); }
             .cal-sec-label{ font-size:10px; text-transform:uppercase; letter-spacing:0.07em; font-family:var(--mono); font-weight:600; color:var(--ink-3); margin-bottom:10px; }
-            .cal-detail{ margin-top:14px; padding-top:13px; border-top:1px solid rgba(13,20,36,0.06); }
             .cal-detail-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:11px; }
-            .cal-detail-day{ font-size:13px; font-weight:700; color:var(--ink); text-transform:capitalize; }
             .cal-addnote{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; color:var(--purple); background:rgba(107,95,255,0.1); border:none; padding:5px 10px; border-radius:8px; cursor:pointer; transition:background 150ms; }
             .cal-addnote:hover{ background:rgba(107,95,255,0.18); }
             .cal-addnote svg{ width:12px; height:12px; }
@@ -667,5 +642,114 @@ html[data-theme="dark"] .cli-sb{ background:rgba(255,255,255,0.10); }
 /* Eco del monto ya interpretado, antes de confirmar la apertura. */
 .qa-eco{ font-size:11px; color:var(--ink-2); margin-top:6px; }
 .qa-eco b{ font-family:var(--mono); font-weight:700; color:var(--ink); }
+
+/* ═══════════════ CALENDARIO ═══════════════
+   Tomado de la maqueta (public/panel.html, bloque #calCard). Cambios respecto
+   de ella, todos por la misma razon — la maqueta pintaba dias inventados:
+     - la intensidad sale de la venta REAL del dia, calculada contra el maximo
+       del mes que se esta viendo;
+     - hay un estado "sin datos" que la maqueta no necesitaba tener, porque
+       ella siempre tenia numeros. */
+.cal-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:13px; }
+/* En castellano los meses van en minúscula, y acá encima va después de un
+   "·", en medio de la frase. "capitalize" daba "Calendario · Septiembre 2026",
+   el mismo error que la fecha del hero. */
+.cal-mes{ font-weight:600; }
+.cal-nav{ display:flex; gap:6px; align-items:center; }
+.cal-nav button{ height:26px; min-width:26px; padding:0 8px; border-radius:8px;
+                 display:flex; align-items:center; justify-content:center;
+                 color:var(--ink-2); background:rgba(255,255,255,0.55);
+                 border:1px solid rgba(255,255,255,0.85); font-size:14px; line-height:1;
+                 transition:background 160ms, color 160ms; }
+.cal-nav button:hover{ background:rgba(255,255,255,0.85); color:var(--ink); }
+.cal-hoy-btn{ font-size:11px !important; font-weight:600; }
+html[data-theme="dark"] .cal-nav button{ background:rgba(255,255,255,0.06);
+                                         border-color:rgba(255,255,255,0.12); }
+html[data-theme="dark"] .cal-nav button:hover{ background:rgba(255,255,255,0.13); }
+
+.cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:5px; }
+.cal-dow{ font-size:9px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-2);
+          text-align:center; font-family:var(--mono); font-weight:600; padding-bottom:3px; }
+
+/* El dia es un <button>: se puede tabular y activar con Enter. Un dia que se
+   clickea tiene que ser alcanzable sin mouse. */
+/* "aspect-ratio:1" a ancho completo daba celdas enormes: la tarjeta medía
+   ~890px de alto y se comía el panel. El tope de alto las deja rectangulares y
+   baja la grilla a ~340px. */
+.cal-day{ aspect-ratio:1; max-height:52px; border-radius:9px; display:flex; align-items:center;
+          justify-content:center; font-size:11.5px; font-weight:500; color:var(--ink-1);
+          position:relative; border:1px solid rgba(255,255,255,0.45);
+          background:rgba(255,255,255,0.30); cursor:pointer;
+          transition:transform 140ms cubic-bezier(.4,0,.2,1), box-shadow 140ms; }
+.cal-day:hover{ transform:scale(1.07); box-shadow:0 3px 10px rgba(54,70,120,0.16); z-index:1; }
+.cal-day:focus-visible{ outline:2px solid var(--purple); outline-offset:1px; }
+.cal-day.empty{ background:transparent !important; border:none; cursor:default; }
+.cal-day.empty:hover{ transform:none; box-shadow:none; }
+
+/* "Sin datos" NO se dibuja igual que "cero ventas": rayado y apagado. Sin esta
+   distincion el calendario afirmaria que el comercio estuvo cerrado los meses
+   anteriores a existir. */
+.cal-day.sindato{ background:repeating-linear-gradient(45deg,
+                    rgba(13,20,36,0.030) 0 4px, transparent 4px 8px) !important;
+                  color:var(--ink-4); border-style:dashed; }
+html[data-theme="dark"] .cal-day{ background:rgba(255,255,255,0.045);
+                                  border-color:rgba(255,255,255,0.08); }
+html[data-theme="dark"] .cal-day.sindato{ background:repeating-linear-gradient(45deg,
+                    rgba(255,255,255,0.05) 0 4px, transparent 4px 8px) !important; }
+
+/* El futuro: apagado y liso. Sin trama, porque no falta ningún dato — ese día
+   simplemente no pasó todavía. */
+.cal-day.futuro{ background:rgba(13,20,36,0.022); color:var(--ink-4); }
+html[data-theme="dark"] .cal-day.futuro{ background:rgba(255,255,255,0.02); }
+
+.cal-day.today{ box-shadow:0 0 0 2px var(--purple); color:var(--ink); font-weight:700; }
+.cal-day.sel{ box-shadow:0 0 0 2px var(--ink-2); }
+.cal-day.today.sel{ box-shadow:0 0 0 2px var(--purple), 0 0 0 4px rgba(107,95,255,0.28); }
+
+/* Feriado nacional y asueto provincial se ven DISTINTO a proposito: el segundo
+   no obliga al comercio, y pintarlos igual seria decir que esta cerrado. */
+.cal-day.feriado.nac{ color:#2b6cb0; font-weight:700; }
+.cal-day.feriado.prov{ color:#0e7c88; font-weight:700; }
+html[data-theme="dark"] .cal-day.feriado.nac{ color:#9ec5ff; }
+html[data-theme="dark"] .cal-day.feriado.prov{ color:#6fd8e4; }
+
+.cal-day .ev{ position:absolute; bottom:4px; left:50%; transform:translateX(-50%);
+              display:flex; gap:2px; }
+.cal-day .ev i{ width:4.5px; height:4.5px; border-radius:50%; }
+.cal-day .ev i.nac{ background:#2b6cb0; }
+.cal-day .ev i.prov{ background:#0e8f9e; }
+
+.cal-legend{ display:flex; gap:13px; margin-top:13px; flex-wrap:wrap; }
+.cal-legend span{ font-size:10.5px; color:var(--ink-2); display:inline-flex;
+                  align-items:center; gap:5px; }
+.cal-legend i{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.cal-legend .lg-cero{ background:rgba(255,255,255,0.30); border:1px solid rgba(13,20,36,0.14); }
+.cal-legend .lg-sindato{ background:repeating-linear-gradient(45deg,
+                          rgba(13,20,36,0.16) 0 2px, transparent 2px 4px);
+                         border:1px dashed rgba(13,20,36,0.28); }
+.cal-legend .lg-futuro{ background:rgba(13,20,36,0.05); border:1px solid rgba(13,20,36,0.10); }
+html[data-theme="dark"] .cal-legend .lg-futuro{ background:rgba(255,255,255,0.04);
+                                                border-color:rgba(255,255,255,0.10); }
+.cal-legend .lg-nac{ background:#2b6cb0; }
+.cal-legend .lg-prov{ background:#0e8f9e; }
+.cal-legend .lg-hoy{ background:transparent; box-shadow:0 0 0 2px var(--purple); }
+html[data-theme="dark"] .cal-legend .lg-cero{ background:rgba(255,255,255,0.06);
+                                              border-color:rgba(255,255,255,0.18); }
+
+.cal-detail{ margin-top:14px; padding-top:13px; border-top:1px solid rgba(13,20,36,0.06); }
+html[data-theme="dark"] .cal-detail{ border-top-color:rgba(255,255,255,0.07); }
+.cal-detail-day{ font-size:12.5px; font-weight:700; color:var(--ink); }
+.cal-detail-kv{ display:flex; gap:18px; margin-top:7px; font-size:11.5px; color:var(--ink-2); }
+.cal-detail-kv b{ color:var(--ink); font-size:14px; }
+.cal-fer{ margin-top:7px; font-size:11.5px; color:var(--ink-1); }
+.cal-fer b{ color:#2b6cb0; }
+html[data-theme="dark"] .cal-fer b{ color:#9ec5ff; }
+.cal-fer-nota{ display:block; font-size:10.5px; color:var(--ink-2); margin-top:2px; line-height:1.4; }
+
+/* Lo que el calendario NO tiene cargado. Ambar y no rojo: que falte el
+   calendario del anio no es un error, es un paso que no se dio. */
+.cal-aviso{ margin-top:13px; padding:9px 11px; border-radius:10px; font-size:10.5px;
+            line-height:1.45; background:rgba(247,152,74,0.13); color:#7a4708; }
+html[data-theme="dark"] .cal-aviso{ background:rgba(247,152,74,0.15); color:#ffc79a; }
 
 ` + RESET_CARD_POS;

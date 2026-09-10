@@ -23,3 +23,4 @@ export * from './mp_payments.js';
 export * from './padron_a5_cache.js';
 export * from './wsaa_tokens.js';
 export * from './idempotency_log.js';
+export * from './holidays.js';

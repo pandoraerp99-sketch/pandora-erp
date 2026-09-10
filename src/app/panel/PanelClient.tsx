@@ -19,6 +19,7 @@ import { normalizarMontoTipeado } from '@/lib/money/monto-tipeado';
 import { AppShell } from '@/components/shell/AppShell';
 import { Sparkline } from '@/components/charts/Sparkline';
 import { EvolucionVentas } from '@/components/charts/EvolucionVentas';
+import { CalendarioMes } from '@/components/calendar/CalendarioMes';
 import { PANEL_CSS } from './panelCss';
 
 export interface PanelProps {
@@ -78,6 +79,23 @@ export interface PanelProps {
   fechaLarga: string;
   /** Hora del COMERCIO (0-23). Ver `saludo()`. */
   horaComercio: number;
+  /** 'AAAA-MM-DD' del comercio. El calendario marca ESTE día como hoy. */
+  hoyComercio: string;
+  diasCalendario: Array<{ dia: string; total: string; tickets: string }>;
+  feriados: Array<{
+    fecha: string;
+    nombre: string;
+    tipo: string;
+    jurisdiction: string;
+    nota: string | null;
+  }>;
+  coberturaFeriados: Array<{
+    anio: number;
+    jurisdiction: string;
+    completo: boolean;
+    nota: string | null;
+    verified_at: string;
+  }>;
   comercio: string;
   usuario: string;
 }
@@ -305,6 +323,10 @@ export function PanelClient({
   clientes,
   fechaLarga,
   horaComercio,
+  hoyComercio,
+  diasCalendario,
+  feriados,
+  coberturaFeriados,
   comercio,
   usuario,
 }: PanelProps) {
@@ -680,6 +702,20 @@ export function PanelClient({
               }))}
               formato={(v) => plata(String(v))}
               {...(rangoDelDia !== null ? { notaDia: rangoDelDia } : {})}
+            />
+          </div>
+
+          {/* ═══ CALENDARIO ═══
+              Va pegado a la Evolución de ventas: los dos hablan del tiempo. La
+              curva contesta "cuándo vendo dentro del día"; el calendario, "qué
+              días del mes laburo". */}
+          <div className="card glass" style={{ marginTop: 16 }}>
+            <CalendarioMes
+              dias={diasCalendario}
+              feriados={feriados}
+              cobertura={coberturaFeriados}
+              hoy={hoyComercio}
+              formato={plata}
             />
           </div>
 

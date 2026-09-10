@@ -47,6 +47,11 @@ import {
   getStockBajo,
   getUltimasVentas,
 } from '@/lib/services/reporting/panel.report';
+import {
+  getCoberturaFeriados,
+  getDiasConVentas,
+  getFeriados,
+} from '@/lib/services/reporting/calendar.report';
 import { computeCashBreakdown, getActiveCashSession } from '@/lib/cash/sessions';
 import { PanelClient } from './PanelClient';
 
@@ -55,6 +60,20 @@ const SALE_POINT = 1;
 
 export default async function PanelPage() {
   const session = await requireSessionWithCompany();
+
+  // El año del COMERCIO, que hace falta antes de las consultas (el calendario
+  // pide los feriados de un rango alrededor de él). Misma razón que la fecha:
+  // el servidor corre en UTC y a las 21:00 de Ushuaia ya cambió de año el 31/12.
+  const ahora = new Date();
+  const anioComercio = Number(
+    new Intl.DateTimeFormat('en-CA', { timeZone: TZ_COMERCIO, year: 'numeric' }).format(ahora)
+  );
+  const hoyComercio = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ_COMERCIO,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(ahora);
 
   const datos = await withServerActionTracing(
     async () => {
@@ -72,6 +91,9 @@ export default async function PanelPage() {
         serieHoraria,
         rubros,
         clientes,
+        diasCalendario,
+        feriados,
+        coberturaFeriados,
       ] = await Promise.all([
         getPanelHoy(),
         getPanelMes(),
@@ -88,6 +110,11 @@ export default async function PanelPage() {
         getSerieHoraria(),
         getVentasPorRubro(),
         getPanelClientes(),
+        // Un año entero de días de una sola vez: son ~365 filas y así navegar
+        // el calendario no pega contra la base en cada flecha.
+        getDiasConVentas(400),
+        getFeriados(anioComercio - 1, anioComercio + 1),
+        getCoberturaFeriados(anioComercio - 1, anioComercio + 1),
       ]);
 
       // El desglose de la caja sale de `computeCashBreakdown`, que es LA MISMA
@@ -122,6 +149,9 @@ export default async function PanelPage() {
         cuentaCorriente,
         rubros,
         clientes,
+        diasCalendario,
+        feriados,
+        coberturaFeriados,
         caja:
           caja === null || desglose === null
             ? null
@@ -140,7 +170,6 @@ export default async function PanelPage() {
   //
   // Es `Intl` y no una consulta: no hace falta molestar a la base para saber
   // qué hora es, y el `Promise.all` de arriba ya son 13 consultas.
-  const ahora = new Date();
   const fechaLarga = new Intl.DateTimeFormat('es-AR', {
     timeZone: TZ_COMERCIO,
     weekday: 'long',
@@ -167,6 +196,7 @@ export default async function PanelPage() {
       {...datos}
       fechaLarga={fechaLarga}
       horaComercio={horaComercio}
+      hoyComercio={hoyComercio}
       comercio={company?.name ?? 'Mi comercio'}
       usuario={session.email.replace(/@.*/, '')}
     />
