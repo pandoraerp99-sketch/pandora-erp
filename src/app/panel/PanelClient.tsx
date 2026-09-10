@@ -15,6 +15,7 @@ import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { openSessionAction } from '@/app/caja/actions';
+import { normalizarMontoTipeado } from '@/lib/money/monto-tipeado';
 import { AppShell } from '@/components/shell/AppShell';
 import { Sparkline } from '@/components/charts/Sparkline';
 import { EvolucionVentas } from '@/components/charts/EvolucionVentas';
@@ -229,12 +230,20 @@ function AbrirCaja() {
   const [error, setError] = useState<string | null>(null);
   const [enviando, startTransition] = useTransition();
 
+  // Acá se escribe "12.500,50": punto de miles, coma decimal. Un
+  // `replace(',', '.')` a secas daba "12.500.50" y el dominio lo rechazaba
+  // citando un string que nadie tipeó. Viaja como string de punta a punta:
+  // nunca pasa por `Number` (CLAUDE.md §9.8).
+  const normalizado = normalizarMontoTipeado(monto);
+
   const abrir = () => {
+    if (normalizado === null) {
+      setError('No se entiende ese monto. Por ejemplo: 12.500,50');
+      return;
+    }
     setError(null);
     startTransition(async () => {
-      // La coma es como se escribe un decimal acá. Viaja como string hasta el
-      // dominio: nunca pasa por `Number` (CLAUDE.md §9.8).
-      const r = await openSessionAction({ initialAmount: monto.trim().replace(',', '.') });
+      const r = await openSessionAction({ initialAmount: normalizado });
       if (r.ok) router.refresh();
       else setError(r.error);
     });
@@ -253,10 +262,24 @@ function AbrirCaja() {
             if (e.key === 'Enter' && monto.trim() !== '') abrir();
           }}
         />
-        <button type="button" onClick={abrir} disabled={enviando || monto.trim() === ''}>
+        <button
+          type="button"
+          onClick={abrir}
+          disabled={enviando || normalizado === null}
+        >
           {enviando ? 'Abriendo…' : 'Abrir caja'}
         </button>
       </div>
+      {/* ── SE MUESTRA LO QUE SE ENTENDIO, ANTES DE CONFIRMAR ───────────────
+          "12.500" es genuinamente ambiguo: doce mil quinientos, o doce con
+          medio. La regla lo resuelve por la forma, pero adivinar en silencio el
+          fondo inicial de una caja es abrir el turno con la plata mal, y el
+          descuadre aparecería recién al cierre. Así lo verifica quien lo tipea. */}
+      {monto.trim() !== '' && normalizado !== null ? (
+        <div className="qa-eco">
+          Vas a abrir con <b>{plataC(normalizado)}</b>
+        </div>
+      ) : null}
       {error === null ? null : (
         <div className="qa-err" role="alert">
           {error}
@@ -888,14 +911,24 @@ export function PanelClient({
                   <div className="cli-n">{clientes.activos}</div>
                   <div className="cli-l">compraron</div>
                 </div>
+                {/* El color sólo cuando hay algo que colorear: un CERO en
+                    verde se lee como "bien", y cero clientes nuevos no lo es.
+                    Mismo criterio que el resto del panel — un cero es una
+                    afirmación, no un adorno. */}
                 <div className="cli-c">
-                  <div className="cli-n" style={{ color: 'var(--green)' }}>
+                  <div
+                    className="cli-n"
+                    style={clientes.nuevos > 0 ? { color: 'var(--green)' } : undefined}
+                  >
                     {clientes.nuevos}
                   </div>
                   <div className="cli-l">nuevos</div>
                 </div>
                 <div className="cli-c">
-                  <div className="cli-n" style={{ color: 'var(--blue)' }}>
+                  <div
+                    className="cli-n"
+                    style={clientes.vuelven > 0 ? { color: 'var(--blue)' } : undefined}
+                  >
                     {clientes.vuelven}
                   </div>
                   <div className="cli-l">volvieron</div>

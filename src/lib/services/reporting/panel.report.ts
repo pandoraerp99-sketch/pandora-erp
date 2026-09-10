@@ -494,10 +494,25 @@ export interface RubroVendido {
  * alquiler"*), y el dato ya estaba: `products.category` no se usaba en NINGUNA
  * pantalla.
  *
- * ── EL PORCENTAJE SE CALCULA EN SQL ───────────────────────────────────────
- * `sum(sum(...)) OVER ()` da el total del mes en la misma pasada. Dividir en
- * TypeScript obligaría a pasar plata por `Number` (CLAUDE.md §9.8); acá la
- * división es numeric exacta de Postgres.
+ * ── EL DENOMINADOR ES EL TOTAL DEL MES, NO LA SUMA DE LOS ITEMS ───────────
+ * Arriba, en la misma pantalla, "Facturación del mes" muestra `sum(sales.total)`.
+ * Si acá los porcentajes se calcularan sobre `sum(sale_items.line_total)`, las
+ * dos cifras podrían no cerrar y NADA en pantalla lo diría.
+ *
+ * Y no es hipotético: en la base de desarrollo hay 10 ventas cerradas cuyo
+ * `total` no coincide con sus ítems (ventas sin una sola línea). Hoy son de
+ * otros tenants y el comercio de la demo está alineado, pero la forma del
+ * problema existe, y va a volver con el módulo de descuentos —un descuento
+ * global vive en la venta, no en la línea.
+ *
+ * Por eso el faltante NO se esconde: sale como fila propia, igual que
+ * "(sin proveedor indicado)" en el listado de gastos. Los rubros SIEMPRE suman
+ * el total del mes.
+ *
+ * ── SE MUESTRAN LOS 6 PRIMEROS ────────────────────────────────────────────
+ * Una ferretería puede tener treinta rubros y la tarjeta no tiene scroll. El
+ * resto se agrupa en "Otros rubros" en vez de recortarse con un LIMIT, que
+ * rompería la reconciliación de arriba.
  *
  * ── EL RUBRO ES EL DE HOY, NO EL DE LA VENTA ──────────────────────────────
  * `sale_items` snapshotea nombre, sku y precio, pero NO el rubro, así que hay
@@ -506,25 +521,55 @@ export interface RubroVendido {
  * no es un importe fiscal— pero es la MISMA familia de problema que el costo
  * sin snapshotear (ver RESEARCH-BRIEF-panel §8.b), y por eso queda escrito.
  */
+const RUBROS_VISIBLES = 6;
+
 export async function getVentasPorRubro(): Promise<RubroVendido[]> {
   const tenantId = requireTenantId();
   return db.execute<RubroVendido>(
-    sql`SELECT coalesce(nullif(trim(p.category), ''), '(sin rubro)') AS rubro,
-               sum(si.line_total)::text                              AS total,
-               sum(si.quantity)::text                                AS unidades,
-               round(
-                 100 * sum(si.line_total)
-                     / nullif(sum(sum(si.line_total)) OVER (), 0), 1
-               )::text AS porcentaje
-        FROM sale_items si
-        JOIN sales s    ON s.id = si.sale_id
-        JOIN products p ON p.id = si.product_id
-        WHERE si.tenant_id = ${tenantId}
-          AND s.commercial_status IN ('cobrada', 'terminada')
-          AND (s.created_at AT TIME ZONE ${TZ_COMERCIO})::date
-              >= date_trunc('month', ${hoyLocal})::date
-        GROUP BY 1
-        ORDER BY sum(si.line_total) DESC`
+    sql`WITH v AS (
+          SELECT id, total
+          FROM sales
+          WHERE tenant_id = ${tenantId} AND ${VENTA_CERRADA}
+            AND ${diaLocal} >= date_trunc('month', ${hoyLocal})::date
+        ),
+        tot AS (SELECT coalesce(sum(total), 0) AS t FROM v),
+        por_rubro AS (
+          SELECT coalesce(nullif(trim(p.category), ''), '(sin rubro)') AS rubro,
+                 sum(si.line_total) AS total,
+                 sum(si.quantity)   AS unidades
+          FROM sale_items si
+          JOIN v          ON v.id = si.sale_id
+          JOIN products p ON p.id = si.product_id
+          WHERE si.tenant_id = ${tenantId}
+          GROUP BY 1
+        ),
+        rank AS (
+          SELECT rubro, total, unidades,
+                 row_number() OVER (ORDER BY total DESC, rubro) AS rn
+          FROM por_rubro
+        ),
+        agrupado AS (
+          SELECT rubro, total, unidades, rn
+          FROM rank WHERE rn <= ${RUBROS_VISIBLES}
+          UNION ALL
+          -- El resto junto, para no recortar plata del total.
+          SELECT 'Otros rubros', sum(total), sum(unidades), ${RUBROS_VISIBLES + 1}
+          FROM rank WHERE rn > ${RUBROS_VISIBLES}
+          HAVING count(*) > 0
+          UNION ALL
+          -- Lo que la venta cobró y sus líneas no explican.
+          SELECT '(sin detalle de items)',
+                 (SELECT t FROM tot) - coalesce((SELECT sum(total) FROM por_rubro), 0),
+                 0, ${RUBROS_VISIBLES + 2}
+          WHERE (SELECT t FROM tot)
+                - coalesce((SELECT sum(total) FROM por_rubro), 0) > 0.005
+        )
+        SELECT rubro,
+               total::text    AS total,
+               unidades::text AS unidades,
+               round(100 * total / nullif((SELECT t FROM tot), 0), 1)::text AS porcentaje
+        FROM agrupado
+        ORDER BY rn`
   );
 }
 

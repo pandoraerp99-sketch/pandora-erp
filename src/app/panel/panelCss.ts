@@ -664,4 +664,8 @@ html[data-theme="dark"] .cli-sb{ background:rgba(255,255,255,0.10); }
           color:var(--ink-2); gap:10px; }
 .cli-leg b{ color:var(--ink-1); font-weight:600; }
 
+/* Eco del monto ya interpretado, antes de confirmar la apertura. */
+.qa-eco{ font-size:11px; color:var(--ink-2); margin-top:6px; }
+.qa-eco b{ font-family:var(--mono); font-weight:700; color:var(--ink); }
+
 ` + RESET_CARD_POS;

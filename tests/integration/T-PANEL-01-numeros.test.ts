@@ -473,6 +473,65 @@ describe('T-PANEL-01 — números del Panel', () => {
       expect(r.map((x) => x.rubro)).toEqual(['Bebidas']);
     });
 
+    /**
+     * La reconciliacion del bloque: los rubros tienen que sumar lo MISMO que
+     * "Facturacion del mes" muestra dos tarjetas mas arriba. Si una venta cobra
+     * mas de lo que explican sus lineas, ese faltante sale como fila propia en
+     * vez de evaporarse — si no, el comerciante ve una torta a la que le falta
+     * un pedazo y nada en pantalla se lo dice.
+     */
+    it('una venta sin items no se evapora: aparece como (sin detalle)', async () => {
+      await ventaDeRubro('Almacén', '6000');
+      // Una venta cobrada SIN una sola linea. Existe: hay 10 asi en la base de
+      // desarrollo, y va a volver con el descuento global, que vive en la venta
+      // y no en la linea.
+      await db.insert(sales).values({
+        tenant_id: tenantId,
+        correlation_id: crypto.randomUUID(),
+        cashier_user_id: userId,
+        commercial_status: 'cobrada',
+        fiscal_status: 'not_required',
+        subtotal: '4000',
+        tax_amount: '0',
+        total: '4000',
+        payment_method: 'efectivo',
+        created_at: sql`((${await hoyLocal()})::date + interval '12 hours') AT TIME ZONE ${TZ_COMERCIO}` as never,
+      });
+
+      const r = await withCtx(() => getVentasPorRubro());
+      const sinDetalle = r.find((x) => x.rubro === '(sin detalle de items)');
+
+      expect(sinDetalle).toBeDefined();
+      expect(new Decimal(sinDetalle!.total).toNumber()).toBe(4000);
+      // Y el total sigue cerrando contra la facturacion del mes.
+      const suma = r.reduce((a, x) => a.plus(x.total), new Decimal(0));
+      const mes = await withCtx(() => getPanelMes());
+      expect(suma.toFixed(2)).toBe(new Decimal(mes.total).toFixed(2));
+      expect(r.reduce((a, x) => a.plus(x.porcentaje), new Decimal(0)).toNumber())
+        .toBeCloseTo(100, 1);
+    });
+
+    /**
+     * Una ferreteria puede tener treinta rubros y la tarjeta no scrollea. Se
+     * agrupan, NO se recortan: un LIMIT dejaria la torta sin cerrar.
+     */
+    it('mas de seis rubros se agrupan en "Otros rubros", sin perder plata', async () => {
+      for (let i = 0; i < 9; i++) {
+        await ventaDeRubro(`Rubro ${i}`, String(1000 * (9 - i)));
+      }
+
+      const r = await withCtx(() => getVentasPorRubro());
+      const otros = r.find((x) => x.rubro === 'Otros rubros');
+
+      // 6 visibles + la fila de agrupados.
+      expect(r).toHaveLength(7);
+      expect(otros).toBeDefined();
+      // Los tres mas chicos: 3000 + 2000 + 1000.
+      expect(new Decimal(otros!.total).toNumber()).toBe(6000);
+      const suma = r.reduce((a, x) => a.plus(x.total), new Decimal(0));
+      expect(suma.toNumber()).toBe(45000); // 9000+8000+...+1000
+    });
+
     it('no ve los rubros de otro comercio', async () => {
       await ventaDeRubro('Almacén', '5000');
       const r = await withCtx(() => getVentasPorRubro(), otroTenant);
