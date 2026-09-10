@@ -1,0 +1,138 @@
+/**
+ * Panel — Server Component.
+ *
+ * Maqueta: `public/panel.html`. Es la pantalla de inicio, lo primero que ve el
+ * comerciante al abrir Pandora.
+ *
+ * ── QUE CAMBIA RESPECTO DE LA MAQUETA ─────────────────────────────────────
+ * Hasta hoy `/panel` NO era una pantalla: `next.config.ts` reescribía la ruta a
+ * `public/panel.html` y el proxy la eximía de auth y de CSP. Se veía hermosa
+ * porque todos los números estaban escritos a mano.
+ *
+ * Ahora cada bloque sale de una consulta real, o dice por qué no puede. Tres
+ * bloques de la maqueta no tienen dato detrás y NO se rellenan con un número
+ * inventado:
+ *
+ *   - **Comprobantes AFIP** ("41 Factura B · CAE último · latencia P95"): no
+ *     hay ni una factura emitida porque falta el certificado. En vez del número
+ *     falso, el bloque muestra el estado real y el paso que falta — que es más
+ *     útil que un contador que miente.
+ *   - **Meta del día**: no existe el concepto de meta en ningún lado, y
+ *     inventar un objetivo de $400.000 es ponerle al comerciante una vara que
+ *     nadie fijó. El anillo se conserva —es el ancla visual de la columna— pero
+ *     mide algo real: cómo viene el día contra el mismo día de la semana
+ *     pasada.
+ *   - **Calendario / Pendientes**: no hay dominio de vencimientos ni de tareas.
+ *     Es el lugar donde van a vivir los vencimientos fiscales cuando exista el
+ *     calendario verificado (ver RESEARCH-BRIEF-vencimientos-fiscales.md); por
+ *     ahora la fila no se dibuja.
+ */
+import { eq } from 'drizzle-orm';
+import { requireSessionWithCompany } from '@/lib/auth/session';
+import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
+import { db } from '@/lib/db/client';
+import { companies } from '@/lib/db/schema/companies';
+import {
+  getIngresosVsGastos,
+  getMasVendidosHoy,
+  getMediosDePagoHoy,
+  getPanelHoy,
+  getPanelMes,
+  getResumenCuentaCorriente,
+  getSerieDiaria,
+  getStockBajo,
+  getUltimasVentas,
+} from '@/lib/services/reporting/panel.report';
+import {
+  computeExpectedAmountFromActivity,
+  getActiveCashSession,
+} from '@/lib/cash/sessions';
+import { PanelClient } from './PanelClient';
+
+// F0: un único punto de venta, igual que el resto de la app.
+const SALE_POINT = 1;
+
+export default async function PanelPage() {
+  const session = await requireSessionWithCompany();
+
+  const datos = await withServerActionTracing(
+    async () => {
+      const [
+        hoy,
+        mes,
+        serie,
+        ingresosGastos,
+        medios,
+        masVendidos,
+        ultimas,
+        stockBajo,
+        cuentaCorriente,
+        caja,
+      ] = await Promise.all([
+        getPanelHoy(),
+        getPanelMes(),
+        getSerieDiaria(30),
+        getIngresosVsGastos(6),
+        getMediosDePagoHoy(),
+        getMasVendidosHoy(5),
+        getUltimasVentas(5),
+        getStockBajo(4),
+        getResumenCuentaCorriente(),
+        getActiveCashSession(SALE_POINT),
+      ]);
+
+      // Lo esperado en caja sale de `computeExpectedAmountFromActivity`, que es
+      // la MISMA fórmula que usa el cierre: inicial + ventas en efectivo +
+      // depósitos − retiros − pagos a proveedor.
+      //
+      // NO se usa `getCashSessionSummary().totals.expected_from_movements`: ése
+      // ignora las ventas (lo dice su propio docstring), y en pantalla daba
+      // "esperado $49.800" contra una apertura de $50.000 después de un día
+      // entero de ventas en efectivo.
+      const esperado =
+        caja === null
+          ? null
+          : await computeExpectedAmountFromActivity(
+              db,
+              caja.id,
+              session.active_company_id,
+              caja.initial_amount
+            );
+
+      return {
+        hoy,
+        mes,
+        serie,
+        ingresosGastos,
+        medios,
+        masVendidos,
+        ultimas,
+        stockBajo,
+        cuentaCorriente,
+        caja:
+          caja === null || esperado === null
+            ? null
+            : {
+                abierta_at: caja.opened_at.toISOString(),
+                inicial: caja.initial_amount,
+                esperado,
+              },
+      };
+    },
+    { requireAuth: true }
+  );
+
+  const [company] = await db
+    .select({ name: companies.name })
+    .from(companies)
+    .where(eq(companies.id, session.active_company_id))
+    .limit(1);
+
+  return (
+    <PanelClient
+      {...datos}
+      comercio={company?.name ?? 'Mi comercio'}
+      usuario={session.email.replace(/@.*/, '')}
+    />
+  );
+}

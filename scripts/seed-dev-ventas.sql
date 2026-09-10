@@ -49,12 +49,31 @@ DECLARE
   cli_nom   text;
   cli_doc   text;
   cli_cond  text;
+  -- La caja abierta, si la hay: SOLO el efectivo de SU dia se ata a ella.
+  caja_abierta uuid;
+  caja_dia     date;
   total_gen int := 0;
 BEGIN
   SELECT user_id INTO cajero FROM company_users WHERE company_id = co LIMIT 1;
   IF cajero IS NULL THEN
     RAISE EXCEPTION 'No hay usuario para %; corre antes seed-dev-operator.mjs', co;
   END IF;
+
+  -- La caja abierta se corre a HOY. La de desarrollo habia quedado abierta
+  -- desde julio, y en el Panel se leia "apertura 12:21" al lado de las ventas
+  -- de hoy: una caja de hace dos meses. Es data de desarrollo, no un cierre
+  -- real, asi que moverla es lo correcto.
+  UPDATE cash_sessions
+     SET opened_at = (hoy + interval '9 hours') AT TIME ZONE 'America/Argentina/Ushuaia'
+   WHERE tenant_id = co AND closed_at IS NULL;
+
+  -- EL DIA de la caja importa: si se le ata el efectivo de los 12 meses, lo
+  -- esperado da millones (paso: $19.494.705).
+  SELECT id, (opened_at AT TIME ZONE 'America/Argentina/Ushuaia')::date
+    INTO caja_abierta, caja_dia
+    FROM cash_sessions
+   WHERE tenant_id = co AND closed_at IS NULL
+   ORDER BY opened_at DESC LIMIT 1;
 
   -- Append-only: sale_items y sale_payments tienen trigger. Es data de
   -- desarrollo, mismo mecanismo que usan los tests para limpiar.
@@ -66,11 +85,16 @@ BEGIN
   -- Un dia por vez, desde hace 12 meses.
   d := hoy - interval '365 days';
   WHILE d <= hoy LOOP
-    -- Volumen: el mes corriente mas denso; domingos cerrado; sabados flojos.
+    -- Volumen: crecimiento SUAVE a lo largo del ano, no un escalon.
+    --
+    -- La primera version ponia el ultimo mes al triple del resto. Se veia en el
+    -- Panel como "facturacion del mes +205%", que para una demo se lee como un
+    -- numero inventado. El factor va de 1.0 hace un ano a 2.2 hoy: alrededor de
+    -- 10% de crecimiento mensual, que es creible.
+    -- Domingos cerrado; sabados a media maquina.
     n_ventas := CASE
       WHEN extract(dow FROM d) = 0 THEN 0
-      WHEN d > hoy - interval '35 days' THEN 12 + floor(random() * 14)::int
-      ELSE 3 + floor(random() * 5)::int
+      ELSE round((5 + random() * 5) * (1 + 1.2 * (1 - (hoy - d)::numeric / 365)))::int
     END;
     IF extract(dow FROM d) = 6 THEN n_ventas := greatest(1, n_ventas / 2); END IF;
 
@@ -144,9 +168,15 @@ BEGIN
 
       -- cuenta_corriente NO genera sale_payment: no entro plata todavia. Es el
       -- mismo criterio de ADR-0027 (el fiado se cobra despues).
+      --
+      -- El EFECTIVO del dia se ata a la caja abierta, si la hay. Sin ese link,
+      -- lo esperado en caja ignora las ventas y el Panel muestra menos plata
+      -- que la apertura despues de un dia entero vendiendo.
       IF medio <> 'cuenta_corriente' THEN
-        INSERT INTO sale_payments (tenant_id, sale_id, method, amount, created_at)
-        VALUES (co, v_id, medio, v_tot, v_ts);
+        INSERT INTO sale_payments (tenant_id, sale_id, method, amount, cash_session_id, created_at)
+        VALUES (co, v_id, medio, v_tot,
+                CASE WHEN medio = 'efectivo' AND d = caja_dia THEN caja_abierta END,
+                v_ts);
       END IF;
 
       total_gen := total_gen + 1;

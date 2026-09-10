@@ -695,8 +695,16 @@ export async function getCashSessionById(
  * **F0:** queries simples SUM por scope (session). Performance OK para retail
  * (decenas-centenas de payments/movements por session). F1+ trigger: rollup
  * incremental si una session acumula > 1000 rows.
+ *
+ * **Exportada el 2026-09-10** para el Panel. Antes era privada y el Panel usó
+ * `getCashSessionSummary().totals.expected_from_movements`, que —como dice su
+ * propio docstring— NO incluye las ventas. Resultado en pantalla: "esperado en
+ * caja $49.800" con una apertura de $50.000, después de un día entero de
+ * ventas en efectivo. Es la única fórmula del sistema para esto; escribir una
+ * segunda en el Panel sería la duplicación de siempre, y acá lo que se
+ * duplicaría es lo que el cajero tiene que contar.
  */
-async function computeExpectedAmountFromActivity(
+export async function computeExpectedAmountFromActivity(
   tx: DbOrTransaction,
   session_id: string,
   tenant_id: string,

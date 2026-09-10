@@ -1,20 +1,16 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // ── /panel = el mockup dashboard.html copiado LITERAL a public/ ──
-  // Slice Panel (feedback owner 2026-07-09: copiar el mockup tal cual, sin
-  // reinterpretar). El rewrite sirve public/panel.html en /panel. El proxy
-  // (src/proxy.ts) exime /panel del CSP/auth para no romper los estilos/scripts
-  // inline + fuentes del mockup. TODO F1: portar a componentes React nativos.
-  async rewrites() {
-    return [
-      { source: "/panel", destination: "/panel.html" },
-      // /caja YA NO tiene rewrite (2026-09-03): sirve el React de
-      // src/app/caja/, montado sobre <AppShell> igual que el POS. La maqueta
-      // que se servía acá quedó archivada en public/_maquetas/caja.html como
-      // referencia visual — fuera del alcance de los rewrites.
-    ];
-  },
+  // ── YA NO HAY REWRITES A MAQUETAS (2026-09-10) ──
+  // /caja dejó de tenerlo el 2026-09-03 y /panel hoy: los dos sirven React de
+  // src/app/, sobre <AppShell>, como el resto.
+  //
+  // El de /panel servía `public/panel.html` verbatim y venía con la exención de
+  // CSP **y de auth** en src/proxy.ts. Era la pantalla de inicio, con todos los
+  // números escritos a mano y accesible sin sesión.
+  //
+  // Las dos maquetas quedan archivadas como referencia visual: panel.html y
+  // _maquetas/caja.html. Fuera del alcance de cualquier rewrite.
 
   // ── Resolución de imports `.js` → `.ts` (extensionAlias) ──
   // El codebase usa imports relativos con extensión `.js` (estilo NodeNext/ESM,

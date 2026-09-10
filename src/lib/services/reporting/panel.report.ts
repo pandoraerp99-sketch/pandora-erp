@@ -19,9 +19,11 @@
  * Por eso TODA frontera de tiempo de este archivo pasa por `AT TIME ZONE`.
  */
 import { sql } from 'drizzle-orm';
+import Decimal from 'decimal.js';
 import { db } from '../../db/client.js';
 import { requireTracingContext } from '../../tracing/context.js';
 import { CrossTenantAccessError } from '../../multi_tenant/errors.js';
+import { getBalancesByCustomer } from '../customers/account.service.js';
 
 /**
  * Zona del comercio.
@@ -309,6 +311,68 @@ export async function getMasVendidosHoy(limite = 5): Promise<ProductoVendido[]> 
         ORDER BY sum(si.line_total) DESC
         LIMIT ${limite}`
   );
+}
+
+export interface StockBajo {
+  [k: string]: string;
+  nombre: string;
+  stock: string;
+  minimo: string;
+}
+
+/**
+ * Productos en o por debajo del mínimo.
+ *
+ * Sólo los que llevan control de stock (`stock_tracking_enabled`) y tienen un
+ * mínimo cargado: sin mínimo no hay contra qué comparar, y tratar el `NULL`
+ * como cero pondría todo el catálogo en la lista.
+ */
+export async function getStockBajo(limite = 5): Promise<StockBajo[]> {
+  const tenantId = requireTenantId();
+  return db.execute<StockBajo>(
+    sql`SELECT name AS nombre, stock_current::text AS stock, stock_minimum::text AS minimo
+        FROM products
+        WHERE tenant_id = ${tenantId}
+          AND is_active
+          AND stock_tracking_enabled
+          AND stock_minimum IS NOT NULL
+          AND stock_current <= stock_minimum
+        ORDER BY (stock_current - stock_minimum), name
+        LIMIT ${limite}`
+  );
+}
+
+export interface ResumenCuentaCorriente {
+  /** Cuánto deben, en total. Positivo = a favor del comercio. */
+  porCobrar: string;
+  deudores: number;
+}
+
+/**
+ * Cuánto hay en la calle.
+ *
+ * ── REUSA getBalancesByCustomer, NO REESCRIBE LA SUMA ─────────────────────
+ * El saldo no está guardado: sale del libro (ADR-0027), y el signo NO es un
+ * `sum(amount)` — un `charge` suma y un `payment` resta. Escribir esa regla una
+ * segunda vez acá es exactamente el problema que tenía el CSV antes de
+ * `csv.ts`: si una de las dos versiones deriva, el test de cada archivo pasa
+ * igual porque mide su propio camino. Y acá lo que derivaría es el signo de la
+ * plata que el comercio tiene por cobrar.
+ *
+ * La suma final va en Decimal (§9.8), en el servidor.
+ */
+export async function getResumenCuentaCorriente(): Promise<ResumenCuentaCorriente> {
+  const saldos = await getBalancesByCustomer();
+  let total = new Decimal(0);
+  let deudores = 0;
+  for (const saldo of saldos.values()) {
+    // Sólo los que DEBEN. Un saldo a favor del cliente no es algo por cobrar.
+    if (saldo.gt(0)) {
+      total = total.plus(saldo);
+      deudores += 1;
+    }
+  }
+  return { porCobrar: total.toFixed(2), deudores };
 }
 
 export interface UltimaVenta {

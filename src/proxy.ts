@@ -159,9 +159,16 @@ export async function proxy(req: NextRequest) {
 
 export const config = {
   matcher: [
-    // `panel|caja` exentos: sirven los mockups literales (public/*.html) sin
-    // CSP — necesitan sus estilos/scripts inline + fuentes. Agregar acá cada
-    // pantalla-mockup nueva que se sirva verbatim.
-    '/((?!_next/static|_next/image|favicon.ico|panel|caja|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif)$).*)',
+    // Ya NO hay pantallas exentas (2026-09-10).
+    //
+    // Hasta hoy `panel|caja` estaban excluidos porque se servían como mockups
+    // literales de `public/*.html`, con sus estilos y scripts inline. Caja pasó
+    // a React el 2026-09-03 y el Panel hoy: los dos son pantallas de verdad.
+    //
+    // La exención hacía DOS cosas, y la segunda es la que importaba: además de
+    // saltear el CSP, salteaba la AUTENTICACIÓN. `/panel` —la pantalla de
+    // inicio, la primera del sidebar— se le servía a cualquiera sin sesión.
+    // Quitarla es lo que la pone detrás del login por primera vez.
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif)$).*)',
   ],
 };
