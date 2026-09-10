@@ -13,7 +13,16 @@
  *
  * Ver RESEARCH-BRIEF-calendario-y-proyecciones.md §9 (slice 2).
  */
-import { date, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import {
+  type AnyPgColumn,
+  date,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { companies } from './companies.js';
 import { users } from './users.js';
 
@@ -64,7 +73,9 @@ export const tasks = pgTable(
      * para que destachar (casi siempre "me equivoqué de fila") la pueda borrar
      * en vez de dejarla suelta.
      */
-    spawned_task_id: uuid('spawned_task_id'),
+    spawned_task_id: uuid('spawned_task_id').references((): AnyPgColumn => tasks.id, {
+      onDelete: 'set null',
+    }),
 
     created_by: uuid('created_by')
       .notNull()
@@ -72,8 +83,16 @@ export const tasks = pgTable(
     created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
+  // Los dos índices son PARCIALES, igual que en la migration 0030. Declararlos
+  // sin el `where` haría que un `drizzle-kit generate` propusiera reemplazarlos
+  // por índices completos — más grandes y peores para la consulta que importa.
   (table) => ({
-    pendientesIdx: index('tasks_pendientes_idx').on(table.tenant_id, table.due_date),
+    pendientesIdx: index('tasks_pendientes_idx')
+      .on(table.tenant_id, table.due_date)
+      .where(sql`done_at IS NULL`),
+    hechasIdx: index('tasks_tenant_done_idx')
+      .on(table.tenant_id, table.done_at.desc())
+      .where(sql`done_at IS NOT NULL`),
   })
 );
 

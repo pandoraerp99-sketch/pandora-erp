@@ -38,9 +38,11 @@ import {
 import {
   borrarPendienteAction,
   completarPendienteAction,
+  editarPendienteAction,
   crearPendienteAction,
   destacharPendienteAction,
 } from '@/app/panel/actions';
+import type { TaskRecurrence, TaskType } from '@/lib/db/schema/tasks';
 
 export interface PendienteVista {
   id: string;
@@ -63,14 +65,14 @@ const COLOR_TIPO: Record<string, { bg: string; fg: string; label: string }> = {
   contador: { bg: 'rgba(13,20,36,0.08)', fg: '#1f2a44', label: 'Contador' },
 };
 
-const TIPOS_ALTA = ['general', 'caja', 'stock', 'proveedor', 'fiscal'] as const;
+const TIPOS_ALTA: readonly TaskType[] = ['general', 'caja', 'stock', 'proveedor', 'fiscal'];
 
-const RECURRENCIAS = [
+const RECURRENCIAS: ReadonlyArray<{ valor: '' | TaskRecurrence; label: string }> = [
   { valor: '', label: 'Una vez' },
   { valor: 'diaria', label: 'Todos los días' },
   { valor: 'semanal', label: 'Cada semana' },
   { valor: 'mensual', label: 'Cada mes' },
-] as const;
+];
 
 function fechaCorta(iso: string): string {
   const [a, m, d] = iso.split('-');
@@ -83,18 +85,33 @@ export interface PendientesProps {
   hoyLocal: string;
   /** Día en que se abrió la caja que sigue abierta, o `null`. */
   cajaAbiertaDesde: string | null;
+  /**
+   * Día marcado en el calendario de al lado (`AAAA-MM-DD`), o `null`.
+   * Cuando viene, la lista muestra SOLO ese día.
+   */
+  diaElegido?: string | null;
+  /** Para que el botón "ver todo" pueda desmarcar el calendario. */
+  onVerTodo?: () => void;
 }
 
-export function Pendientes({ tareas, hoyLocal, cajaAbiertaDesde }: PendientesProps) {
+export function Pendientes({
+  tareas,
+  hoyLocal,
+  cajaAbiertaDesde,
+  diaElegido = null,
+  onVerTodo,
+}: PendientesProps) {
   const [pendiente, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [abriendoAlta, setAbriendoAlta] = useState(false);
+  const [filtro, setFiltro] = useState<string | null>(null);
+  const [menuAbierto, setMenuAbierto] = useState(false);
 
   // Formulario de alta.
   const [titulo, setTitulo] = useState('');
-  const [tipo, setTipo] = useState<string>('general');
+  const [tipo, setTipo] = useState<TaskType>('general');
   const [cuando, setCuando] = useState<string>(hoyLocal);
-  const [recurrencia, setRecurrencia] = useState<string>('');
+  const [recurrencia, setRecurrencia] = useState<'' | TaskRecurrence>('');
 
   /**
    * Tachar tiene que verse INSTANTANEO. Sin esto, la casilla se queda como
@@ -114,9 +131,21 @@ export function Pendientes({ tareas, hoyLocal, cajaAbiertaDesde }: PendientesPro
     [cajaAbiertaDesde, hoyLocal]
   );
 
+  /**
+   * Acá está TODO el filtrado, y a la vista. En la maqueta esto eran reglas
+   * como `.todo-list[data-tf="caja"] .todo-item:not([data-type~="caja"])`,
+   * que esconden sin dejar rastro: si el atributo no coincide exactamente,
+   * la lista queda vacía y no hay error que lo diga.
+   */
   const abiertas = useMemo(
-    () => optimistas.filter((t) => t.done_at === null),
-    [optimistas]
+    () =>
+      optimistas.filter(
+        (t) =>
+          t.done_at === null &&
+          (filtro === null || t.tipo === filtro) &&
+          (diaElegido === null || t.due_date === diaElegido)
+      ),
+    [optimistas, filtro, diaElegido]
   );
   const grupos = useMemo(() => agruparPendientes(abiertas, hoyLocal), [abiertas, hoyLocal]);
 
@@ -142,9 +171,9 @@ export function Pendientes({ tareas, hoyLocal, cajaAbiertaDesde }: PendientesPro
     correr(async () => {
       const r = await crearPendienteAction({
         titulo,
-        tipo: tipo as PendienteVista['tipo'] & never,
+        tipo,
         due_date: cuando === '' ? null : cuando,
-        recurrencia: (recurrencia === '' ? null : recurrencia) as never,
+        recurrencia: recurrencia === '' ? null : recurrencia,
       });
       if (r.ok) {
         setTitulo('');
@@ -165,12 +194,65 @@ export function Pendientes({ tareas, hoyLocal, cajaAbiertaDesde }: PendientesPro
           Pendientes{' '}
           {total > 0 ? <span className="pend-count">{total}</span> : null}
         </h3>
-        {vencidas > 0 ? (
-          <span className="pend-alerta">
-            {vencidas} vencido{vencidas === 1 ? '' : 's'}
-          </span>
-        ) : null}
+        <div className="pend-head-der">
+          {vencidas > 0 ? (
+            <span className="pend-alerta">
+              {vencidas} vencido{vencidas === 1 ? '' : 's'}
+            </span>
+          ) : null}
+          <div className={`todo-filter${menuAbierto ? ' open' : ''}`}>
+            <button
+              type="button"
+              className="tf-btn"
+              aria-expanded={menuAbierto}
+              onClick={() => setMenuAbierto((v) => !v)}
+            >
+              {filtro === null ? 'Todos' : (COLOR_TIPO[filtro]?.label ?? filtro)}
+              <span className="tf-chev" aria-hidden="true">
+                ▾
+              </span>
+            </button>
+            <div className="tf-menu">
+              <button
+                type="button"
+                className={filtro === null ? 'on' : ''}
+                onClick={() => {
+                  setFiltro(null);
+                  setMenuAbierto(false);
+                }}
+              >
+                <span className="tf-dot" style={{ background: 'var(--ink-4)' }} />
+                Todos
+              </button>
+              {Object.entries(COLOR_TIPO).map(([clave, c]) => (
+                <button
+                  key={clave}
+                  type="button"
+                  className={filtro === clave ? 'on' : ''}
+                  onClick={() => {
+                    setFiltro(clave);
+                    setMenuAbierto(false);
+                  }}
+                >
+                  <span className="tf-dot" style={{ background: c.fg }} />
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* Un dia marcado en el calendario de al lado. El cartel es obligatorio:
+          sin el, una lista filtrada por dia se lee como una lista vacia. */}
+      {diaElegido !== null ? (
+        <div className="pdv-head">
+          <span>Pendientes del {fechaCorta(diaElegido)}</span>
+          <button type="button" className="pdv-back" onClick={() => onVerTodo?.()}>
+            Ver todos
+          </button>
+        </div>
+      ) : null}
 
       {/* ── Lo que el sistema ya sabe. Sin casilla: no se tacha, se resuelve. ── */}
       {derivados.map((d) => (
@@ -193,8 +275,16 @@ export function Pendientes({ tareas, hoyLocal, cajaAbiertaDesde }: PendientesPro
       <div className="todo-list">
         {grupos.length === 0 && derivados.length === 0 ? (
           <div className="pend-vacio">
-            No hay nada pendiente.
-            <span> Lo que anotes acá te espera mañana.</span>
+            {diaElegido !== null
+              ? 'No hay pendientes para ese día.'
+              : filtro !== null
+                ? 'No hay pendientes de ese tipo.'
+                : 'No hay nada pendiente.'}
+            <span>
+              {diaElegido !== null || filtro !== null
+                ? 'Puede haber otros fuera de este filtro.'
+                : 'Lo que anotes acá te espera mañana.'}
+            </span>
           </div>
         ) : null}
 
@@ -236,6 +326,25 @@ export function Pendientes({ tareas, hoyLocal, cajaAbiertaDesde }: PendientesPro
                   >
                     {c.label}
                   </span>
+                  {/* Reprogramar es lo que MAS se hace con un pendiente: casi
+                      nunca se borra, se pasa para otro día. Es un <input
+                      type="date"> pelado a propósito — abre el almanaque del
+                      sistema con un toque y no hay que inventar un selector. */}
+                  <input
+                    type="date"
+                    className="pend-mover"
+                    aria-label={`Cambiar la fecha de "${t.titulo}"`}
+                    title="Pasar para otro día"
+                    value={t.due_date ?? ''}
+                    disabled={pendiente}
+                    onChange={(e) =>
+                      correr(() =>
+                        editarPendienteAction(t.id, {
+                          due_date: e.target.value === '' ? null : e.target.value,
+                        })
+                      )
+                    }
+                  />
                   <button
                     type="button"
                     className="pend-borrar"
@@ -289,7 +398,13 @@ export function Pendientes({ tareas, hoyLocal, cajaAbiertaDesde }: PendientesPro
             <select
               className="pend-fecha"
               value={recurrencia}
-              onChange={(e) => setRecurrencia(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                // El value de un <select> es string: se busca en la lista en
+                // vez de castear, asi un option nuevo mal escrito no pasa.
+                const op = RECURRENCIAS.find((r) => r.valor === v);
+                if (op) setRecurrencia(op.valor);
+              }}
             >
               {RECURRENCIAS.map((r) => (
                 <option key={r.valor} value={r.valor}>

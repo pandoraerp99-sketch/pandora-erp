@@ -144,17 +144,6 @@ export async function listOpenTasks(limite = 100): Promise<Task[]> {
     .limit(limite);
 }
 
-/** Las últimas tachadas, para la vista "qué se hizo". */
-export async function listDoneTasks(limite = 30): Promise<Task[]> {
-  const { tenantId } = ctx();
-  return db
-    .select()
-    .from(tasks)
-    .where(and(eq(tasks.tenant_id, tenantId), sql`done_at IS NOT NULL`))
-    .orderBy(sql`done_at DESC`)
-    .limit(limite);
-}
-
 async function traerPropia(
   tx: typeof db,
   tenantId: string,
@@ -235,8 +224,14 @@ export async function completeTask(id: string, hoyLocal: string): Promise<Task> 
  * Destacha un pendiente.
  *
  * Si al tacharlo se creó la ocurrencia siguiente, la borra — pero SÓLO si sigue
- * intacta (sin tachar y con la misma fecha con la que nació). Si alguien ya la
- * tachó o la movió, pasó a ser suya y borrarla sería tirarle el trabajo.
+ * intacta. Si alguien ya la tachó, la reprogramó o le cambió el título, pasó a
+ * ser suya y borrarla sería tirarle el trabajo.
+ *
+ * "Intacta" se mide como `updated_at = created_at`. Las dos columnas nacen del
+ * mismo `DEFAULT now()` —que es el arranque de la transacción, así que dan
+ * idéntico incluso cuando la hija se inserta junto con el UPDATE del padre— y
+ * `updateTask` siempre pisa `updated_at`. Verificado contra la base antes de
+ * apoyarse en esto.
  */
 export async function uncompleteTask(id: string): Promise<Task> {
   const { tenantId } = ctx();
@@ -252,7 +247,8 @@ export async function uncompleteTask(id: string): Promise<Task> {
           and(
             eq(tasks.tenant_id, tenantId),
             eq(tasks.id, actual.spawned_task_id),
-            isNull(tasks.done_at)
+            isNull(tasks.done_at),
+            eq(tasks.updated_at, tasks.created_at)
           )
         )
         .returning({ id: tasks.id });

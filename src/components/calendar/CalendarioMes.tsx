@@ -58,6 +58,14 @@ export interface CalendarioMesProps {
   /** Hoy, según el comercio. Lo calcula el servidor: ver `page.tsx`. */
   hoy: string;
   formato: (v: string) => string;
+  /**
+   * El dia marcado (`AAAA-MM-DD`), o `null`. Lo guarda el Panel y NO este
+   * componente: la lista de Pendientes de al lado tiene que poder
+   * desmarcarlo, y con una copia adentro de cada tarjeta las dos se
+   * desincronizan sin que falle nada.
+   */
+  diaElegido: string | null;
+  onElegirDia: (dia: string | null) => void;
 }
 
 const MESES = [
@@ -69,10 +77,19 @@ const DOW = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 /** Los tipos que son feriado de verdad. El asueto provincial NO lo es. */
 const ES_FERIADO_NACIONAL = new Set(['inamovible', 'trasladable', 'turistico', 'no_laborable']);
 
-export function CalendarioMes({ dias, feriados, cobertura, hoy, formato }: CalendarioMesProps) {
+export function CalendarioMes({
+  dias,
+  feriados,
+  cobertura,
+  hoy,
+  formato,
+  diaElegido,
+  onElegirDia,
+}: CalendarioMesProps) {
   const [anioHoy, mesHoy] = partesDeFecha(hoy);
   const [ver, setVer] = useState<{ anio: number; mes: number }>({ anio: anioHoy, mes: mesHoy });
-  const [elegido, setElegido] = useState<string | null>(null);
+  const elegido = diaElegido;
+  const elegir = onElegirDia;
 
   const porDia = useMemo(() => {
     const m = new Map<string, DiaVentas>();
@@ -115,7 +132,7 @@ export function CalendarioMes({ dias, feriados, cobertura, hoy, formato }: Calen
 
   const mover = (paso: number) => {
     setVer((v) => moverMes(v.anio, v.mes, paso));
-    setElegido(null);
+    elegir(null);
   };
 
   // Cobertura del año que se está mirando. Sin fila, no tenemos el calendario:
@@ -141,7 +158,7 @@ export function CalendarioMes({ dias, feriados, cobertura, hoy, formato }: Calen
           <button type="button" onClick={() => mover(-1)} aria-label="Mes anterior">‹</button>
           <button
             type="button"
-            onClick={() => { setVer({ anio: anioHoy, mes: mesHoy }); setElegido(null); }}
+            onClick={() => { setVer({ anio: anioHoy, mes: mesHoy }); elegir(null); }}
             className="cal-hoy-btn"
           >
             Hoy
@@ -196,7 +213,7 @@ export function CalendarioMes({ dias, feriados, cobertura, hoy, formato }: Calen
               className={clases}
               title={titulo}
               aria-label={`${c.dia} de ${MESES[ver.mes - 1]} — ${titulo}`}
-              onClick={() => setElegido(elegido === c.clave ? null : c.clave)}
+              onClick={() => elegir(elegido === c.clave ? null : c.clave)}
               style={
                 futuro || sinDato || intensidad === 0
                   ? undefined

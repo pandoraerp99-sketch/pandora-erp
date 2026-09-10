@@ -257,7 +257,6 @@ html[data-theme="dark"] .quick{ background:rgba(255,255,255,0.05); border-color:
 html[data-theme="dark"] .quick:hover{ box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 18px rgba(3,7,20,0.5); }
 
 /* calendario */
-html[data-theme="dark"] .cal-agenda{ border-top-color:rgba(255,255,255,0.07); }
 html[data-theme="dark"] .cd-ic.ret{ color:#e79ad0; }
 html[data-theme="dark"] .cd-ic.note{ color:#ffb87a; }
 
@@ -267,10 +266,6 @@ html[data-theme="dark"] .todo-check{ border-color:rgba(255,255,255,0.24); }
 html[data-theme="dark"] .todo-add{ border-top-color:rgba(255,255,255,0.07); }
 html[data-theme="dark"] .todo-add .plus{ border-color:rgba(255,255,255,0.24); }
 html[data-theme="dark"] .todo-group.over{ color:#ff8b96; }
-html[data-theme="dark"] .todo-templates button{ background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.12); }
-html[data-theme="dark"] .todo-templates button:hover{ background:rgba(255,255,255,0.1); }
-html[data-theme="dark"] .todo-seg{ background:rgba(255,255,255,0.06); }
-html[data-theme="dark"] .todo-seg button.on{ background:rgba(238,242,255,0.94); color:#0d1424; box-shadow:0 1px 3px rgba(3,7,20,0.4); }
 html[data-theme="dark"] .streak{ color:#ffcf6b; background:rgba(244,201,72,0.18); }
 html[data-theme="dark"] .tf-btn{ background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.12); }
 html[data-theme="dark"] .tf-btn:hover{ background:rgba(255,255,255,0.1); }
@@ -291,13 +286,6 @@ html[data-theme="dark"] .ring-pct{ color:var(--ink); }
 #themeBtn:hover svg{ transform:rotate(20deg); }
 
             .ev .pay{ background:var(--red); } .ev .col{ background:var(--green); } .ev .tax{ background:var(--orange); }
-            .cal-agenda{ margin-top:14px; padding-top:13px; border-top:1px solid rgba(13,20,36,0.06); display:flex; flex-direction:column; gap:11px; }
-            .ag-row{ display:flex; align-items:center; gap:11px; }
-            .ag-date{ font-family:var(--mono); font-size:11px; font-weight:700; color:var(--ink-2); width:40px; flex:0 0 auto; }
-            .ag-ic{ width:28px;height:28px;border-radius:9px;flex:0 0 auto;display:flex;align-items:center;justify-content:center; }
-            .ag-ic svg{ width:15px; height:15px; }
-            .ag-tx{ flex:1; min-width:0; } .ag-n{ font-size:12.5px; font-weight:500; color:var(--ink-1); } .ag-s{ font-size:10.5px; color:var(--ink-3); margin-top:1px; }
-            .ag-amt{ font-family:var(--mono); font-size:12.5px; font-weight:700; }
             .todo-list{ display:flex; flex-direction:column; gap:1px; flex:1; min-height:0; overflow-y:auto; padding-right:5px; }
             .todo-item{ display:flex; align-items:flex-start; gap:11px; padding:9px 7px; border-radius:10px; cursor:pointer; transition:background 150ms; }
             .todo-item:hover{ background:rgba(255,255,255,0.5); }
@@ -329,17 +317,11 @@ html[data-theme="dark"] .ring-pct{ color:var(--ink); }
             .ring-ctr{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
             .ring-pct{ font-size:17px; font-weight:700; color:var(--ink); font-family:var(--mono); letter-spacing:-0.02em; }
             .streak{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; color:#b9791a; background:rgba(244,201,72,0.20); padding:4px 10px; border-radius:999px; }
-            .todo-templates{ display:flex; gap:8px; margin:2px 0 4px; }
-            .todo-templates button{ font-size:11px; font-weight:600; color:var(--ink-2); background:rgba(255,255,255,0.55); border:1px solid rgba(255,255,255,0.85); padding:6px 11px; border-radius:9px; display:inline-flex; align-items:center; gap:5px; cursor:pointer; transition:background 150ms; }
-            .todo-templates button:hover{ background:rgba(255,255,255,0.85); }
             .todo-group{ font-size:10px; text-transform:uppercase; letter-spacing:0.07em; font-family:var(--mono); font-weight:600; color:var(--ink-3); margin:12px 6px 2px; display:flex; align-items:center; gap:6px; }
             .todo-group.over{ color:#c93545; }
             .todo-recur{ font-size:10px; color:var(--ink-3); display:inline-flex; align-items:center; gap:4px; }
             .todo-item.done .todo-check svg{ animation:checkpop 360ms cubic-bezier(.34,1.56,.64,1); }
             @keyframes checkpop{ 0%{transform:scale(0)} 55%{transform:scale(1.35)} 100%{transform:scale(1)} }
-            .todo-seg{ display:inline-flex; background:rgba(13,20,36,0.05); border-radius:9px; padding:2px; gap:2px; }
-            .todo-seg button{ font-size:11px; font-weight:600; color:var(--ink-3); background:transparent; border:none; padding:4px 11px; border-radius:7px; cursor:pointer; transition:all 150ms; }
-            .todo-seg button.on{ background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(13,20,36,0.10); }
             .todo-filter{ position:relative; }
             .tf-btn{ display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:600; color:var(--ink-2); background:rgba(255,255,255,0.6); border:1px solid rgba(255,255,255,0.85); padding:5px 9px; border-radius:9px; cursor:pointer; transition:background 150ms; }
             .tf-btn:hover{ background:rgba(255,255,255,0.9); }
@@ -814,5 +796,22 @@ html[data-theme="dark"] .pend-tipo{ background:rgba(255,255,255,0.06); }
 html[data-theme="dark"] .pend-tipo:hover{ background:rgba(255,255,255,0.11); }
 html[data-theme="dark"] .pend-tipo.on{ background:var(--purple); color:#fff; }
 html[data-theme="dark"] .pend-err{ color:#ff9aa4; }
+
+/* El filtro de tipo va al lado del aviso de vencidos, no debajo: si no, el
+   cabezal crece y se come una fila de la lista. */
+.pend-head-der{ display:flex; align-items:center; gap:8px; }
+.todo-filter .tf-btn{ white-space:nowrap; }
+.pdv-head{ margin-bottom:10px; }
+
+/* Reprogramar. Aparece con el hover como el borrar, pero al reves que el
+   borrar NO se esconde cuando la tarea esta vencida: ahi es justo lo que uno
+   quiere hacer. */
+.pend-mover{ flex:0 0 auto; width:26px; opacity:0; cursor:pointer;
+             background:transparent; color:var(--ink-3);
+             transition:opacity 150ms, width 150ms; }
+.todo-item:hover .pend-mover, .pend-mover:focus-visible{ opacity:1; width:34px; }
+.todo-group.over + .todo-item .pend-mover{ opacity:0.75; width:34px; }
+.pend-mover::-webkit-calendar-picker-indicator{ cursor:pointer; opacity:0.75; }
+html[data-theme="dark"] .pend-mover{ color-scheme:dark; }
 
 ` + RESET_CARD_POS;

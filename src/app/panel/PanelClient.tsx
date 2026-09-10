@@ -339,6 +339,11 @@ export function PanelClient({
   // "Facturación del mes" ya no lleva sparkline: las dos barras comparativas
   // dicen lo mismo y además muestran contra qué se compara. Las otras dos
   // tarjetas del trío sí la conservan.
+  // El dia marcado en el calendario. Vive aca y no adentro de ninguna de las
+  // dos tarjetas porque es justamente lo unico que comparten: el calendario
+  // lo elige, Pendientes lo obedece.
+  const [diaElegido, setDiaElegido] = useState<string | null>(null);
+
   const serieTickets = serie.map((d) => Number(d.tickets));
   const seriePromedio = ticketPromedioPorDia(serie);
 
@@ -723,6 +728,8 @@ export function PanelClient({
                 cobertura={coberturaFeriados}
                 hoy={hoyComercio}
                 formato={plata}
+                diaElegido={diaElegido}
+                onElegirDia={setDiaElegido}
               />
             </div>
 
@@ -735,6 +742,8 @@ export function PanelClient({
                 tareas={pendientes}
                 hoyLocal={hoyComercio}
                 cajaAbiertaDesde={cajaAbiertaDesde}
+                diaElegido={diaElegido}
+                onVerTodo={() => setDiaElegido(null)}
               />
             </div>
           </div>

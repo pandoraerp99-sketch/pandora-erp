@@ -195,6 +195,38 @@ describe('T-TASK-02 — pendientes', () => {
     expect(abiertos[0]?.id).toBe(t.id);
   });
 
+  it('destachar NO borra la siguiente si alguien la REPROGRAMO', async () => {
+    // El caso que se escapaba: la hija sigue sin tachar, así que un filtro por
+    // `done_at IS NULL` la borraba igual y se llevaba puesta la fecha que el
+    // usuario había movido a mano.
+    const t = await withCtx(() =>
+      createTask({ titulo: 'Contar caja', due_date: '2026-09-10', recurrencia: 'diaria' })
+    );
+    const hecha = await withCtx(() => completeTask(t.id, '2026-09-10'));
+    const hijaId = hecha.spawned_task_id!;
+    await withCtx(() => updateTask(hijaId, { due_date: '2026-09-16' }));
+
+    await withCtx(() => uncompleteTask(t.id));
+
+    const hija = await db.select().from(tasks).where(eq(tasks.id, hijaId));
+    expect(hija.length).toBe(1);
+    expect(hija[0]?.due_date).toBe('2026-09-16');
+  });
+
+  it('destachar NO borra la siguiente si le cambiaron el título', async () => {
+    const t = await withCtx(() =>
+      createTask({ titulo: 'Contar caja', due_date: '2026-09-10', recurrencia: 'diaria' })
+    );
+    const hecha = await withCtx(() => completeTask(t.id, '2026-09-10'));
+    const hijaId = hecha.spawned_task_id!;
+    await withCtx(() => updateTask(hijaId, { titulo: 'Contar caja Y depositar' }));
+
+    await withCtx(() => uncompleteTask(t.id));
+
+    const hija = await db.select().from(tasks).where(eq(tasks.id, hijaId));
+    expect(hija[0]?.titulo).toBe('Contar caja Y depositar');
+  });
+
   it('destachar NO borra la siguiente si alguien ya la tachó', async () => {
     const t = await withCtx(() =>
       createTask({ titulo: 'Contar caja', due_date: '2026-09-10', recurrencia: 'diaria' })
