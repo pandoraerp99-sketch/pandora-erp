@@ -9,7 +9,7 @@
  * `public/panel.html` y el proxy la eximía de auth y de CSP. Se veía hermosa
  * porque todos los números estaban escritos a mano.
  *
- * Ahora cada bloque sale de una consulta real, o dice por qué no puede. Tres
+ * Ahora cada bloque sale de una consulta real, o dice por qué no puede. Dos
  * bloques de la maqueta no tienen dato detrás y NO se rellenan con un número
  * inventado:
  *
@@ -22,10 +22,18 @@
  *     nadie fijó. El anillo se conserva —es el ancla visual de la columna— pero
  *     mide algo real: cómo viene el día contra el mismo día de la semana
  *     pasada.
- *   - **Calendario / Pendientes**: no hay dominio de vencimientos ni de tareas.
- *     Es el lugar donde van a vivir los vencimientos fiscales cuando exista el
- *     calendario verificado (ver RESEARCH-BRIEF-vencimientos-fiscales.md); por
- *     ahora la fila no se dibuja.
+ *
+ * ── CALENDARIO Y PENDIENTES ───────────────────────────────────────────────
+ * Van juntos, en una fila de dos columnas, porque son las dos mitades de la
+ * misma pregunta: el calendario dice qué días vienen (y cómo se vendió en los
+ * que ya pasaron), Pendientes dice qué hay que hacer esos días.
+ *
+ * Lo que TODAVIA no está ahí son los **vencimientos fiscales**. Ese calendario
+ * es dato verificado, no una regla que se pueda calcular: la supuesta regla del
+ * cronograma de IVA por CUIT que repiten todos los blogs ya se probó falsa (ver
+ * RESEARCH-BRIEF-vencimientos-fiscales.md). Cuando esté cargado entra por
+ * `holidays` / `holiday_calendars`, que ya existen y ya saben decir qué años
+ * NO tienen cargados.
  */
 import { eq } from 'drizzle-orm';
 import { requireSessionWithCompany } from '@/lib/auth/session';
@@ -53,6 +61,7 @@ import {
   getFeriados,
 } from '@/lib/services/reporting/calendar.report';
 import { computeCashBreakdown, getActiveCashSession } from '@/lib/cash/sessions';
+import { listOpenTasks } from '@/lib/services/tasks/task.service';
 import { PanelClient } from './PanelClient';
 
 // F0: un único punto de venta, igual que el resto de la app.
@@ -94,6 +103,7 @@ export default async function PanelPage() {
         diasCalendario,
         feriados,
         coberturaFeriados,
+        pendientes,
       ] = await Promise.all([
         getPanelHoy(),
         getPanelMes(),
@@ -115,6 +125,10 @@ export default async function PanelPage() {
         getDiasConVentas(400),
         getFeriados(anioComercio - 1, anioComercio + 1),
         getCoberturaFeriados(anioComercio - 1, anioComercio + 1),
+        // Solo los abiertos: los tachados no van a esta lista. El tope
+        // existe para que una lista abandonada de 3.000 items no cuelgue
+        // el panel entero.
+        listOpenTasks(60),
       ]);
 
       // El desglose de la caja sale de `computeCashBreakdown`, que es LA MISMA
@@ -152,10 +166,35 @@ export default async function PanelPage() {
         diasCalendario,
         feriados,
         coberturaFeriados,
+        // `due_date` ya viene como texto 'AAAA-MM-DD' de Postgres (columna
+        // `date`). `done_at` se serializa a ISO — solo para poder pasar por
+        // el limite server/client, porque en esta lista siempre es null.
+        pendientes: pendientes.map((t) => ({
+          id: t.id,
+          titulo: t.titulo,
+          detalle: t.detalle,
+          tipo: t.tipo,
+          due_date: t.due_date,
+          recurrencia: t.recurrencia,
+          done_at: t.done_at === null ? null : t.done_at.toISOString(),
+        })),
         caja:
           caja === null || desglose === null
             ? null
             : { abierta_at: caja.opened_at.toISOString(), ...desglose },
+        // El DIA del comercio en que se abrio, no el dia UTC. Una caja abierta
+        // ayer a las 22:00 de Ushuaia tiene fecha UTC de hoy: cortarle los
+        // primeros 10 caracteres al ISO esconderia justo el caso que importa
+        // (la caja que quedo abierta de ayer y nunca se arqueo).
+        cajaAbiertaDesde:
+          caja === null
+            ? null
+            : new Intl.DateTimeFormat('en-CA', {
+                timeZone: TZ_COMERCIO,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+              }).format(caja.opened_at),
       };
     },
     { requireAuth: true }

@@ -278,11 +278,6 @@ html[data-theme="dark"] .tf-menu{ background:rgba(20,26,46,0.9); border-color:rg
 html[data-theme="dark"] .tf-menu button:hover{ background:rgba(141,162,255,0.12); }
 
 /* quick-add */
-html[data-theme="dark"] .qa-form{ background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.1); box-shadow:0 4px 16px rgba(3,7,20,0.4); }
-html[data-theme="dark"] .qa-type{ background:rgba(255,255,255,0.06); }
-html[data-theme="dark"] .qa-input{ background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.14); color:var(--ink); }
-html[data-theme="dark"] .qa-when{ background:rgba(255,255,255,0.06); }
-html[data-theme="dark"] .qa-w.on{ background:rgba(238,242,255,0.94); color:#0d1424; }
 
 /* cuentas corrientes */
 html[data-theme="dark"] .cc-col2{ border-left-color:rgba(255,255,255,0.08); }
@@ -345,17 +340,6 @@ html[data-theme="dark"] .ring-pct{ color:var(--ink); }
             .todo-seg{ display:inline-flex; background:rgba(13,20,36,0.05); border-radius:9px; padding:2px; gap:2px; }
             .todo-seg button{ font-size:11px; font-weight:600; color:var(--ink-3); background:transparent; border:none; padding:4px 11px; border-radius:7px; cursor:pointer; transition:all 150ms; }
             .todo-seg button.on{ background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(13,20,36,0.10); }
-            .todo-list[data-tf="all"][data-view="dia"] [data-sc="mes"], .todo-list[data-tf="all"][data-view="dia"] [data-sc="año"]{ display:none; }
-            .todo-list[data-tf="all"][data-view="mes"] [data-sc="año"]{ display:none; }
-            .todo-list:not([data-tf="all"]) .todo-group{ display:none; }
-            .todo-list[data-tf="urg"] .todo-item:not([data-urg]){ display:none; }
-            .todo-list[data-tf="caja"] .todo-item:not([data-type~="caja"]){ display:none; }
-            .todo-list[data-tf="stock"] .todo-item:not([data-type~="stock"]){ display:none; }
-            .todo-list[data-tf="prov"] .todo-item:not([data-type~="prov"]){ display:none; }
-            .todo-list[data-tf="pago"] .todo-item:not([data-type~="pago"]){ display:none; }
-            .todo-list[data-tf="fiscal"] .todo-item:not([data-type~="fiscal"]){ display:none; }
-            .todo-list[data-tf="contador"] .todo-item:not([data-type~="contador"]){ display:none; }
-            .todo-list[data-tf="pedido"] .todo-item:not([data-type~="pedido"]){ display:none; }
             .todo-filter{ position:relative; }
             .tf-btn{ display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:600; color:var(--ink-2); background:rgba(255,255,255,0.6); border:1px solid rgba(255,255,255,0.85); padding:5px 9px; border-radius:9px; cursor:pointer; transition:background 150ms; }
             .tf-btn:hover{ background:rgba(255,255,255,0.9); }
@@ -383,31 +367,10 @@ html[data-theme="dark"] .ring-pct{ color:var(--ink); }
             .cd-tx{ flex:1; min-width:0; } .cd-n{ font-size:12.5px; font-weight:500; color:var(--ink-1); } .cd-s{ font-size:10.5px; color:var(--ink-3); margin-top:1px; }
             .cd-amt{ font-family:var(--mono); font-size:12.5px; font-weight:700; flex:0 0 auto; }
             .cd-empty{ font-size:12px; color:var(--ink-3); padding:4px 0; }
-            .pend-dayview{ display:none; }
-            .todo-list.dayspecific > .todo-group, .todo-list.dayspecific > .todo-item{ display:none; }
-            .todo-list.dayspecific .pend-dayview{ display:flex; flex-direction:column; gap:1px; }
             .pdv-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
             .pdv-head span{ font-size:11px; text-transform:uppercase; letter-spacing:0.06em; font-family:var(--mono); font-weight:600; color:var(--ink-2); }
             .pdv-back{ font-size:11px; font-weight:600; color:var(--purple); background:rgba(107,95,255,0.1); border:none; padding:4px 10px; border-radius:8px; cursor:pointer; transition:background 150ms; }
             .pdv-back:hover{ background:rgba(107,95,255,0.18); }
-            .quickadd{ margin-top:12px; flex:0 0 auto; }
-            .qa-trigger{ width:100%; display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--purple); background:rgba(107,95,255,0.08); border:1px dashed rgba(107,95,255,0.4); padding:11px 14px; border-radius:12px; cursor:pointer; transition:background 150ms; }
-            .qa-trigger:hover{ background:rgba(107,95,255,0.15); }
-            .qa-trigger .plus{ font-size:17px; font-weight:400; line-height:1; }
-            .quickadd.open .qa-trigger{ display:none; }
-            .qa-form{ display:none; flex-direction:column; gap:10px; background:rgba(255,255,255,0.65); border:1px solid rgba(255,255,255,0.9); border-radius:12px; padding:12px; box-shadow:0 4px 16px rgba(13,20,36,0.06); }
-            .quickadd.open .qa-form{ display:flex; }
-            .qa-row{ display:flex; gap:6px; }
-            .qa-bottom{ align-items:center; justify-content:space-between; }
-            .qa-type{ font-size:11.5px; font-weight:600; color:var(--ink-2); background:rgba(13,20,36,0.05); border:none; padding:6px 13px; border-radius:8px; cursor:pointer; transition:all 120ms; }
-            .qa-type.on{ background:var(--purple); color:#fff; }
-            .qa-input{ width:100%; font-size:13.5px; color:var(--ink); background:#fff; border:1px solid rgba(13,20,36,0.12); border-radius:9px; padding:10px 12px; outline:none; font-family:inherit; box-sizing:border-box; }
-            .qa-input:focus{ border-color:var(--purple); }
-            .qa-when{ display:inline-flex; background:rgba(13,20,36,0.05); border-radius:9px; padding:2px; gap:2px; }
-            .qa-w{ font-size:11px; font-weight:600; color:var(--ink-3); background:transparent; border:none; padding:5px 10px; border-radius:7px; cursor:pointer; }
-            .qa-w.on{ background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(13,20,36,0.1); }
-            .qa-cancel{ font-size:12px; font-weight:600; color:var(--ink-3); background:transparent; border:none; padding:8px 10px; cursor:pointer; }
-            .qa-submit{ font-size:12.5px; font-weight:700; color:#fff; background:var(--purple); border:none; padding:8px 16px; border-radius:9px; cursor:pointer; }
             .just-added{ animation:qaIn 400ms ease; }
             @keyframes qaIn{ from{ opacity:0; transform:translateY(-6px); } to{ opacity:1; transform:none; } }
 /* ═══════════ INGRESOS VS GASTOS — barras pareadas por mes ═══════════
@@ -752,5 +715,104 @@ html[data-theme="dark"] .cal-fer b{ color:#9ec5ff; }
 .cal-aviso{ margin-top:13px; padding:9px 11px; border-radius:10px; font-size:10.5px;
             line-height:1.45; background:rgba(247,152,74,0.13); color:#7a4708; }
 html[data-theme="dark"] .cal-aviso{ background:rgba(247,152,74,0.15); color:#ffc79a; }
+
+/* ── Pendientes ────────────────────────────────────────────────────────────
+   Lo visual de la lista sale de las reglas .todo-* de la maqueta. Aca va solo
+   lo que la maqueta no tenia. */
+.pend-count{ font-family:var(--mono); font-size:11px; font-weight:700;
+             color:var(--ink-2); background:rgba(13,20,36,0.06);
+             padding:2px 7px; border-radius:7px; margin-left:6px; }
+.pend-alerta{ font-size:11px; font-weight:700; color:#a72c3a;
+              background:rgba(201,53,69,0.12); padding:3px 9px; border-radius:8px; }
+
+/* El derivado se ve DISTINTO de una tarea a proposito: no tiene casilla porque
+   no se resuelve tachandolo. Si se pareciera a una tarea, alguien iba a buscar
+   la casilla y no encontrarla. */
+.pend-derivado{ display:flex; align-items:center; gap:11px; padding:11px 12px;
+                margin-bottom:9px; border-radius:12px;
+                background:rgba(247,152,74,0.11);
+                border:1px solid rgba(247,152,74,0.28); }
+.pend-derivado-ic{ width:26px; height:26px; border-radius:9px; flex:0 0 auto;
+                   display:grid; place-items:center; color:#8a520c;
+                   background:rgba(247,152,74,0.22); }
+.pend-derivado-ic svg{ width:15px; height:15px; }
+.pend-accion{ flex:0 0 auto; font-size:11.5px; font-weight:700; color:#8a520c;
+              background:rgba(247,152,74,0.2); padding:6px 11px; border-radius:9px;
+              text-decoration:none; transition:background 150ms; }
+.pend-accion:hover{ background:rgba(247,152,74,0.34); }
+
+.pend-group-n{ font-family:var(--mono); font-size:9.5px; font-weight:700;
+               color:var(--ink-3); }
+.todo-group.over .pend-group-n{ color:#c93545; }
+
+.pend-vacio{ font-size:12.5px; color:var(--ink-2); padding:16px 6px; line-height:1.6; }
+.pend-vacio span{ display:block; font-size:11px; color:var(--ink-3); margin-top:3px; }
+
+.pend-borrar{ flex:0 0 auto; width:22px; height:22px; border-radius:7px;
+              font-size:15px; line-height:1; color:var(--ink-4);
+              background:transparent; cursor:pointer; opacity:0;
+              transition:opacity 150ms, background 150ms, color 150ms; }
+.todo-item:hover .pend-borrar, .pend-borrar:focus-visible{ opacity:1; }
+.pend-borrar:hover{ background:rgba(201,53,69,0.12); color:#a72c3a; }
+
+/* La casilla es un <button> y no un <div> como en la maqueta: se tiene que
+   poder tachar con el teclado. El reset de arriba le saca el borde a todos los
+   button, asi que .todo-check se lo devuelve por especificidad de clase. */
+.todo-check{ cursor:pointer; background:transparent; }
+.todo-check:hover{ border-color:var(--purple); }
+.todo-check:focus-visible{ outline:2px solid var(--purple); outline-offset:2px; }
+
+.pend-abrir{ width:100%; margin-top:11px; display:flex; align-items:center; gap:8px;
+             font-size:12.5px; font-weight:600; color:var(--purple);
+             background:rgba(107,95,255,0.08);
+             border:1px dashed rgba(107,95,255,0.4); padding:10px 13px;
+             border-radius:12px; cursor:pointer; transition:background 150ms; }
+.pend-abrir:hover{ background:rgba(107,95,255,0.15); }
+.pend-abrir-plus{ font-size:16px; font-weight:400; line-height:1; }
+
+.pend-alta{ margin-top:11px; display:flex; flex-direction:column; gap:9px;
+            background:rgba(255,255,255,0.65); border:1px solid rgba(255,255,255,0.9);
+            border-radius:13px; padding:12px; box-shadow:0 4px 16px rgba(54,70,120,0.08); }
+.pend-alta-row{ display:flex; gap:6px; flex-wrap:wrap; }
+.pend-alta-bottom{ align-items:center; }
+.pend-alta-acciones{ margin-left:auto; display:flex; gap:6px; align-items:center; }
+.pend-input{ width:100%; font-size:13.5px; color:var(--ink); background:#fff;
+             border:1px solid rgba(13,20,36,0.12); border-radius:9px; padding:9px 11px;
+             transition:border-color 150ms; }
+.pend-input:focus{ border-color:var(--purple); }
+.pend-tipo{ font-size:11.5px; font-weight:600; color:var(--ink-2);
+            background:rgba(13,20,36,0.05); padding:5px 11px; border-radius:8px;
+            cursor:pointer; transition:background 150ms, color 150ms; }
+.pend-tipo:hover{ background:rgba(13,20,36,0.1); }
+.pend-tipo.on{ background:var(--purple); color:#fff; }
+.pend-fecha{ font-family:var(--mono); font-size:11.5px; color:var(--ink-1);
+             background:#fff; border:1px solid rgba(13,20,36,0.12);
+             border-radius:8px; padding:5px 8px; cursor:pointer; }
+.pend-cancelar{ font-size:12px; font-weight:600; color:var(--ink-3);
+                background:transparent; padding:7px 9px; cursor:pointer; }
+.pend-guardar{ font-size:12.5px; font-weight:700; color:#fff; background:var(--purple);
+               padding:7px 15px; border-radius:9px; cursor:pointer;
+               transition:filter 150ms; }
+.pend-guardar:hover:not(:disabled){ filter:brightness(1.08); }
+.pend-guardar:disabled{ opacity:0.5; cursor:default; }
+.pend-err{ font-size:11px; color:#a72c3a; margin-top:7px; }
+
+html[data-theme="dark"] .pend-count{ background:rgba(255,255,255,0.08); }
+html[data-theme="dark"] .pend-alerta{ background:rgba(201,53,69,0.2); color:#ff9aa4; }
+html[data-theme="dark"] .pend-derivado{ background:rgba(247,152,74,0.13);
+                                        border-color:rgba(247,152,74,0.3); }
+html[data-theme="dark"] .pend-derivado-ic{ background:rgba(247,152,74,0.2); color:#ffc79a; }
+html[data-theme="dark"] .pend-accion{ background:rgba(247,152,74,0.18); color:#ffc79a; }
+html[data-theme="dark"] .pend-accion:hover{ background:rgba(247,152,74,0.3); }
+html[data-theme="dark"] .pend-alta{ background:rgba(255,255,255,0.05);
+                                    border-color:rgba(255,255,255,0.1); }
+html[data-theme="dark"] .pend-input,
+html[data-theme="dark"] .pend-fecha{ background:rgba(255,255,255,0.06);
+                                     border-color:rgba(255,255,255,0.14);
+                                     color:var(--ink); }
+html[data-theme="dark"] .pend-tipo{ background:rgba(255,255,255,0.06); }
+html[data-theme="dark"] .pend-tipo:hover{ background:rgba(255,255,255,0.11); }
+html[data-theme="dark"] .pend-tipo.on{ background:var(--purple); color:#fff; }
+html[data-theme="dark"] .pend-err{ color:#ff9aa4; }
 
 ` + RESET_CARD_POS;

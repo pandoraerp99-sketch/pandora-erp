@@ -20,6 +20,7 @@ import { AppShell } from '@/components/shell/AppShell';
 import { Sparkline } from '@/components/charts/Sparkline';
 import { EvolucionVentas } from '@/components/charts/EvolucionVentas';
 import { CalendarioMes } from '@/components/calendar/CalendarioMes';
+import { Pendientes, type PendienteVista } from '@/components/tasks/Pendientes';
 import { PANEL_CSS } from './panelCss';
 
 export interface PanelProps {
@@ -96,6 +97,9 @@ export interface PanelProps {
     nota: string | null;
     verified_at: string;
   }>;
+  pendientes: PendienteVista[];
+  /** Dia DEL COMERCIO en que se abrio la caja que sigue abierta. */
+  cajaAbiertaDesde: string | null;
   comercio: string;
   usuario: string;
 }
@@ -327,6 +331,8 @@ export function PanelClient({
   diasCalendario,
   feriados,
   coberturaFeriados,
+  pendientes,
+  cajaAbiertaDesde,
   comercio,
   usuario,
 }: PanelProps) {
@@ -709,14 +715,28 @@ export function PanelClient({
               Va pegado a la Evolución de ventas: los dos hablan del tiempo. La
               curva contesta "cuándo vendo dentro del día"; el calendario, "qué
               días del mes laburo". */}
-          <div className="card glass" style={{ marginTop: 16 }}>
-            <CalendarioMes
-              dias={diasCalendario}
-              feriados={feriados}
-              cobertura={coberturaFeriados}
-              hoy={hoyComercio}
-              formato={plata}
-            />
+          <div className="grid2cal" style={{ marginTop: 16 }}>
+            <div className="card glass">
+              <CalendarioMes
+                dias={diasCalendario}
+                feriados={feriados}
+                cobertura={coberturaFeriados}
+                hoy={hoyComercio}
+                formato={plata}
+              />
+            </div>
+
+            {/* ═══ PENDIENTES ═══
+                Al lado del calendario a proposito: los dos contestan "que
+                viene". El calendario, que dias; esta lista, que hay que hacer
+                esos dias. */}
+            <div className="card glass">
+              <Pendientes
+                tareas={pendientes}
+                hoyLocal={hoyComercio}
+                cajaAbiertaDesde={cajaAbiertaDesde}
+              />
+            </div>
           </div>
 
           {/* ═══ INGRESOS VS GASTOS + MEDIOS DE PAGO ═══ */}

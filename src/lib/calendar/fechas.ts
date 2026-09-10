@@ -54,3 +54,15 @@ export function moverMes(
   if (n > 12) return { anio: anio + 1, mes: 1 };
   return { anio, mes: n };
 }
+
+/**
+ * Suma (o resta) días a una fecha ISO y devuelve otra fecha ISO.
+ *
+ * `Date.UTC` normaliza solo: el día 32 de septiembre es el 2 de octubre. Por
+ * eso no hay que preocuparse por los fines de mes ni por los años bisiestos.
+ */
+export function sumarDias(iso: string, dias: number): string {
+  const [a, m, d] = partesDeFecha(iso);
+  const t = new Date(Date.UTC(a, m - 1, d + dias));
+  return claveDeDia(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate());
+}
