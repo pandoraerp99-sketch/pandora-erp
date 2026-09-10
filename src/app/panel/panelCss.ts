@@ -572,4 +572,96 @@ html[data-theme="dark"] .afip-pend{ color:#ffc79a; }
    Va acotado a .main: la barra lateral la pinta shellCss y tiene que seguir
    viendose igual en todas las pantallas. */
 .main{ line-height:normal; gap:0; }
+/* ═══════════ FECHA DEL DIA ═══════════
+   Va en el hero, pegada al saludo. La fecha la calcula el SERVIDOR en la zona
+   del comercio y llega como string: 'new Date()' en el cliente da la fecha del
+   NAVEGADOR, que a las 21h de Ushuaia ya es el dia siguiente en otra maquina,
+   y ademas React marcaria hydration mismatch si el servidor y el cliente
+   cayeran en dias distintos. */
+.hero-fecha{ font-size:11.5px; font-weight:600; color:var(--ink-2); margin-top:5px;
+             letter-spacing:0.005em; }
+.hero-fecha::first-letter{ text-transform:uppercase; }
+
+/* ═══════════ ACCIONES RAPIDAS ═══════════
+   Botones y no una lista de links: son el atajo para arrancar, no navegacion.
+   Cada uno lleva icono Y texto — un icono solo obliga a adivinar, y el cajero
+   novato tiene que entender sin entrenamiento (CLAUDE.md §14.13). */
+.qa{ display:grid; grid-template-columns:repeat(4,1fr); gap:9px; margin-top:16px; }
+.qa-b{ display:flex; align-items:center; gap:9px; padding:12px 13px; border-radius:14px;
+       background:rgba(255,255,255,0.5); border:1px solid rgba(255,255,255,0.8);
+       box-shadow:inset 0 1px 0 rgba(255,255,255,0.85);
+       font-size:12.5px; font-weight:600; color:var(--ink-1); text-decoration:none;
+       transition:transform 180ms cubic-bezier(.4,0,.2,1), box-shadow 180ms, background 180ms; }
+.qa-b:hover{ transform:translateY(-2px); background:rgba(255,255,255,0.72);
+             box-shadow:0 6px 18px rgba(54,70,120,0.13); }
+.qa-b:active{ transform:translateY(0); }
+/* En modo oscuro el fondo NO puede ser blanco translucido: compuesto sobre el
+   cielo nocturno da un gris medio, y el texto (que ahi es claro) quedaba en
+   contraste 2.38 — ilegible. Medido sobre los pixeles pintados, no sobre el
+   CSS declarado, que dice "blanco" y engana. Mismo error que las pildoras de
+   /gastos. */
+html[data-theme="dark"] .qa-b{ background:rgba(255,255,255,0.055);
+                               border-color:rgba(255,255,255,0.10);
+                               box-shadow:inset 0 1px 0 rgba(255,255,255,0.06); }
+html[data-theme="dark"] .qa-b:hover{ background:rgba(255,255,255,0.10);
+                                     box-shadow:0 6px 18px rgba(0,0,0,0.28); }
+.qa-ic{ width:26px; height:26px; border-radius:9px; display:grid; place-items:center; flex-shrink:0; }
+.qa-b svg{ width:14px; height:14px; }
+@media (max-width:1100px){ .qa{ grid-template-columns:repeat(2,1fr); } }
+
+/* ═══════════ ABRIR CAJA DESDE EL PANEL ═══════════
+   Se abre desde aca porque abrir es declarar un fondo inicial y nada mas. NO
+   se cierra desde aca: cerrar exige el arqueo por denominacion que vive en
+   /caja, y un boton de "cerrar" en el panel seria una forma de cerrar sin
+   contar. */
+.qa-caja{ display:flex; gap:7px; margin-top:9px; }
+.qa-caja input{ flex:1; min-width:0; padding:8px 10px; border-radius:10px;
+                background:rgba(255,255,255,0.62); border:1px solid rgba(255,255,255,0.9);
+                font-family:var(--mono); font-size:12.5px; text-align:right; }
+.qa-caja input:focus{ border-color:var(--purple); box-shadow:0 0 0 3px rgba(107,95,255,0.14); }
+.qa-caja button{ padding:8px 13px; border-radius:10px; background:var(--purple); color:#fff;
+                 font-size:12px; font-weight:700; white-space:nowrap;
+                 transition:filter 160ms, opacity 160ms; }
+.qa-caja button:hover:not(:disabled){ filter:brightness(1.08); }
+.qa-caja button:disabled{ opacity:0.55; cursor:default; }
+.qa-err{ font-size:11px; color:#a72c3a; margin-top:6px; }
+html[data-theme="dark"] .qa-err{ color:#ff9aa4; }
+
+/* ═══════════ VENTAS POR RUBRO ═══════════
+   Barras horizontales apiladas por rubro. Escala al MAYOR, no cada una a su
+   ancho: si cada barra llenara la fila, el rubro que factura el 60% se veria
+   igual que el que factura el 11% y el bloque no diria nada. */
+.rub{ display:flex; flex-direction:column; gap:11px; margin-top:4px; }
+.rub-r{ display:grid; grid-template-columns:1fr auto; gap:3px 10px; align-items:baseline; }
+.rub-n{ font-size:12.5px; font-weight:600; color:var(--ink-1); }
+.rub-v{ font-size:12.5px; font-weight:700; font-family:var(--mono); color:var(--ink); }
+.rub-bar{ grid-column:1 / -1; height:7px; border-radius:999px;
+          background:rgba(13,20,36,0.07); overflow:hidden; }
+.rub-fill{ height:100%; border-radius:999px; transition:width 420ms cubic-bezier(.4,0,.2,1); }
+.rub-sub{ grid-column:1 / -1; display:flex; justify-content:space-between;
+          font-size:10.5px; color:var(--ink-2); }
+.rub-sub .pctm{ font-family:var(--mono); font-weight:600; }
+html[data-theme="dark"] .rub-bar{ background:rgba(255,255,255,0.10); }
+
+/* ═══════════ CLIENTES DEL MES ═══════════ */
+.cli-g{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:2px; }
+.cli-c{ padding:10px 11px; border-radius:12px; background:rgba(255,255,255,0.42);
+        border:1px solid rgba(255,255,255,0.7); }
+.cli-n{ font-size:20px; font-weight:700; font-family:var(--mono); letter-spacing:-0.02em; }
+/* Estas tres palabras —compraron / nuevos / volvieron— son lo UNICO que dice
+   que significa cada numero grande. No son decorativas. */
+.cli-l{ font-size:10.5px; color:var(--ink-2); margin-top:2px; font-weight:500; }
+html[data-theme="dark"] .cli-c{ background:rgba(255,255,255,0.055); border-color:rgba(255,255,255,0.10); }
+
+/* La barra identificado / consumidor final. Es el numero que decide algo, y
+   por eso se dibuja: sin la parte gris, un "31%" se lee como una perdida. */
+.cli-split{ margin-top:13px; }
+.cli-sb{ height:9px; border-radius:999px; overflow:hidden; display:flex;
+         background:rgba(13,20,36,0.07); }
+html[data-theme="dark"] .cli-sb{ background:rgba(255,255,255,0.10); }
+.cli-sb i{ display:block; height:100%; }
+.cli-leg{ display:flex; justify-content:space-between; margin-top:7px; font-size:10.5px;
+          color:var(--ink-2); gap:10px; }
+.cli-leg b{ color:var(--ink-1); font-weight:600; }
+
 ` + RESET_CARD_POS;

@@ -23,6 +23,7 @@ import { products } from '@/lib/db/schema/products';
 import { sales, sale_items } from '@/lib/db/schema/sales';
 import { sale_payments } from '@/lib/db/schema/sale_payments';
 import { expenses } from '@/lib/db/schema/expenses';
+import { customers } from '@/lib/db/schema/customers';
 import { audit_log } from '@/lib/db/schema/audit';
 import { withTracingContext } from '@/lib/tracing/context';
 import { generateCorrelationId, generateRequestId } from '@/lib/tracing/ids';
@@ -33,8 +34,10 @@ import {
   getMediosDePagoHoy,
   getPanelHoy,
   getPanelMes,
+  getPanelClientes,
   getSerieDiaria,
   getUltimasVentas,
+  getVentasPorRubro,
 } from '@/lib/services/reporting/panel.report';
 
 describe('T-PANEL-01 — números del Panel', () => {
@@ -166,6 +169,7 @@ describe('T-PANEL-01 — números del Panel', () => {
       await tx.delete(sales).where(inArray(sales.tenant_id, ids));
       await tx.delete(expenses).where(inArray(expenses.tenant_id, ids));
       await tx.delete(products).where(inArray(products.tenant_id, ids));
+      await tx.delete(customers).where(inArray(customers.tenant_id, ids));
       await tx.delete(audit_log).where(inArray(audit_log.tenant_id, ids));
       await tx.delete(company_users).where(eq(company_users.company_id, tenantId));
       await tx.delete(users).where(eq(users.id, userId));
@@ -335,6 +339,254 @@ describe('T-PANEL-01 — números del Panel', () => {
       const r = await withCtx(getPanelHoy);
       expect(new Decimal(r.total).eq('100.00')).toBe(true);
       expect((await withCtx(getUltimasVentas)).length).toBe(1);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // VENTAS POR RUBRO
+  // ══════════════════════════════════════════════════════════════════════
+  describe('ventas por rubro', () => {
+    /** Un producto con rubro, y una venta suya por el monto que se le pase. */
+    const ventaDeRubro = async (
+      rubro: string | null,
+      total: string,
+      cantidad = '1',
+      diaLocal?: string
+    ) => {
+      const [prod] = await db
+        .insert(products)
+        .values({
+          tenant_id: tenantId,
+          name: `P-${rubro ?? 'nulo'}-${crypto.randomUUID().slice(0, 6)}`,
+          category: rubro,
+          price: total,
+          tax_rate: '21',
+          stock_current: '100',
+        })
+        .returning({ id: products.id });
+
+      const dia = diaLocal ?? (await hoyLocal());
+      const [s] = await db
+        .insert(sales)
+        .values({
+          tenant_id: tenantId,
+          correlation_id: crypto.randomUUID(),
+          cashier_user_id: userId,
+          commercial_status: 'cobrada',
+          fiscal_status: 'not_required',
+          subtotal: total,
+          tax_amount: '0',
+          total,
+          payment_method: 'efectivo',
+          created_at: sql`(${dia}::date + interval '12 hours') AT TIME ZONE ${TZ_COMERCIO}` as never,
+        })
+        .returning({ id: sales.id });
+
+      await db.insert(sale_items).values({
+        tenant_id: tenantId,
+        sale_id: s!.id,
+        product_id: prod!.id,
+        product_name_snapshot: 'x',
+        product_unit_type_snapshot: 'unit',
+        unit_price: total,
+        quantity: cantidad,
+        tax_rate: '21',
+        line_subtotal: total,
+        line_tax: '0',
+        line_total: total,
+      });
+      return prod!.id;
+    };
+
+    it('agrupa la facturación del mes por rubro, de mayor a menor', async () => {
+      await ventaDeRubro('Bebidas', '3000');
+      await ventaDeRubro('Almacén', '10000');
+      await ventaDeRubro('Bebidas', '2000');
+
+      const r = await withCtx(() => getVentasPorRubro());
+
+      expect(r.map((x) => x.rubro)).toEqual(['Almacén', 'Bebidas']);
+      expect(new Decimal(r[0]!.total).toNumber()).toBe(10000);
+      expect(new Decimal(r[1]!.total).toNumber()).toBe(5000);
+    });
+
+    /**
+     * La invariante del bloque: si los rubros no suman el total, el
+     * comerciante está mirando una torta a la que le falta un pedazo y no hay
+     * nada en pantalla que se lo diga.
+     */
+    it('los rubros suman EXACTAMENTE la facturación de ítems del mes', async () => {
+      await ventaDeRubro('Bebidas', '3333.33');
+      await ventaDeRubro('Almacén', '6666.67');
+      await ventaDeRubro(null, '1000');
+
+      const r = await withCtx(() => getVentasPorRubro());
+      const suma = r.reduce((a, x) => a.plus(x.total), new Decimal(0));
+
+      expect(suma.toFixed(2)).toBe('11000.00');
+      // Y los porcentajes cierran en 100.
+      const pct = r.reduce((a, x) => a.plus(x.porcentaje), new Decimal(0));
+      expect(pct.toNumber()).toBeCloseTo(100, 1);
+    });
+
+    /**
+     * Un producto sin rubro tiene que seguir sumando: si se cayera del listado,
+     * los rubros dejarían de cerrar contra el total y nadie lo notaría.
+     */
+    it('un producto sin rubro no desaparece: cae en "(sin rubro)"', async () => {
+      await ventaDeRubro(null, '5000');
+      await ventaDeRubro('Bebidas', '1000');
+
+      const r = await withCtx(() => getVentasPorRubro());
+
+      expect(r.map((x) => x.rubro)).toEqual(['(sin rubro)', 'Bebidas']);
+      expect(new Decimal(r[0]!.total).toNumber()).toBe(5000);
+    });
+
+    /**
+     * El `nullif(trim(category), '')` de la consulta cubre un caso que la base
+     * ya impide: `products_category_length` exige `length(btrim(category)) >= 1`
+     * cuando la columna no es NULL. Se deja escrito acá para que quede claro que
+     * el rubro en blanco NO es un estado alcanzable, y que el coalesce cubre el
+     * NULL — que sí lo es.
+     */
+    it('la base no admite un rubro en blanco', async () => {
+      const e = await ventaDeRubro('   ', '1000').then(
+        () => null,
+        (err: unknown) => err
+      );
+      expect(e).not.toBeNull();
+      const causa = (e as { cause?: { constraint_name?: string } }).cause;
+      expect(causa?.constraint_name).toBe('products_category_length');
+    });
+
+    it('no arrastra las ventas del mes pasado', async () => {
+      const [ref] = await db.execute<{ ant: string }>(
+        sql`SELECT (date_trunc('month', (now() AT TIME ZONE ${TZ_COMERCIO})::date)
+                    - interval '3 days')::date::text AS ant`
+      );
+      await ventaDeRubro('Almacén', '99999', '1', ref!.ant);
+      await ventaDeRubro('Bebidas', '1000');
+
+      const r = await withCtx(() => getVentasPorRubro());
+
+      expect(r.map((x) => x.rubro)).toEqual(['Bebidas']);
+    });
+
+    it('no ve los rubros de otro comercio', async () => {
+      await ventaDeRubro('Almacén', '5000');
+      const r = await withCtx(() => getVentasPorRubro(), otroTenant);
+      expect(r).toEqual([]);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // CLIENTES DEL MES
+  // ══════════════════════════════════════════════════════════════════════
+  describe('clientes del mes', () => {
+    const cliente = async (nombre: string) => {
+      const [c] = await db
+        .insert(customers)
+        .values({ tenant_id: tenantId, name: nombre })
+        .returning({ id: customers.id });
+      return c!.id;
+    };
+
+    /** Venta atada (o no) a un cliente, en el día local que se indique. */
+    const ventaDe = async (customerId: string | null, total: string, diaLocal?: string) => {
+      const dia = diaLocal ?? (await hoyLocal());
+      await db.insert(sales).values({
+        tenant_id: tenantId,
+        correlation_id: crypto.randomUUID(),
+        cashier_user_id: userId,
+        commercial_status: 'cobrada',
+        fiscal_status: 'not_required',
+        subtotal: total,
+        tax_amount: '0',
+        total,
+        payment_method: 'efectivo',
+        ...(customerId === null ? {} : { customer_id: customerId }),
+        created_at: sql`(${dia}::date + interval '12 hours') AT TIME ZONE ${TZ_COMERCIO}` as never,
+      });
+    };
+
+    /** Un día del mes PASADO, para fabricar historia previa. */
+    const mesPasado = async (): Promise<string> => {
+      const [r] = await db.execute<{ d: string }>(
+        sql`SELECT (date_trunc('month', (now() AT TIME ZONE ${TZ_COMERCIO})::date)
+                    - interval '5 days')::date::text AS d`
+      );
+      return r!.d;
+    };
+
+    it('cuenta clientes distintos, no ventas', async () => {
+      const a = await cliente('Ana');
+      await ventaDe(a, '1000');
+      await ventaDe(a, '2000');
+      await ventaDe(a, '3000');
+
+      const r = await withCtx(() => getPanelClientes());
+      expect(r.activos).toBe(1);
+    });
+
+    /**
+     * "Nuevo" es el que compró por PRIMERA VEZ este mes, no el que tiene la
+     * ficha recién cargada: `customers.created_at` es cuándo se cargó el dato.
+     */
+    it('nuevo es por primera COMPRA, no por cuándo se cargó la ficha', async () => {
+      const viejo = await cliente('Cliente viejo');
+      const nuevo = await cliente('Cliente nuevo');
+      // Los dos tienen la ficha creada recién (ahora). Lo que los diferencia es
+      // que uno ya compró el mes pasado.
+      await ventaDe(viejo, '1000', await mesPasado());
+      await ventaDe(viejo, '1000');
+      await ventaDe(nuevo, '1000');
+
+      const r = await withCtx(() => getPanelClientes());
+
+      expect(r.activos).toBe(2);
+      expect(r.nuevos).toBe(1);
+      expect(r.vuelven).toBe(1);
+    });
+
+    /**
+     * El número del bloque: qué porción de la facturación tiene nombre y
+     * apellido. El resto es consumidor final — NO clientes perdidos.
+     */
+    it('el porcentaje identificado es sobre la facturación, no sobre los tickets', async () => {
+      const a = await cliente('Ana');
+      // Un ticket identificado grande y tres anónimos chicos: por tickets sería
+      // 25%, por plata es 70%. El bloque muestra la plata.
+      await ventaDe(a, '7000');
+      await ventaDe(null, '1000');
+      await ventaDe(null, '1000');
+      await ventaDe(null, '1000');
+
+      const r = await withCtx(() => getPanelClientes());
+
+      expect(new Decimal(r.facturadoIdentificado).toNumber()).toBe(7000);
+      expect(new Decimal(r.porcentajeIdentificado!).toNumber()).toBe(70);
+    });
+
+    it('sin ventas el porcentaje es null, NO cero', async () => {
+      const r = await withCtx(() => getPanelClientes());
+      expect(r.activos).toBe(0);
+      expect(r.porcentajeIdentificado).toBeNull();
+    });
+
+    it('una venta anónima no rompe la cuenta de activos', async () => {
+      await ventaDe(null, '5000');
+      const r = await withCtx(() => getPanelClientes());
+      expect(r.activos).toBe(0);
+      expect(r.vuelven).toBe(0);
+      expect(new Decimal(r.porcentajeIdentificado!).toNumber()).toBe(0);
+    });
+
+    it('no ve los clientes de otro comercio', async () => {
+      const a = await cliente('Ana');
+      await ventaDe(a, '5000');
+      const r = await withCtx(() => getPanelClientes(), otroTenant);
+      expect(r.activos).toBe(0);
     });
   });
 

@@ -11,7 +11,10 @@
  * inventaba, acá se dice qué falta. Un panel es lo que más se mira y menos se
  * audita: un número inventado se cree para siempre.
  */
+import { useState, useTransition } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { openSessionAction } from '@/app/caja/actions';
 import { AppShell } from '@/components/shell/AppShell';
 import { Sparkline } from '@/components/charts/Sparkline';
 import { EvolucionVentas } from '@/components/charts/EvolucionVentas';
@@ -62,6 +65,18 @@ export interface PanelProps {
     providerPayments: string;
     expected: string;
   } | null;
+  rubros: Array<{ rubro: string; total: string; unidades: string; porcentaje: string }>;
+  clientes: {
+    activos: number;
+    nuevos: number;
+    vuelven: number;
+    facturadoIdentificado: string;
+    porcentajeIdentificado: string | null;
+  };
+  /** 'miércoles 10 de septiembre de 2026', ya formateada en la zona del comercio. */
+  fechaLarga: string;
+  /** Hora del COMERCIO (0-23). Ver `saludo()`. */
+  horaComercio: number;
   comercio: string;
   usuario: string;
 }
@@ -89,12 +104,29 @@ const MEDIOS: Record<string, { label: string; color: string }> = {
   cuenta_corriente: { label: 'Cuenta corriente', color: '#f7984a' },
   mixto: { label: 'Mixto', color: '#ee6a8e' },
 };
+/**
+ * Colores de los rubros.
+ *
+ * Por POSICION y no por nombre: los rubros los escribe el comerciante y no hay
+ * catálogo cerrado, así que un mapa por nombre dejaría sin color a cualquier
+ * rubro nuevo. El orden es por facturación, así que el color además es estable
+ * mientras el ranking no cambie.
+ */
+const RUBRO_COLOR = ['#6b5fff', '#5b8cff', '#0e8f9e', '#34c77d', '#f7984a', '#ee6a8e'];
+
 const medioLabel = (m: string) => MEDIOS[m]?.label ?? m;
 const medioColor = (m: string) => MEDIOS[m]?.color ?? '#a8b0c5';
 
-/** El saludo depende de la hora del comercio, que es la del navegador. */
-function saludo(): string {
-  const h = new Date().getHours();
+/**
+ * El saludo depende de la hora DEL COMERCIO, que calcula el servidor.
+ *
+ * Antes salía de `new Date().getHours()`, o sea la hora del NAVEGADOR. Es el
+ * mismo error de huso que ya se corrigió en las consultas: el servidor corre en
+ * UTC —tres horas adelante de Ushuaia— así que a las 18:00 de un martes en el
+ * local, el render del servidor decía "Buenas noches". Y con el servidor y el
+ * cliente cayendo en franjas distintas, React además marca hydration mismatch.
+ */
+function saludo(h: number): string {
   if (h < 6) return 'Buenas noches';
   if (h < 13) return 'Buen día';
   if (h < 20) return 'Buenas tardes';
@@ -178,6 +210,62 @@ function Delta({ v }: { v: number | null }) {
   );
 }
 
+/**
+ * Abrir la caja del turno, sin salir del panel.
+ *
+ * ── POR QUE SE ABRE ACA Y NO SE CIERRA ────────────────────────────────────
+ * Abrir es declarar un fondo inicial y nada más, así que hacerlo desde la
+ * pantalla de inicio le ahorra al cajero un viaje. **Cerrar es otra cosa**:
+ * exige el arqueo por denominación —contar la plata— y produce un descuadre
+ * que hay que justificar. Todo eso ya vive en `/caja`. Un botón de "cerrar" en
+ * el panel sería, en la práctica, una forma de cerrar la caja sin contarla.
+ *
+ * Reusa `openSessionAction` de `/caja`: la misma action, con su validación de
+ * sesión única y su audit. No se duplica.
+ */
+function AbrirCaja() {
+  const router = useRouter();
+  const [monto, setMonto] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [enviando, startTransition] = useTransition();
+
+  const abrir = () => {
+    setError(null);
+    startTransition(async () => {
+      // La coma es como se escribe un decimal acá. Viaja como string hasta el
+      // dominio: nunca pasa por `Number` (CLAUDE.md §9.8).
+      const r = await openSessionAction({ initialAmount: monto.trim().replace(',', '.') });
+      if (r.ok) router.refresh();
+      else setError(r.error);
+    });
+  };
+
+  return (
+    <>
+      <div className="qa-caja">
+        <input
+          inputMode="decimal"
+          placeholder="Fondo inicial"
+          aria-label="Fondo inicial de la caja"
+          value={monto}
+          onChange={(e) => setMonto(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && monto.trim() !== '') abrir();
+          }}
+        />
+        <button type="button" onClick={abrir} disabled={enviando || monto.trim() === ''}>
+          {enviando ? 'Abriendo…' : 'Abrir caja'}
+        </button>
+      </div>
+      {error === null ? null : (
+        <div className="qa-err" role="alert">
+          {error}
+        </div>
+      )}
+    </>
+  );
+}
+
 export function PanelClient({
   hoy,
   mes,
@@ -190,6 +278,10 @@ export function PanelClient({
   stockBajo,
   cuentaCorriente,
   caja,
+  rubros,
+  clientes,
+  fechaLarga,
+  horaComercio,
   comercio,
   usuario,
 }: PanelProps) {
@@ -299,8 +391,9 @@ export function PanelClient({
             </div>
 
             <div className="hero-hi">
-              {saludo()}, {usuario} <span className="wave">👋</span>
+              {saludo(horaComercio)}, {usuario} <span className="wave">👋</span>
             </div>
+            <div className="hero-fecha">{fechaLarga}</div>
             <h1 className="hero-h1">
               Tu negocio,
               <br />
@@ -334,6 +427,50 @@ export function PanelClient({
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* ═══ ACCIONES RÁPIDAS ═══
+              Lo que el comerciante viene a HACER, no a mirar. Van arriba de
+              todo lo demás porque abrir la caja y cargar una venta son las dos
+              cosas con las que empieza el turno. */}
+          <div className="qa">
+            <Link className="qa-b" href="/pos">
+              <span className="qa-ic" style={{ background: 'rgba(107,95,255,0.14)', color: 'var(--purple)' }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="9" cy="20" r="1.4" />
+                  <circle cx="18" cy="20" r="1.4" />
+                  <path d="M2 3h3l2.4 12h11L21 7H6" />
+                </svg>
+              </span>
+              Nueva venta
+            </Link>
+            <Link className="qa-b" href="/gastos">
+              <span className="qa-ic" style={{ background: 'rgba(247,152,74,0.16)', color: '#8a520c' }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 5h16v14H4z" />
+                  <path d="M8 10h8M8 14h5" />
+                </svg>
+              </span>
+              Cargar gasto
+            </Link>
+            <Link className="qa-b" href="/productos">
+              <span className="qa-ic" style={{ background: 'rgba(52,199,125,0.15)', color: '#1a8e5a' }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 8l-9-5-9 5 9 5 9-5z" />
+                  <path d="M3 8v8l9 5 9-5V8" />
+                </svg>
+              </span>
+              Nuevo producto
+            </Link>
+            <Link className="qa-b" href="/clientes">
+              <span className="qa-ic" style={{ background: 'rgba(91,140,255,0.15)', color: '#2f5fd0' }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="8" r="3.4" />
+                  <path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" />
+                </svg>
+              </span>
+              Clientes
+            </Link>
           </div>
 
           {/* ═══ LA FRASE DEL DÍA — descriptiva, no un pronóstico ═══ */}
@@ -680,6 +817,123 @@ export function PanelClient({
             </div>
           </div>
 
+          {/* ═══ VENTAS POR RUBRO + CLIENTES DEL MES ═══ */}
+          <div className="grid2" style={{ marginTop: 16 }}>
+            <div className="card glass">
+              <div className="card-title">
+                <h3>
+                  <span className="ic" style={{ background: 'rgba(14,143,158,0.14)', color: 'var(--teal)' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 21V9M9 21V4M15 21v-8M21 21v-5" />
+                    </svg>
+                  </span>
+                  Ventas por rubro
+                </h3>
+                <span className="label-sm">{mesLargo(mes.mesActual)}</span>
+              </div>
+              {rubros.length === 0 ? (
+                <p className="label-sm" style={{ lineHeight: 1.5 }}>
+                  Todavía no hay ventas este mes.
+                </p>
+              ) : (
+                <>
+                  <div className="rub">
+                    {rubros.map((r, i) => (
+                      <div key={r.rubro} className="rub-r">
+                        <span className="rub-n">{r.rubro}</span>
+                        <span className="rub-v">{plata(r.total)}</span>
+                        <div className="rub-bar">
+                          <div
+                            className="rub-fill"
+                            style={{
+                              // Escala al PRIMERO, que es el que más facturó.
+                              width: `${(Number(r.total) / Number(rubros[0]!.total)) * 100}%`,
+                              background: RUBRO_COLOR[i % RUBRO_COLOR.length],
+                            }}
+                          />
+                        </div>
+                        <div className="rub-sub">
+                          <span>{Number(r.unidades).toLocaleString('es-AR')} unidades</span>
+                          <span className="pctm">{r.porcentaje}%</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* El rubro sale de `products.category`, que es el de HOY:
+                      `sale_items` no lo snapshotea. Recategorizar un producto
+                      mueve su historia, y eso se dice en vez de callarlo. */}
+                  <p className="label-sm" style={{ marginTop: 12, lineHeight: 1.45 }}>
+                    Agrupado por el rubro actual de cada producto.
+                  </p>
+                </>
+              )}
+            </div>
+
+            <div className="card glass">
+              <div className="card-title">
+                <h3>
+                  <span className="ic" style={{ background: 'rgba(91,140,255,0.15)', color: '#2f5fd0' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="9" cy="8" r="3.2" />
+                      <path d="M2 20c0-3.4 3-5.6 7-5.6s7 2.2 7 5.6" />
+                      <path d="M17 11h5M19.5 8.5v5" />
+                    </svg>
+                  </span>
+                  Clientes del mes
+                </h3>
+                <span className="label-sm">{mesLargo(mes.mesActual)}</span>
+              </div>
+              <div className="cli-g">
+                <div className="cli-c">
+                  <div className="cli-n">{clientes.activos}</div>
+                  <div className="cli-l">compraron</div>
+                </div>
+                <div className="cli-c">
+                  <div className="cli-n" style={{ color: 'var(--green)' }}>
+                    {clientes.nuevos}
+                  </div>
+                  <div className="cli-l">nuevos</div>
+                </div>
+                <div className="cli-c">
+                  <div className="cli-n" style={{ color: 'var(--blue)' }}>
+                    {clientes.vuelven}
+                  </div>
+                  <div className="cli-l">volvieron</div>
+                </div>
+              </div>
+
+              {/* ── EL NUMERO QUE DECIDE ALGO ──────────────────────────────
+                  Un "clientes activos / total" da 100% y no cambia ninguna
+                  decisión. Lo que sí decide es cuánta facturación tiene nombre
+                  y apellido: eso dice si vale la pena la cuenta corriente o una
+                  promo dirigida. Se dibujan LAS DOS partes — sin la gris, un
+                  31% se leería como una pérdida. */}
+              {clientes.porcentajeIdentificado === null ? (
+                <p className="label-sm" style={{ marginTop: 13, lineHeight: 1.5 }}>
+                  Sin ventas este mes.
+                </p>
+              ) : (
+                <div className="cli-split">
+                  <div className="cli-sb">
+                    <i
+                      style={{
+                        width: `${clientes.porcentajeIdentificado}%`,
+                        background: 'var(--blue)',
+                      }}
+                    />
+                  </div>
+                  <div className="cli-leg">
+                    <span>
+                      <b>{clientes.porcentajeIdentificado}%</b> de clientes conocidos ·{' '}
+                      {plata(clientes.facturadoIdentificado)}
+                    </span>
+                    <span>el resto, consumidor final</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* ═══ MÁS VENDIDOS ═══ */}
           {masVendidos.length > 0 ? (
             <div className="card glass" style={{ marginTop: 16 }}>
@@ -874,13 +1128,7 @@ export function PanelClient({
                   No hay una caja abierta. Se abre al empezar el turno, y el
                   efectivo del día se cuenta contra ella.
                 </p>
-                <Link
-                  className="label-sm"
-                  href="/caja"
-                  style={{ color: 'var(--purple)', fontWeight: 600 }}
-                >
-                  Abrir caja →
-                </Link>
+                <AbrirCaja />
               </>
             ) : (
               <>
@@ -935,12 +1183,14 @@ export function PanelClient({
                     {plata(caja.expected)}
                   </span>
                 </div>
+                {/* Cerrar NO se hace desde acá: el cierre exige contar la
+                    plata por denominación, y eso vive en /caja. */}
                 <Link
                   className="label-sm"
                   href="/caja"
                   style={{ color: 'var(--purple)', fontWeight: 600 }}
                 >
-                  Ir a la caja →
+                  Movimientos y cierre →
                 </Link>
               </>
             )}

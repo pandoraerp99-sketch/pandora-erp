@@ -476,3 +476,133 @@ export async function getUltimasVentas(limite = 6): Promise<UltimaVenta[]> {
         LIMIT ${limite}`
   );
 }
+
+export interface RubroVendido {
+  [k: string]: string;
+  rubro: string;
+  total: string;
+  unidades: string;
+  /** Porción de la facturación del mes, ya calculada en SQL. */
+  porcentaje: string;
+}
+
+/**
+ * Ventas por rubro del mes — "qué góndola paga el alquiler".
+ *
+ * Es el bloque que la investigación externa señaló como el hallazgo más fuerte
+ * (VMS: *"un total de ventas no te dice qué góndola te está pagando el
+ * alquiler"*), y el dato ya estaba: `products.category` no se usaba en NINGUNA
+ * pantalla.
+ *
+ * ── EL PORCENTAJE SE CALCULA EN SQL ───────────────────────────────────────
+ * `sum(sum(...)) OVER ()` da el total del mes en la misma pasada. Dividir en
+ * TypeScript obligaría a pasar plata por `Number` (CLAUDE.md §9.8); acá la
+ * división es numeric exacta de Postgres.
+ *
+ * ── EL RUBRO ES EL DE HOY, NO EL DE LA VENTA ──────────────────────────────
+ * `sale_items` snapshotea nombre, sku y precio, pero NO el rubro, así que hay
+ * que ir a `products`. Consecuencia real: si el comerciante recategoriza un
+ * producto, la historia se mueve con él. Se acepta —una agrupación de análisis
+ * no es un importe fiscal— pero es la MISMA familia de problema que el costo
+ * sin snapshotear (ver RESEARCH-BRIEF-panel §8.b), y por eso queda escrito.
+ */
+export async function getVentasPorRubro(): Promise<RubroVendido[]> {
+  const tenantId = requireTenantId();
+  return db.execute<RubroVendido>(
+    sql`SELECT coalesce(nullif(trim(p.category), ''), '(sin rubro)') AS rubro,
+               sum(si.line_total)::text                              AS total,
+               sum(si.quantity)::text                                AS unidades,
+               round(
+                 100 * sum(si.line_total)
+                     / nullif(sum(sum(si.line_total)) OVER (), 0), 1
+               )::text AS porcentaje
+        FROM sale_items si
+        JOIN sales s    ON s.id = si.sale_id
+        JOIN products p ON p.id = si.product_id
+        WHERE si.tenant_id = ${tenantId}
+          AND s.commercial_status IN ('cobrada', 'terminada')
+          AND (s.created_at AT TIME ZONE ${TZ_COMERCIO})::date
+              >= date_trunc('month', ${hoyLocal})::date
+        GROUP BY 1
+        ORDER BY sum(si.line_total) DESC`
+  );
+}
+
+export interface PanelClientes {
+  /** Clientes IDENTIFICADOS que compraron este mes. */
+  activos: number;
+  /** De esos, los que compraron por primera vez este mes. */
+  nuevos: number;
+  /** Los que ya habían comprado antes y volvieron. */
+  vuelven: number;
+  /** Facturación del mes que tiene nombre y apellido. */
+  facturadoIdentificado: string;
+  /** Qué porción del mes es eso. `null` si no hubo ventas. */
+  porcentajeIdentificado: string | null;
+}
+
+/**
+ * Clientes del mes.
+ *
+ * ── POR QUE NO ES UN RATIO "ACTIVOS / TOTAL" ──────────────────────────────
+ * Medido sobre la base real: 6 clientes cargados, los 6 compraron. Un "100% de
+ * clientes activos" no cambia ninguna decisión — es exactamente el *vanity
+ * metric* contra el que advierte KORONA.
+ *
+ * El número que SÍ decide algo es otro: de 3.439 ventas cerradas, 1.020 tienen
+ * cliente identificado. Saber qué porción de la facturación tiene nombre y
+ * apellido es lo que dice si vale la pena la cuenta corriente o una promo
+ * dirigida. El resto es consumidor final, y eso se dice en pantalla en vez de
+ * dejar que el 30% se lea como "perdí el 70% de mis clientes".
+ *
+ * ── "NUEVO" ES POR PRIMERA COMPRA, NO POR `created_at` ────────────────────
+ * `customers.created_at` es cuándo se cargó la ficha, que en la base de
+ * desarrollo es el día del seed: daría "6 nuevos de 6" siempre. Un cliente
+ * nuevo es el que compró por primera vez, y eso sale de `sales`.
+ */
+export async function getPanelClientes(): Promise<PanelClientes> {
+  const tenantId = requireTenantId();
+  const [fila] = await db.execute<{
+    activos: string;
+    nuevos: string;
+    facturado_identificado: string;
+    porcentaje: string | null;
+  }>(
+    sql`WITH ref AS (
+          SELECT date_trunc('month', ${hoyLocal})::date AS ini
+        ),
+        primera AS (
+          SELECT customer_id, min(${diaLocal}) AS primera_compra
+          FROM sales
+          WHERE tenant_id = ${tenantId} AND ${VENTA_CERRADA}
+            AND customer_id IS NOT NULL
+          GROUP BY 1
+        )
+        SELECT
+          count(DISTINCT s.customer_id)::text AS activos,
+          count(DISTINCT s.customer_id)
+            FILTER (WHERE pr.primera_compra >= ref.ini)::text AS nuevos,
+          coalesce(sum(s.total) FILTER (WHERE s.customer_id IS NOT NULL), 0)::text
+            AS facturado_identificado,
+          round(
+            100 * coalesce(sum(s.total) FILTER (WHERE s.customer_id IS NOT NULL), 0)
+                / nullif(sum(s.total), 0), 1
+          )::text AS porcentaje
+        FROM sales s
+        CROSS JOIN ref
+        LEFT JOIN primera pr ON pr.customer_id = s.customer_id
+        WHERE s.tenant_id = ${tenantId}
+          AND s.commercial_status IN ('cobrada', 'terminada')
+          AND (s.created_at AT TIME ZONE ${TZ_COMERCIO})::date >= ref.ini`
+  );
+
+  const activos = Number(fila?.activos ?? '0');
+  const nuevos = Number(fila?.nuevos ?? '0');
+  return {
+    activos,
+    nuevos,
+    vuelven: activos - nuevos,
+    facturadoIdentificado: fila?.facturado_identificado ?? '0',
+    porcentajeIdentificado: fila?.porcentaje ?? null,
+  };
+}

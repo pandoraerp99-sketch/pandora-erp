@@ -34,6 +34,9 @@ import { db } from '@/lib/db/client';
 import { companies } from '@/lib/db/schema/companies';
 import {
   getIngresosVsGastos,
+  getPanelClientes,
+  getVentasPorRubro,
+  TZ_COMERCIO,
   getMasVendidosHoy,
   getMediosDePagoHoy,
   getPanelHoy,
@@ -67,6 +70,8 @@ export default async function PanelPage() {
         cuentaCorriente,
         caja,
         serieHoraria,
+        rubros,
+        clientes,
       ] = await Promise.all([
         getPanelHoy(),
         getPanelMes(),
@@ -81,6 +86,8 @@ export default async function PanelPage() {
         getResumenCuentaCorriente(),
         getActiveCashSession(SALE_POINT),
         getSerieHoraria(),
+        getVentasPorRubro(),
+        getPanelClientes(),
       ]);
 
       // El desglose de la caja sale de `computeCashBreakdown`, que es LA MISMA
@@ -113,6 +120,8 @@ export default async function PanelPage() {
         ultimas,
         stockBajo,
         cuentaCorriente,
+        rubros,
+        clientes,
         caja:
           caja === null || desglose === null
             ? null
@@ -120,6 +129,31 @@ export default async function PanelPage() {
       };
     },
     { requireAuth: true }
+  );
+
+  // ── LA FECHA Y LA HORA SON LAS DEL COMERCIO ───────────────────────────
+  // Se resuelven acá, en el servidor, y viajan como valores ya formateados.
+  // Calcularlas en el cliente con `new Date()` daría la fecha del NAVEGADOR: a
+  // las 21:30 de Ushuaia una notebook en otro huso ya está en el día siguiente,
+  // y el servidor (UTC) también. Además, si el servidor y el cliente cayeran en
+  // días u horas distintas, React marcaría hydration mismatch.
+  //
+  // Es `Intl` y no una consulta: no hace falta molestar a la base para saber
+  // qué hora es, y el `Promise.all` de arriba ya son 13 consultas.
+  const ahora = new Date();
+  const fechaLarga = new Intl.DateTimeFormat('es-AR', {
+    timeZone: TZ_COMERCIO,
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(ahora);
+  const horaComercio = Number(
+    new Intl.DateTimeFormat('es-AR', {
+      timeZone: TZ_COMERCIO,
+      hour: 'numeric',
+      hour12: false,
+    }).format(ahora)
   );
 
   const [company] = await db
@@ -131,6 +165,8 @@ export default async function PanelPage() {
   return (
     <PanelClient
       {...datos}
+      fechaLarga={fechaLarga}
+      horaComercio={horaComercio}
       comercio={company?.name ?? 'Mi comercio'}
       usuario={session.email.replace(/@.*/, '')}
     />
