@@ -342,9 +342,6 @@ html[data-theme="dark"] .ring-pct{ color:var(--ink); }
             .todo-recur{ font-size:10px; color:var(--ink-3); display:inline-flex; align-items:center; gap:4px; }
             .todo-item.done .todo-check svg{ animation:checkpop 360ms cubic-bezier(.34,1.56,.64,1); }
             @keyframes checkpop{ 0%{transform:scale(0)} 55%{transform:scale(1.35)} 100%{transform:scale(1)} }
-            .cal-day.feriado{ font-weight:700; }
-            .cal-day.feriado.nac{ background:rgba(91,155,213,0.20)!important; box-shadow:inset 0 0 0 1.5px #5b9bd5; color:#1f4f96; }
-            .cal-day.feriado.prov{ background:rgba(14,143,158,0.16)!important; box-shadow:inset 0 0 0 1.5px #2bb3c0; color:#0c6f7c; }
             .todo-seg{ display:inline-flex; background:rgba(13,20,36,0.05); border-radius:9px; padding:2px; gap:2px; }
             .todo-seg button{ font-size:11px; font-weight:600; color:var(--ink-3); background:transparent; border:none; padding:4px 11px; border-radius:7px; cursor:pointer; transition:all 150ms; }
             .todo-seg button.on{ background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(13,20,36,0.10); }
@@ -708,8 +705,12 @@ html[data-theme="dark"] .cal-day.futuro{ background:rgba(255,255,255,0.02); }
 
 /* Feriado nacional y asueto provincial se ven DISTINTO a proposito: el segundo
    no obliga al comercio, y pintarlos igual seria decir que esta cerrado. */
-.cal-day.feriado.nac{ color:#2b6cb0; font-weight:700; }
-.cal-day.feriado.prov{ color:#0e7c88; font-weight:700; }
+/* El feriado se marca con el BORDE y el numero en color, NO con el fondo: el
+   fondo lo usa el heatmap y taparlo borraria cuanto se vendio ese dia. Borde y
+   no box-shadow porque el box-shadow ya lo usa .today, y un feriado que cae hoy
+   los pisaria. */
+.cal-day.feriado.nac{ color:#2b6cb0; font-weight:700; border-color:#5b9bd5; }
+.cal-day.feriado.prov{ color:#0e7c88; font-weight:700; border-color:#2bb3c0; }
 html[data-theme="dark"] .cal-day.feriado.nac{ color:#9ec5ff; }
 html[data-theme="dark"] .cal-day.feriado.prov{ color:#6fd8e4; }
 
@@ -730,8 +731,8 @@ html[data-theme="dark"] .cal-day.feriado.prov{ color:#6fd8e4; }
 .cal-legend .lg-futuro{ background:rgba(13,20,36,0.05); border:1px solid rgba(13,20,36,0.10); }
 html[data-theme="dark"] .cal-legend .lg-futuro{ background:rgba(255,255,255,0.04);
                                                 border-color:rgba(255,255,255,0.10); }
-.cal-legend .lg-nac{ background:#2b6cb0; }
-.cal-legend .lg-prov{ background:#0e8f9e; }
+.cal-legend .lg-nac{ background:transparent; border:2px solid #5b9bd5; }
+.cal-legend .lg-prov{ background:transparent; border:2px solid #2bb3c0; }
 .cal-legend .lg-hoy{ background:transparent; box-shadow:0 0 0 2px var(--purple); }
 html[data-theme="dark"] .cal-legend .lg-cero{ background:rgba(255,255,255,0.06);
                                               border-color:rgba(255,255,255,0.18); }
