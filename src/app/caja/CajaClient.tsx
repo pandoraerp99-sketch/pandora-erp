@@ -474,8 +474,15 @@ export function CajaClient({
             <Icon html={IC.eye} />Lectura X
           </button>
           <div className="top-tools">
-            <button className="iconbtn glass" type="button" title="Cambiar tema claro/oscuro" onClick={toggleTheme}>
-              <Icon html={dark ? IC.sun : IC.moon} />
+            <button
+              className="iconbtn glass"
+              type="button"
+              title={dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+              aria-label={dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+              onClick={toggleTheme}
+            >
+              {/* El icono es el tema ACTUAL (luna = oscuro), no el destino. */}
+              <Icon html={dark ? IC.moon : IC.sun} />
             </button>
             <button className="iconbtn glass" type="button" title="Notificaciones"><Icon html={IC.bell} /><span className="ndot">3</span></button>
             <button className="iconbtn glass" type="button" title="Mensajes"><Icon html={IC.msg} /><span className="ndot">7</span></button>

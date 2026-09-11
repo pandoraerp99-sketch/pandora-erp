@@ -333,14 +333,19 @@ export function AppShell({
               )}
 
               <div className="top-tools">
+                {/* El icono dice el ESTADO ACTUAL (luna = estás en oscuro) y
+                    el texto dice la ACCIÓN. Antes el icono mostraba el destino
+                    —sol estando en oscuro— y se leía al revés; el `title` decía
+                    "Modo claro", que con el icono de estado se contradecía.
+                    La maqueta (clientes-v6.html) tiene la convención vieja. */}
                 <button
                   type="button"
                   className="iconbtn glass"
                   onClick={toggleTema}
                   aria-label={dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-                  title={dark ? 'Modo claro' : 'Modo oscuro'}
+                  title={dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
                 >
-                  {dark ? (
+                  {!dark ? (
                     <svg
                       viewBox="0 0 24 24"
                       fill="none"
