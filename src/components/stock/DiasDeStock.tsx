@@ -61,6 +61,9 @@ const ETIQUETA: Record<EstadoStock, string> = {
  * **2.65 en oscuro** — medido sampleando pixeles, no leyendo el CSS. El
  * mismo rojo oscuro sobre fondo casi negro. Mismo bug que hubo en `.qa-b`.
  */
+/** Un decimal, con COMA: en la misma fila `decirDias` tambien usa coma. */
+const porDia = (v: string) => Number(v).toFixed(1).replace('.', ',');
+
 const CLASE: Record<EstadoStock, string> = {
   sin_stock: 'ds-tag ds-sin-stock',
   se_acaba: 'ds-tag ds-se-acaba',
@@ -140,10 +143,10 @@ export function DiasDeStock({ items, diasDeHistoria, limite = 5 }: DiasDeStockPr
                 {/* De qué está hecho el número. Sin esto no se puede discutir. */}
                 <div className="ds-s">
                   {f.estado === 'sin_stock'
-                    ? `Vendías ${Number(f.velocidad).toFixed(1)} por día`
+                    ? `Vendías ${porDia(f.velocidad)} por día`
                     : f.estado === 'sin_rotacion'
                       ? `Sin ventas en ${ventana} días · quedan ${f.stockNum}`
-                      : `${Number(f.velocidad).toFixed(1)} por día · quedan ${f.stockNum}`}
+                      : `${porDia(f.velocidad)} por día · quedan ${f.stockNum}`}
                 </div>
               </div>
               <span className={CLASE[f.estado]}>

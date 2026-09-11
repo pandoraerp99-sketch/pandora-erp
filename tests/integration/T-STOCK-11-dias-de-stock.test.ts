@@ -238,6 +238,20 @@ describe('T-STOCK-11 — días de stock', () => {
     expect(Number(g.dias_restantes)).toBeCloseTo(30, 4);
   });
 
+  it('el BORDE exacto de la ventana: el día más viejo cuenta, el anterior no', async () => {
+    // El predicado es `dia > hoy - ventana`. Con ventana=30 eso cubre
+    // hoy-29..hoy, o sea 30 días. Sin esta prueba, un `>` cambiado por `>=`
+    // (o al revés) pasaba desapercibido: ninguna otra venta de este archivo
+    // cae justo en el borde.
+    const p = await crearProducto(tenantId, 'Coca 600', '100', null);
+    await venderHaceDias(tenantId, p, 7, 29); // último día ADENTRO
+    await venderHaceDias(tenantId, p, 500, 30); // primer día AFUERA
+
+    const f = buscar(await withCtx(() => getDiasDeStock(365)), 'Coca 600')!;
+    // Si el de 30 entrara, esto daría 507 y el producto parecería durar horas.
+    expect(Number(f.vendido)).toBe(7);
+  });
+
   it('las ventas más viejas que la ventana no cuentan', async () => {
     const p = await crearProducto(tenantId, 'Coca 600', '50', '5');
     await venderHaceDias(tenantId, p, 100, 60); // vieja
