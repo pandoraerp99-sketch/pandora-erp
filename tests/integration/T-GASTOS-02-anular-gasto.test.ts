@@ -166,9 +166,12 @@ describe('T-GASTOS-02 — Anular un gasto', () => {
 
     // (1) listExpenses — la pantalla
     expect(lista.map((g) => g.id)).not.toContain(gasto.id);
-    // (2) getExpenseTotals — importe Y cantidad
+    // (2) getExpenseTotals — acá el importe NO alcanza para probar nada: la
+    //     fila de anulación vale 0, así que `sum(total)` da lo mismo con filtro
+    //     o sin él. Lo único que delata el problema es la CANTIDAD.
     const merc = totales.find((t) => t.categoria === 'mercaderia');
-    expect(merc?.total ?? '0').not.toContain('200000');
+    expect(merc?.total).toBe('100000.0000');
+    expect(merc?.cantidad).toBe('1');
     // (3) getExpenseSummary — el count es el que delata la mitad `total > 0`
     expect(resumen.cantidad).toBe('1');
     expect(resumen.total).toBe('100000.0000');
