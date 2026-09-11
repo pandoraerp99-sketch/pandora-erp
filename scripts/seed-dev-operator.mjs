@@ -88,7 +88,13 @@ try {
     ['PANLAC', 'Pan Lactal Bimbo', '2900.0000', '1900.0000', '21.00', false, '12.0000'],
     ['CAFE250', 'Café La Virginia 250g', '3200.0000', '2100.0000', '21.00', false, '15.0000'],
     ['AGUA15', 'Agua Mineral 1.5L', '1200.0000', '700.0000', '21.00', true, '60.0000'],
-    ['NOTEBOOK', 'Cuaderno A4 Rivadavia', '2500.0000', '1500.0000', '21.00', true, '30.0000'],
+    // 🔴 SIN COSTO A PROPÓSITO. Es el caso más común de un comercio real: el
+    // producto se carga para poder venderlo y el costo queda "para después".
+    // Si los 7 tuvieran costo, el bloque de margen renderizaría siempre
+    // completo y verde en desarrollo, y los dos estados que más importan
+    // —"sin datos" y "cobertura parcial"— no se verían NUNCA. Una captura así
+    // no probaría nada (ver feedback-captura-no-prueba-correccion).
+    ['NOTEBOOK', 'Cuaderno A4 Rivadavia', '2500.0000', null, '21.00', true, '30.0000'],
   ];
   for (const [sku, name, price, cost, tax, exempt, stock] of DEMO_PRODUCTS) {
     // products no tiene UNIQUE(tenant_id, sku) → WHERE NOT EXISTS (idempotente).

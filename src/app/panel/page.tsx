@@ -66,6 +66,10 @@ import {
   getDiasDeHistoria,
   getDiasDeStock,
 } from '@/lib/services/reporting/stock.report';
+import {
+  getMargenDelMes,
+  getRentabilidadPorProducto,
+} from '@/lib/services/reporting/margen.report';
 import { PanelClient } from './PanelClient';
 
 // F0: un único punto de venta, igual que el resto de la app.
@@ -114,6 +118,8 @@ export default async function PanelPage() {
         coberturaFeriados,
         pendientes,
         diasDeStock,
+        margen,
+        rentabilidad,
       ] = await Promise.all([
         getPanelHoy(),
         getPanelMes(),
@@ -140,6 +146,11 @@ export default async function PanelPage() {
         // el panel entero.
         listOpenTasks(60),
         getDiasDeStock(diasDeHistoria),
+        // Margen bruto HISTORICO: con el costo congelado en cada linea
+        // (migration 0031), no con el costo de hoy. Se devuelve crudo — la
+        // decision de si hay numero o no la toma la capa pura al renderizar.
+        getMargenDelMes(),
+        getRentabilidadPorProducto(6),
       ]);
 
       // El desglose de la caja sale de `computeCashBreakdown`, que es LA MISMA
@@ -179,6 +190,8 @@ export default async function PanelPage() {
         coberturaFeriados,
         diasDeHistoria,
         diasDeStock,
+        margen,
+        rentabilidad,
         // `due_date` ya viene como texto 'AAAA-MM-DD' de Postgres (columna
         // `date`). `done_at` se serializa a ISO — solo para poder pasar por
         // el limite server/client, porque en esta lista siempre es null.

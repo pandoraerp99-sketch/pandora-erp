@@ -22,6 +22,8 @@ import { EvolucionVentas } from '@/components/charts/EvolucionVentas';
 import { CalendarioMes } from '@/components/calendar/CalendarioMes';
 import { Pendientes, type PendienteVista } from '@/components/tasks/Pendientes';
 import { DiasDeStock, type DiasDeStockItem } from '@/components/stock/DiasDeStock';
+import { MargenDelMes } from '@/components/reporting/MargenDelMes';
+import type { CrudoMargen, CrudoProducto } from '@/lib/reporting/margen';
 import { PANEL_CSS } from './panelCss';
 
 export interface PanelProps {
@@ -100,6 +102,10 @@ export interface PanelProps {
   }>;
   pendientes: PendienteVista[];
   diasDeStock: DiasDeStockItem[];
+  /** Crudo: la decisión de qué mostrar la toma `calcularMargen`, en el cliente.
+   *  Viaja en strings porque un Decimal no cruza el borde server→client. */
+  margen: CrudoMargen;
+  rentabilidad: CrudoProducto[];
   /** Dias desde la PRIMERA venta. 0 = el comercio todavia no vendio. */
   diasDeHistoria: number;
   /** Dia DEL COMERCIO en que se abrio la caja que sigue abierta. */
@@ -338,6 +344,8 @@ export function PanelClient({
   pendientes,
   diasDeStock,
   diasDeHistoria,
+  margen,
+  rentabilidad,
   cajaAbiertaDesde,
   comercio,
   usuario,
@@ -1371,6 +1379,13 @@ export function PanelClient({
               por debajo del minimo; esto dice CUANTO FALTA para que se
               acabe. Separadas hay que cruzarlas a mano. */}
           <DiasDeStock items={diasDeStock} diasDeHistoria={diasDeHistoria} />
+
+          {/* ═══ RENTABILIDAD ═══
+              Al lado de dias de stock porque son las dos proyecciones que el
+              costo hizo posibles: una dice cuanto DURA la mercaderia, la otra
+              cuanto DEJA. Es composicion nueva — el panel no tenia tarjeta de
+              margen (la de reportes-v2.html es de otra pantalla). */}
+          <MargenDelMes crudo={margen} productos={rentabilidad} />
 
           {/* ═══ STOCK BAJO ═══ */}
           {stockBajo.length > 0 ? (

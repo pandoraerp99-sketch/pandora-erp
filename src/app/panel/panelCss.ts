@@ -848,4 +848,67 @@ html[data-theme="dark"] .ds-sin-stock{ background:rgba(201,53,69,0.22); color:#f
 html[data-theme="dark"] .ds-se-acaba{ background:rgba(247,152,74,0.20); color:#ffc79a; }
 html[data-theme="dark"] .ds-sin-rotacion{ background:rgba(255,255,255,0.09); color:#cdd6f0; }
 
+/* ── Rentabilidad (margen bruto historico) ────────────────────────────────
+   Composicion nueva: el panel no tenia tarjeta de margen. El tratamiento
+   visual (tabla con numeros a la derecha, margen como pastilla) sale de
+   reportes-v2.html y el umbral + las palabras de ofertas.html.
+   Los colores van por CLASE y con variante oscura, nunca inline: un estilo
+   inline no puede tener modo oscuro, y eso ya rompio el contraste dos veces. */
+.mg-head{ display:flex; align-items:flex-start; justify-content:space-between;
+          gap:12px; padding:2px 2px 10px; }
+.mg-big{ font-size:26px; font-weight:650; letter-spacing:-0.5px;
+         font-family:var(--mono); line-height:1.1; }
+.mg-sub{ font-size:10.5px; color:var(--ink-3); margin-top:3px; }
+.mg-pill{ flex:0 0 auto; font-size:10.5px; font-weight:700; padding:4px 10px;
+          border-radius:9px; white-space:nowrap; }
+
+/* La nota de cobertura NO es letra chica decorativa: es la diferencia entre
+   un numero completo y uno que lo parece. */
+.mg-cobertura{ font-size:11px; color:var(--ink-2); line-height:1.5; margin:0 0 10px;
+               padding:8px 10px; border-radius:9px;
+               background:rgba(247,152,74,0.10);
+               border:1px solid rgba(247,152,74,0.22); }
+html[data-theme="dark"] .mg-cobertura{ background:rgba(247,152,74,0.12);
+               border-color:rgba(247,152,74,0.26); }
+
+.mg-tbl{ width:100%; border-collapse:collapse; }
+.mg-tbl th{ font-size:9.5px; font-weight:700; text-transform:uppercase;
+            letter-spacing:0.7px; color:var(--ink-3); text-align:left;
+            padding:0 0 7px; border-bottom:1px solid rgba(13,20,36,0.07); }
+.mg-tbl td{ padding:8px 0; border-bottom:1px solid rgba(13,20,36,0.04);
+            font-size:12.5px; vertical-align:middle; }
+.mg-tbl tr:last-child td{ border-bottom:none; }
+.mg-r{ text-align:right; }
+.mg-nombre{ color:var(--ink-1); font-weight:500; max-width:0; width:55%;
+            overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mg-tag{ font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:8px;
+         white-space:nowrap; display:inline-block; }
+html[data-theme="dark"] .mg-tbl th{ border-bottom-color:rgba(255,255,255,0.08); }
+html[data-theme="dark"] .mg-tbl td{ border-bottom-color:rgba(255,255,255,0.05); }
+
+.mg-espera{ font-size:12.5px; color:var(--ink-2); line-height:1.55; padding:4px 2px; }
+.mg-espera span{ display:block; font-size:11px; color:var(--ink-3); margin-top:5px; }
+
+/* "sin dato" NO se pinta de rojo: no saber no es estar mal, y el rojo
+   empujaria a corregir un precio que puede estar perfecto. */
+.mg-sano{ background:rgba(26,142,90,0.14); color:#14683f; }
+.mg-ajustado{ background:rgba(247,152,74,0.18); color:#8a520c; }
+.mg-bajo-costo{ background:rgba(201,53,69,0.14); color:#a72c3a; }
+.mg-sin-dato{ background:rgba(118,129,160,0.16); color:#4a5570; }
+html[data-theme="dark"] .mg-sano{ background:rgba(26,142,90,0.22); color:#7fe0ac; }
+html[data-theme="dark"] .mg-ajustado{ background:rgba(247,152,74,0.20); color:#ffc79a; }
+html[data-theme="dark"] .mg-bajo-costo{ background:rgba(201,53,69,0.22); color:#ff9aa4; }
+html[data-theme="dark"] .mg-sin-dato{ background:rgba(255,255,255,0.09); color:#cdd6f0; }
+
+/* El numero grande lleva el color del estado, pero SIN fondo: una pastilla
+   gigante gritaria mas que el resto del panel. */
+.mg-big.mg-sano{ background:none; color:#14683f; }
+.mg-big.mg-ajustado{ background:none; color:#8a520c; }
+.mg-big.mg-bajo-costo{ background:none; color:#a72c3a; }
+.mg-big.mg-sin-dato{ background:none; color:var(--ink-1); }
+html[data-theme="dark"] .mg-big.mg-sano{ color:#7fe0ac; }
+html[data-theme="dark"] .mg-big.mg-ajustado{ color:#ffc79a; }
+html[data-theme="dark"] .mg-big.mg-bajo-costo{ color:#ff9aa4; }
+html[data-theme="dark"] .mg-big.mg-sin-dato{ color:var(--ink-1); }
+
 ` + RESET_CARD_POS;
