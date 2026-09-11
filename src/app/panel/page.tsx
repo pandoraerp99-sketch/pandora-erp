@@ -123,9 +123,9 @@ export default async function PanelPage() {
       ] = await Promise.all([
         getPanelHoy(),
         getPanelMes(),
-        // 30 días alcanza para las tres vistas del gráfico: "Semana" son los
-        // últimos 7 y "Mes" los 30. Una consulta, no tres.
-        getSerieDiaria(30),
+        // 31 días: el gráfico usa los últimos 30 y la proyección de cierre de mes
+        // necesita cubrir un mes de 31 entero. Una consulta, no dos.
+        getSerieDiaria(31),
         getIngresosVsGastos(6),
         getMediosDePagoHoy(),
         getMasVendidosHoy(5),

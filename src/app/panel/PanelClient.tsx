@@ -24,6 +24,8 @@ import { Pendientes, type PendienteVista } from '@/components/tasks/Pendientes';
 import { DiasDeStock, type DiasDeStockItem } from '@/components/stock/DiasDeStock';
 import { MargenDelMes } from '@/components/reporting/MargenDelMes';
 import type { CrudoMargen, CrudoProducto } from '@/lib/reporting/margen';
+import { CierreDeMes } from '@/components/reporting/CierreDeMes';
+import { proyectarCierre } from '@/lib/reporting/cierre-de-mes';
 import { PANEL_CSS } from './panelCss';
 
 export interface PanelProps {
@@ -357,6 +359,12 @@ export function PanelClient({
   // dos tarjetas porque es justamente lo unico que comparten: el calendario
   // lo elige, Pendientes lo obedece.
   const [diaElegido, setDiaElegido] = useState<string | null>(null);
+
+  // La proyección del mes NO trae datos propios: sale de la serie diaria que
+  // ya está acá, del "hoy" del comercio y de la historia que ya usa días de
+  // stock. Así el promedio del bloque y el gráfico de arriba no pueden
+  // discrepar — son el mismo array.
+  const proyeccion = proyectarCierre(serie, hoyComercio, diasDeHistoria);
 
   const serieTickets = serie.map((d) => Number(d.tickets));
   const seriePromedio = ticketPromedioPorDia(serie);
@@ -721,7 +729,11 @@ export function PanelClient({
                 etiqueta: diaCorto(d.dia),
                 valor: Number(d.total),
               }))}
-              mes={serie.map((d) => ({
+              // `slice(-30)` y no la serie entera: ahora trae 31 días porque la
+              // proyección de cierre de mes necesita cubrir un mes de 31 completo
+              // (parado el día 31, una ventana de 30 se come el día 1). La vista
+              // "Mes" del gráfico sigue siendo de 30.
+              mes={serie.slice(-30).map((d) => ({
                 etiqueta: diaCorto(d.dia),
                 valor: Number(d.total),
               }))}
@@ -1386,6 +1398,13 @@ export function PanelClient({
               cuanto DEJA. Es composicion nueva — el panel no tenia tarjeta de
               margen (la de reportes-v2.html es de otra pantalla). */}
           <MargenDelMes crudo={margen} productos={rentabilidad} />
+
+          {/* ═══ CIERRE DE MES ═══
+              Se DERIVA de la misma serie diaria que dibuja el grafico de
+              arriba, no de una consulta propia: si el promedio saliera de otro
+              agregado, dos numeros de la misma pantalla podrian discrepar y
+              nadie tendria como notarlo. */}
+          <CierreDeMes p={proyeccion} />
 
           {/* ═══ STOCK BAJO ═══ */}
           {stockBajo.length > 0 ? (

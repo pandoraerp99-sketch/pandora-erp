@@ -911,4 +911,26 @@ html[data-theme="dark"] .mg-big.mg-ajustado{ color:#ffc79a; }
 html[data-theme="dark"] .mg-big.mg-bajo-costo{ color:#ff9aa4; }
 html[data-theme="dark"] .mg-big.mg-sin-dato{ color:var(--ink-1); }
 
+/* ── Cierre de mes (proyeccion) ───────────────────────────────────────────
+   El numero NO puede ir solo (brief §6.2): las tres patas de abajo son parte
+   del bloque, no letra chica. Por eso el numero grande es mas chico que el de
+   Rentabilidad — es un pronostico, no un hecho, y la jerarquia lo dice. */
+.pr-num{ font-size:25px; font-weight:650; letter-spacing:-0.5px;
+         font-family:var(--mono); line-height:1.1; color:var(--ink-1);
+         padding:2px 2px 0; }
+.pr-aviso{ font-size:10.5px; color:var(--ink-3); padding:4px 2px 12px;
+           font-style:italic; }
+.pr-base{ display:grid; gap:9px; padding-top:11px;
+          border-top:1px solid rgba(13,20,36,0.07); }
+html[data-theme="dark"] .pr-base{ border-top-color:rgba(255,255,255,0.08); }
+.pr-item{ display:grid; grid-template-columns:1fr auto; row-gap:1px;
+          align-items:baseline; }
+.pr-k{ font-size:11.5px; color:var(--ink-2); }
+.pr-v{ font-size:12.5px; font-weight:600; color:var(--ink-1);
+       font-family:var(--mono); text-align:right; }
+.pr-n{ grid-column:1 / -1; font-size:10px; color:var(--ink-3); }
+
+.pr-espera{ font-size:12.5px; color:var(--ink-2); line-height:1.55; padding:4px 2px; }
+.pr-espera span{ display:block; font-size:11px; color:var(--ink-3); margin-top:5px; }
+
 ` + RESET_CARD_POS;
