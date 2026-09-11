@@ -52,11 +52,16 @@ describe('T-MT-07 — jobs_queue cross-tenant defense + poison detection sobre t
   const tenantA = crypto.randomUUID();
   const tenantB = crypto.randomUUID();
   const userA = crypto.randomUUID();
+  // El user de B existe sólo para satisfacer la FK; igual hay que poder
+  // borrarlo. Antes se creaba con un `crypto.randomUUID()` inline dentro del
+  // loop, sin guardarlo en ningún lado, así que el afterAll no tenía con qué
+  // referirlo y lo dejaba: una fila de basura por cada corrida de la suite.
+  const userB = crypto.randomUUID();
 
   beforeAll(async () => {
     for (const [tenantId, userId] of [
       [tenantA, userA],
-      [tenantB, crypto.randomUUID()], // user de B no usado en tests, solo para FK companies
+      [tenantB, userB], // user de B no usado en tests, solo para FK companies
     ] as const) {
       await db.insert(companies).values({
         id: tenantId,
@@ -85,9 +90,7 @@ describe('T-MT-07 — jobs_queue cross-tenant defense + poison detection sobre t
     await db
       .delete(jobs_queue)
       .where(inArray(jobs_queue.tenant_id, [tenantA, tenantB, env.SYSTEM_TENANT_ID]));
-    await db.delete(users).where(eq(users.id, userA));
-    // Eliminar también el user de B (lookup por email pattern)
-    // Simpler: dejar el segundo user. companies cleanup último.
+    await db.delete(users).where(inArray(users.id, [userA, userB]));
     await db.delete(companies).where(inArray(companies.id, [tenantA, tenantB]));
   });
 
