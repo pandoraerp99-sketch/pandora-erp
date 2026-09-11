@@ -316,7 +316,9 @@ describe('prepareStockMovementValues — validaciones input', () => {
     ).toThrow(StockValidationError);
   });
 
-  it('related_sale_id + related_purchase_id ambos seteados → throw related_exclusive_violation', () => {
+  it('related_sale_id + related_expense_id ambos seteados → throw related_exclusive_violation', () => {
+    // Un movimiento nace de UNA cosa: una venta o una compra. Los dos juntos
+    // significaría que no sabemos de dónde salió.
     expect(() =>
       prepareStockMovementValues(
         {
@@ -326,7 +328,7 @@ describe('prepareStockMovementValues — validaciones input', () => {
           reason: 'transferencia inter-domain',
           direction: 'out',
           related_sale_id: VALID_SALE_ID,
-          related_purchase_id: '44444444-4444-4444-4444-444444444444',
+          related_expense_id: '44444444-4444-4444-4444-444444444444',
         },
         makeCtx()
       )

@@ -27,6 +27,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { companies } from './companies.js';
+import { expenses } from './expenses.js';
 import { products } from './products.js';
 import { sales } from './sales.js';
 import { users } from './users.js';
@@ -80,13 +81,18 @@ export const stock_movements = pgTable(
 
     // FK opcionales — uno O el otro, no ambos (CHECK constraint).
     // related_sale_id: SOLO cuando type='sale' (o 'return' de venta previa)
-    // related_purchase_id: F1+ cuando exista módulo compras (Sprint 8+ posible)
+    // related_expense_id: cuando type='purchase' — el comprobante de compra.
+    //
+    // Hasta la migration 0034 esto era `related_purchase_id`, un uuid sin FK
+    // que esperaba una tabla `purchases` que no va a existir: la compra ES un
+    // gasto con líneas. Se renombró en vez de dejar el nombre viejo apuntando
+    // a `expenses`, que habría sido un nombre mintiendo sobre su referente.
     related_sale_id: uuid('related_sale_id').references(() => sales.id, {
       onDelete: 'restrict',
     }),
-    related_purchase_id: uuid('related_purchase_id'),
-    // NOTA: related_purchase_id sin FK F0 porque no existe tabla purchases.
-    // F1+ agregar FK cuando se construya módulo de compras.
+    related_expense_id: uuid('related_expense_id').references(() => expenses.id, {
+      onDelete: 'restrict',
+    }),
 
     // Quién originó el movimiento — para audit + restricción de permisos.
     created_by: uuid('created_by').references(() => users.id, {
@@ -143,11 +149,11 @@ export const stock_movements = pgTable(
       sql`${table.type} != 'adjustment' OR (${table.reason} IS NOT NULL AND length(${table.reason}) > 0)`
     ),
 
-    // related_sale_id + related_purchase_id mutuamente exclusivos —
+    // related_sale_id + related_expense_id mutuamente exclusivos —
     // un movimiento no puede ser simultáneamente venta y compra.
     relatedExclusiveCheck: check(
       'stock_movements_related_exclusive',
-      sql`NOT (${table.related_sale_id} IS NOT NULL AND ${table.related_purchase_id} IS NOT NULL)`
+      sql`NOT (${table.related_sale_id} IS NOT NULL AND ${table.related_expense_id} IS NOT NULL)`
     ),
 
     // sale type implica related_sale_id (defense — sin FK que no quede huérfano).

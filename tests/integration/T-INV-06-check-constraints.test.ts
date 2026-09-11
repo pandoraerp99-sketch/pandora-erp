@@ -22,6 +22,7 @@ import { companies } from '@/lib/db/schema/companies';
 import { users, company_users } from '@/lib/db/schema/users';
 import { products } from '@/lib/db/schema/products';
 import { sales } from '@/lib/db/schema/sales';
+import { expenses } from '@/lib/db/schema/expenses';
 import { stock_movements } from '@/lib/db/schema/stock_movements';
 import { generateCorrelationId } from '@/lib/tracing/ids';
 
@@ -43,6 +44,9 @@ describe('T-INV-06 — CHECK constraints SQL stock_movements (defense layered)',
   const userId = crypto.randomUUID();
   const productId = crypto.randomUUID();
   const saleId = crypto.randomUUID();
+  // Desde la migration 0034 `related_expense_id` tiene FK real a `expenses`:
+  // un uuid inventado fallaría por la FK y no por el CHECK que este test mide.
+  const expenseId = crypto.randomUUID();
 
   beforeAll(async () => {
     await db.insert(companies).values({
@@ -86,12 +90,21 @@ describe('T-INV-06 — CHECK constraints SQL stock_movements (defense layered)',
       commercial_status: 'cobrando',
       fiscal_status: 'not_required',
     });
+    await db.insert(expenses).values({
+      id: expenseId,
+      tenant_id: tenantId,
+      fecha: '2026-03-01',
+      categoria: 'mercaderia',
+      total: '1000.0000',
+      medio_pago: 'transferencia',
+    });
   });
 
   afterAll(async () => {
     await db.transaction(async (tx) => {
       await tx.execute(sql`SET LOCAL session_replication_role = 'replica'`);
       await tx.delete(stock_movements).where(eq(stock_movements.tenant_id, tenantId));
+      await tx.delete(expenses).where(eq(expenses.tenant_id, tenantId));
       await tx.delete(sales).where(eq(sales.tenant_id, tenantId));
       await tx.delete(products).where(eq(products.tenant_id, tenantId));
       await tx.delete(company_users).where(eq(company_users.company_id, tenantId));
@@ -112,13 +125,13 @@ describe('T-INV-06 — CHECK constraints SQL stock_movements (defense layered)',
     direction?: string;
     reason?: string | null;
     related_sale_id?: string | null;
-    related_purchase_id?: string | null;
+    related_expense_id?: string | null;
   }): Promise<{ ok: true } | { ok: false; error: ReturnType<typeof unwrapPgError> }> {
     try {
       await db.execute(sql`
         INSERT INTO stock_movements (
           tenant_id, product_id, type, qty, direction, reason,
-          related_sale_id, related_purchase_id
+          related_sale_id, related_expense_id
         ) VALUES (
           ${values.tenant_id ?? tenantId}::uuid,
           ${values.product_id ?? productId}::uuid,
@@ -127,7 +140,7 @@ describe('T-INV-06 — CHECK constraints SQL stock_movements (defense layered)',
           ${'direction' in values ? values.direction : 'out'},
           ${values.reason ?? null},
           ${values.related_sale_id ?? null}::uuid,
-          ${values.related_purchase_id ?? null}::uuid
+          ${values.related_expense_id ?? null}::uuid
         )
       `);
       return { ok: true };
@@ -242,13 +255,13 @@ describe('T-INV-06 — CHECK constraints SQL stock_movements (defense layered)',
     }
   });
 
-  it('related_sale_id + related_purchase_id ambos seteados → stock_movements_related_exclusive', async () => {
+  it('related_sale_id + related_expense_id ambos seteados → stock_movements_related_exclusive', async () => {
     const result = await rawInsert({
       type: 'adjustment',
       qty: '1',
       reason: 'transfer cross-domain inválido',
       related_sale_id: saleId,
-      related_purchase_id: crypto.randomUUID(),
+      related_expense_id: expenseId,
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {

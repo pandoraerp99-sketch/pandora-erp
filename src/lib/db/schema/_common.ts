@@ -147,7 +147,7 @@ export type CustomerDocType = (typeof CUSTOMER_DOC_TYPES)[number];
 
 // Stock movement types — Sprint 3 ROADMAP Inventory context.
 // - sale: salida por venta a cliente final (FK related_sale_id obligatorio)
-// - purchase: ingreso por compra a proveedor (FK related_purchase_id, F1+ cuando exista módulo compras)
+// - purchase: ingreso por compra a proveedor (FK related_expense_id → el comprobante)
 // - adjustment: ajuste manual (reason text obligatorio — enforce via CHECK constraint)
 // - return: retorno (sale → return invierte stock, o purchase → return descuenta)
 // - loss: pérdida/merma (incluye robo, vencimiento, rotura)

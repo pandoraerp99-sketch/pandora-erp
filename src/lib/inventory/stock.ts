@@ -26,7 +26,7 @@
  *
  * **Reglas operativas por type:**
  * - `sale` → decrementa (related_sale_id obligatorio per CHECK constraint)
- * - `purchase` → incrementa (related_purchase_id opcional, F1+ sin FK)
+ * - `purchase` → incrementa (`related_expense_id` = el comprobante de compra)
  * - `return` → incrementa (cliente devuelve mercadería)
  * - `loss` → decrementa (rotura/vencimiento/robo — reason recomendado, no obligatorio)
  * - `adjustment` → puede ir en cualquier dirección, reason OBLIGATORIO (CHECK)
@@ -170,7 +170,8 @@ export interface RecordMovementInput {
   qty: string | number;            // siempre positiva (signo deriva de type+direction)
   reason?: string | null;          // obligatorio si type='adjustment'
   related_sale_id?: string | null; // obligatorio si type='sale'
-  related_purchase_id?: string | null;
+  /** El gasto (comprobante de compra) que originó el movimiento. */
+  related_expense_id?: string | null;
   /**
    * Sólo requerido para type='adjustment'. Para otros types se infiere.
    */
@@ -327,11 +328,13 @@ export function prepareStockMovementValues(
     }
   }
 
-  // ──── related_sale_id y related_purchase_id mutuamente exclusivos ─────────────
-  if (input.related_sale_id && input.related_purchase_id) {
+  // ──── related_sale_id y related_expense_id mutuamente exclusivos ─────────────
+  // Un movimiento nace de UNA cosa: una venta o una compra. Las dos juntas
+  // significaría que no sabemos de dónde salió.
+  if (input.related_sale_id && input.related_expense_id) {
     throw new StockValidationError(
       'related_exclusive_violation',
-      `related_sale_id y related_purchase_id son mutuamente exclusivos`
+      `related_sale_id y related_expense_id son mutuamente exclusivos`
     );
   }
 
@@ -389,7 +392,7 @@ export function prepareStockMovementValues(
     direction: inferDirection(input.type, input.direction),
     reason: input.reason?.trim() || null,
     related_sale_id: input.related_sale_id ?? null,
-    related_purchase_id: input.related_purchase_id ?? null,
+    related_expense_id: input.related_expense_id ?? null,
     created_by: ctx.actor_user_id ?? null,
     correlation_id: ctx.correlation_id ?? null,
   };

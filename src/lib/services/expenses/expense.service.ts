@@ -26,9 +26,16 @@ import {
   type ExpenseCategory,
   type ExpensePaymentMethod,
 } from '../../db/schema/expenses.js';
+import { expense_items } from '../../db/schema/expense_items.js';
+import { products } from '../../db/schema/products.js';
 import { terceros } from '../../db/schema/terceros.js';
 import { cash_movements } from '../../db/schema/cash_movements.js';
 import { cash_sessions } from '../../db/schema/cash_sessions.js';
+import {
+  recordStockMovement,
+  ProductInactiveError,
+} from '../../inventory/stock.js';
+import { withinTolerance } from '../../money/decimal.js';
 import { requireTracingContext } from '../../tracing/context.js';
 import { CrossTenantAccessError, DomainError } from '../../multi_tenant/errors.js';
 import { logger } from '../../observability/logger.js';
@@ -72,6 +79,28 @@ export interface NuevoGasto {
   en_iva_compras?: boolean;
   /** Obligatorio si `medio_pago='efectivo'`: sale del cajón. */
   cash_session_id?: string;
+  /**
+   * Detalle de la mercadería que entró. **Sólo para `categoria='mercaderia'`.**
+   *
+   * Cada línea es un lote: entra al stock como movimiento `purchase` y deja
+   * registrado a qué costo, que es lo que el inventario valorizado al cierre
+   * necesita y `products.cost` por sí solo no puede dar.
+   */
+  items?: LineaDeCompra[];
+}
+
+export interface LineaDeCompra {
+  product_id: string;
+  /** Unidades que entraron. */
+  qty: string;
+  /**
+   * Costo unitario **NETO de IVA recuperable**.
+   *
+   * Si el comprobante discrimina IVA, es el neto por unidad. Si no lo
+   * discrimina, el IVA es parte del costo y va incluido. De acá sale
+   * `products.cost`.
+   */
+  unit_cost: string;
 }
 
 /**
@@ -127,6 +156,51 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
       'cash_needs_session',
       'Un gasto pagado en efectivo necesita una caja abierta: la plata sale del cajón'
     );
+  }
+
+  // ── Las líneas de mercadería ──
+  const items = input.items ?? [];
+  if (items.length > 0 && input.categoria !== 'mercaderia') {
+    throw new ExpenseError(
+      'items_solo_mercaderia',
+      'Sólo un gasto de mercadería lleva detalle de productos'
+    );
+  }
+
+  if (items.length > 0) {
+    for (const [i, linea] of items.entries()) {
+      const qty = new Decimal(linea.qty);
+      const costo = new Decimal(linea.unit_cost);
+      if (!qty.isFinite() || qty.lte(0)) {
+        throw new ExpenseError('linea_qty_invalida', `La línea ${i + 1} no tiene cantidad`);
+      }
+      if (!costo.isFinite() || costo.lt(0)) {
+        throw new ExpenseError('linea_costo_invalido', `La línea ${i + 1} tiene un costo inválido`);
+      }
+    }
+
+    // Las líneas tienen que dar lo mismo que el comprobante.
+    //
+    // Contra el NETO si el IVA está discriminado, contra el TOTAL si no: el
+    // IVA no discriminado no da crédito fiscal, así que es parte del costo de
+    // la mercadería. Esa distinción es la que mantiene `products.cost` neto de
+    // IVA recuperable — y de `products.cost` sale `unit_cost_snapshot` al
+    // vender, así que un costo en bruto dejaría todos los márgenes
+    // subestimados con un número que parece razonable.
+    const base = discrimina ? neto : total;
+    const suma = items.reduce(
+      (acc, l) => acc.plus(new Decimal(l.qty).times(l.unit_cost)),
+      new Decimal(0)
+    );
+    // Tolerancia de reconciliación (no fiscal): qty × costo con 4 decimales no
+    // tiene por qué dar exacto contra un comprobante redondeado a centavos.
+    if (!withinTolerance(suma, base)) {
+      throw new ExpenseError(
+        'lineas_no_cierran',
+        `El detalle suma ${suma.toFixed(2)} y el comprobante dice ${base.toFixed(2)}` +
+          (discrimina ? ' (neto, sin IVA)' : '')
+      );
+    }
   }
 
   // El proveedor tiene que ser de ESTE comercio, y su nombre se copia como
@@ -217,10 +291,78 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
 
     if (!fila) throw new Error('Insert de gasto no devolvio fila');
 
+    // ── La mercadería entra al stock, en la MISMA transacción ──
+    //
+    // Si el gasto se guardara y los movimientos no, el comercio tendría el
+    // comprobante cargado y la mercadería invisible — que es exactamente el
+    // agujero que este módulo vino a cerrar.
+    for (const linea of items) {
+      const [producto] = await tx
+        .select({ id: products.id, name: products.name })
+        .from(products)
+        .where(and(eq(products.tenant_id, tenantId), eq(products.id, linea.product_id)))
+        .limit(1);
+      if (!producto) {
+        throw new ExpenseError(
+          'producto_no_existe',
+          `Un producto del detalle no existe en este comercio`
+        );
+      }
+
+      const qty = new Decimal(linea.qty);
+      const costo = new Decimal(linea.unit_cost);
+
+      await tx.insert(expense_items).values({
+        tenant_id: tenantId,
+        expense_id: fila.id,
+        product_id: linea.product_id,
+        qty: qty.toFixed(4),
+        unit_cost: costo.toFixed(4),
+        product_name_snapshot: producto.name,
+      });
+
+      try {
+        await recordStockMovement(
+          {
+            product_id: linea.product_id,
+            type: 'purchase',
+            qty: qty.toFixed(4),
+            related_expense_id: fila.id,
+            // El catálogo de EVENT-TAXONOMY está cerrado y sólo cubre
+            // `stock.adjusted_manually`: una compra no es un ajuste manual, así
+            // que no emite audit propio. Mismo criterio que `finalizeSale`.
+            skip_audit: true,
+          },
+          tx
+        );
+      } catch (e) {
+        if (e instanceof ProductInactiveError) {
+          throw new ExpenseError(
+            'producto_inactivo',
+            `${producto.name} está dado de baja: reactivalo antes de comprarlo`
+          );
+        }
+        throw e;
+      }
+
+      // `products.cost` pasa a ser el costo de la ÚLTIMA compra.
+      //
+      // Sin esto, `cost` queda a mantenimiento manual y el margen se calcula
+      // contra un número que nadie actualiza. Con esto, el bloque de
+      // Rentabilidad está midiendo contra lo que realmente se pagó la última
+      // vez — y `unit_cost_snapshot` congela ese valor en cada venta, así que
+      // el margen histórico no se reescribe cuando el proveedor aumenta.
+      await tx
+        .update(products)
+        .set({ cost: costo.toFixed(4), updated_at: new Date() })
+        .where(and(eq(products.tenant_id, tenantId), eq(products.id, linea.product_id)));
+    }
+
     logger.info(
       {
         expense_id: fila.id,
         categoria: fila.categoria,
+        lineas: items.length,
         total: fila.total,
         medio_pago: fila.medio_pago,
         en_iva_compras: fila.en_iva_compras,
@@ -316,6 +458,69 @@ export async function annulExpense(input: AnulacionGasto): Promise<Expense> {
         'no_anulable',
         'Esa fila ya es una anulación: no se anula una anulación'
       );
+    }
+
+    // ── Deshacer la entrada de mercadería, si la hubo ──
+    //
+    // Se chequea TODO antes de escribir nada. Una compra de 8 líneas que
+    // fallara en la tercera dejaría al comerciante arreglando un producto,
+    // reintentando, y chocando con el siguiente.
+    const lineas = await tx
+      .select()
+      .from(expense_items)
+      .where(
+        and(
+          eq(expense_items.tenant_id, tenantId),
+          eq(expense_items.expense_id, original.id)
+        )
+      );
+
+    if (lineas.length > 0) {
+      const sinStock: string[] = [];
+      for (const linea of lineas) {
+        const [prod] = await tx
+          .select({ stock: products.stock_current, tracking: products.stock_tracking_enabled })
+          .from(products)
+          .where(and(eq(products.tenant_id, tenantId), eq(products.id, linea.product_id)))
+          .limit(1);
+        if (prod && prod.tracking && new Decimal(prod.stock).lt(linea.qty)) {
+          sinStock.push(
+            `${linea.product_name_snapshot} (quedan ${new Decimal(prod.stock).toFixed(2)} y hay que sacar ${new Decimal(linea.qty).toFixed(2)})`
+          );
+        }
+      }
+      if (sinStock.length > 0) {
+        // Fail-closed: dejar el stock en negativo metería cantidades negativas
+        // valorizadas al costo en el inventario que va al estudio. Si ya se
+        // vendió la mercadería, la compra ocurrió — lo que hay que corregir es
+        // otra cosa.
+        throw new ExpenseError(
+          'mercaderia_ya_vendida',
+          `No se puede anular: ya se vendió parte de esta mercadería. ${sinStock.join('; ')}. Registrá un ajuste de stock con el motivo en vez de anular el comprobante.`
+        );
+      }
+
+      for (const linea of lineas) {
+        await recordStockMovement(
+          {
+            product_id: linea.product_id,
+            // `adjustment` con dirección explícita, NO `return`: el catálogo
+            // dice que una devolución a proveedor descuenta pero
+            // `inferDirection` devuelve 'in' — usar `return` acá ataría el
+            // significado del ledger a una función documentada como
+            // contradictoria (ver el brief §6.3).
+            type: 'adjustment',
+            direction: 'out',
+            qty: linea.qty,
+            reason: `Anulación de compra · ${original.comprobante_numero ?? original.payee_name ?? 'sin comprobante'}`,
+            // No es un ajuste manual del comerciante: es la contracara de una
+            // anulación. Auditarlo como `stock.adjusted_manually` haría que el
+            // audit log mintiera sobre quién movió el stock y por qué.
+            skip_audit: true,
+          },
+          tx
+        );
+      }
     }
 
     // ── Devolver la plata al cajón, si había salido de ahí ──
