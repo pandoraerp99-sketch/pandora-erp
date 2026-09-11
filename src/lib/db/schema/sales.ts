@@ -174,6 +174,20 @@ export const sale_items = pgTable(
     unit_price: numeric('unit_price', { precision: 19, scale: 4 }).notNull(),
     quantity: numeric('quantity', { precision: 19, scale: 4 }).notNull(),
 
+    /**
+     * Costo unitario del producto congelado en addItemToSale, junto con el
+     * precio y en el mismo instante (migration 0031).
+     *
+     * NULLABLE A PROPOSITO: `products.cost` es nullable y casi ningun producto
+     * lo tiene cargado. NULL significa "no habia costo cargado", que NO es lo
+     * mismo que un costo de 0 — quien lo lea tiene que mostrarlo como un tercer
+     * estado, nunca convertirlo en 0 ni descartar la fila en silencio.
+     *
+     * Las filas anteriores a la 0031 quedan en NULL: el costo de entonces no se
+     * puede reconstruir y rellenarlo con el de hoy seria inventarlo.
+     */
+    unit_cost_snapshot: numeric('unit_cost_snapshot', { precision: 19, scale: 4 }),
+
     tax_rate: numeric('tax_rate', { precision: 5, scale: 2 }).notNull(),
     tdf_exempt: boolean('tdf_exempt').notNull().default(false),
 

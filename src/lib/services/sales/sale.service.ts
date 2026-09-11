@@ -301,6 +301,13 @@ export async function addItemToSale(rawInput: unknown): Promise<SaleWithItems> {
       product_unit_type_snapshot: product.unit_type,
       unit_price: calculatedItem.unit_price,
       quantity: calculatedItem.quantity,
+      // El costo se congela ACA, en el mismo instante que el precio: que uno
+      // saliera de un momento y el otro de otro es lo que haria el margen
+      // inexplicable despues. No pasa por `calculateSaleTotals` porque no
+      // interviene en ningun calculo fiscal — es dato, como el unit_type.
+      // `product.cost` puede ser null y se guarda null: "sin costo cargado"
+      // no es "costo 0" (migration 0031).
+      unit_cost_snapshot: product.cost,
       tax_rate: calculatedItem.tax_rate,
       tdf_exempt: calculatedItem.tdf_exempt,
       line_subtotal: calculatedItem.line_subtotal,

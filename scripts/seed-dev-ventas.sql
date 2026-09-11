@@ -128,7 +128,7 @@ BEGIN
               'cobrada', 'not_required', 0, 0, 0, 0, v_ts, v_ts);
 
       FOR j IN 1..n_items LOOP
-        SELECT id, name, sku, price, tax_rate, tdf_exempt, unit_type
+        SELECT id, name, sku, price, cost, tax_rate, tdf_exempt, unit_type
           INTO p
           FROM products
          WHERE tenant_id = co AND is_active
@@ -141,12 +141,18 @@ BEGIN
         iva := CASE WHEN p.tdf_exempt THEN 0 ELSE round(sub * p.tax_rate / 100, 2) END;
         tot := sub + iva;
 
+        -- El costo se copia igual que en addItemToSale (migration 0031), para
+        -- que el seed escriba la MISMA forma de fila que escribe el service —
+        -- si no, la data de desarrollo no serviria para probar el margen.
+        -- Aca es el costo de HOY puesto en ventas de hace meses; en data real
+        -- eso seria inventar historia, aca todo es sintetico por definicion.
+        -- Si el producto no tiene costo cargado, queda NULL, como corresponde.
         INSERT INTO sale_items (tenant_id, sale_id, product_id, product_name_snapshot,
                                 product_sku_snapshot, product_unit_type_snapshot,
-                                unit_price, quantity, tax_rate, tdf_exempt,
+                                unit_price, quantity, unit_cost_snapshot, tax_rate, tdf_exempt,
                                 line_subtotal, line_tax, line_total)
         VALUES (co, v_id, p.id, p.name, p.sku, p.unit_type,
-                p.price, cant, p.tax_rate, p.tdf_exempt, sub, iva, tot);
+                p.price, cant, p.cost, p.tax_rate, p.tdf_exempt, sub, iva, tot);
 
         v_sub := v_sub + sub; v_iva := v_iva + iva; v_tot := v_tot + tot;
       END LOOP;
