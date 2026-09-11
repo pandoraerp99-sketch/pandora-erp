@@ -13,7 +13,7 @@
  *
  * Todo con Decimal: es plata (CLAUDE.md §9.8, prohibido Number en ese camino).
  */
-import { and, eq, gte, lt, sql } from 'drizzle-orm';
+import { and, eq, gt, gte, inArray, lt, sql } from 'drizzle-orm';
 import Decimal from 'decimal.js';
 import { db } from '../../db/client.js';
 import {
@@ -296,6 +296,12 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
     // Si el gasto se guardara y los movimientos no, el comercio tendría el
     // comprobante cargado y la mercadería invisible — que es exactamente el
     // agujero que este módulo vino a cerrar.
+    // Costo candidato por producto. Si el mismo producto aparece en DOS líneas
+    // del comprobante (bonificación por cantidad: 10 a 800 y 5 a 780), gana la
+    // última línea cargada — dentro de un mismo comprobante no hay otra fecha
+    // que las distinga.
+    const costoCandidato = new Map<string, Decimal>();
+
     for (const linea of items) {
       const [producto] = await tx
         .select({ id: products.id, name: products.name })
@@ -345,17 +351,49 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
         throw e;
       }
 
-      // `products.cost` pasa a ser el costo de la ÚLTIMA compra.
-      //
-      // Sin esto, `cost` queda a mantenimiento manual y el margen se calcula
-      // contra un número que nadie actualiza. Con esto, el bloque de
-      // Rentabilidad está midiendo contra lo que realmente se pagó la última
-      // vez — y `unit_cost_snapshot` congela ese valor en cada venta, así que
-      // el margen histórico no se reescribe cuando el proveedor aumenta.
-      await tx
-        .update(products)
-        .set({ cost: costo.toFixed(4), updated_at: new Date() })
-        .where(and(eq(products.tenant_id, tenantId), eq(products.id, linea.product_id)));
+      costoCandidato.set(linea.product_id, costo);
+    }
+
+    // ── `products.cost` = costo de la ÚLTIMA COMPRA, por FECHA ──────────────
+    //
+    // Sin esto, `cost` queda a mantenimiento manual y el margen se calcula
+    // contra un número que nadie actualiza. Con esto, Rentabilidad mide contra
+    // lo que realmente se pagó la última vez — y `unit_cost_snapshot` congela
+    // ese valor en cada venta, así que el margen histórico no se reescribe
+    // cuando el proveedor aumenta.
+    //
+    // 🔴 "Última compra" es por **fecha del comprobante**, no por orden de
+    // carga. Cargar en septiembre una factura de marzo que quedó traspapelada
+    // es normal, y escribir el costo de marzo encima del de septiembre haría
+    // que el margen de todas las ventas siguientes se calcule contra un precio
+    // viejo. El número resultante parece razonable: nada avisa.
+    //
+    // Empate de fecha → gana este comprobante, que es el que se está cargando
+    // ahora (mismo criterio que "la última línea gana" arriba).
+    const tocados = [...costoCandidato.keys()];
+    if (tocados.length > 0) {
+      const conCompraPosterior = await tx
+        .selectDistinct({ product_id: expense_items.product_id })
+        .from(expense_items)
+        .innerJoin(expenses, eq(expense_items.expense_id, expenses.id))
+        .where(
+          and(
+            eq(expense_items.tenant_id, tenantId),
+            inArray(expense_items.product_id, tocados),
+            gt(expenses.fecha, fila.fecha),
+            // Una compra anulada no manda el costo de nada.
+            GASTO_VIGENTE
+          )
+        );
+      const pisados = new Set(conCompraPosterior.map((r) => r.product_id));
+
+      for (const [productId, costo] of costoCandidato) {
+        if (pisados.has(productId)) continue;
+        await tx
+          .update(products)
+          .set({ cost: costo.toFixed(4), updated_at: new Date() })
+          .where(and(eq(products.tenant_id, tenantId), eq(products.id, productId)));
+      }
     }
 
     logger.info(

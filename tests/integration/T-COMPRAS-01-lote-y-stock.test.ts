@@ -283,6 +283,58 @@ describe('T-COMPRAS-01 — Compra de mercadería', () => {
     expect(auditados).toHaveLength(1);
   });
 
+  it('🔴 `cost` es el de la última COMPRA, no el de la última línea', async () => {
+    const bizcochos = crypto.randomUUID();
+    await db.insert(products).values({
+      id: bizcochos,
+      tenant_id: tenant,
+      name: 'Bizcochos',
+      unit_type: 'unidad',
+      price: '500.0000',
+      tax_rate: '21.00',
+      stock_current: '0.0000',
+      stock_tracking_enabled: true,
+      is_active: true,
+      cost: null,
+    });
+
+    // (a) Dos líneas del MISMO producto en un comprobante, a distinto costo:
+    //     es el caso real de la bonificación por cantidad. Si ganara "la
+    //     última línea insertada", el costo quedaría en 90.
+    await conCtx(() =>
+      registerExpense({
+        fecha: '2026-04-10',
+        categoria: 'mercaderia',
+        total: '1900',
+        medio_pago: 'transferencia',
+        items: [
+          { product_id: bizcochos, qty: '10', unit_cost: '100' },
+          { product_id: bizcochos, qty: '10', unit_cost: '90' },
+        ],
+      })
+    );
+    // La compra MÁS RECIENTE es este comprobante; dentro de él, la última
+    // línea. 90 es correcto acá — lo que se prueba abajo es que la fecha manda.
+    expect((await stockDe(bizcochos))?.cost).toBe('90.0000');
+    expect((await stockDe(bizcochos))?.stock_current).toBe('20.0000');
+
+    // (b) Ahora se carga una factura VIEJA (marzo) después de la de abril.
+    //     "Última compra" es por FECHA DEL COMPROBANTE, no por orden de carga:
+    //     el costo NO tiene que moverse a 50.
+    await conCtx(() =>
+      registerExpense({
+        fecha: '2026-03-01',
+        categoria: 'mercaderia',
+        total: '250',
+        medio_pago: 'transferencia',
+        items: [{ product_id: bizcochos, qty: '5', unit_cost: '50' }],
+      })
+    );
+    expect((await stockDe(bizcochos))?.cost).toBe('90.0000');
+    // El stock sí entra igual: la mercadería llegó, sin importar la fecha.
+    expect((await stockDe(bizcochos))?.stock_current).toBe('25.0000');
+  });
+
   it('el detalle tiene que cerrar contra el comprobante', async () => {
     await expect(
       conCtx(() =>
