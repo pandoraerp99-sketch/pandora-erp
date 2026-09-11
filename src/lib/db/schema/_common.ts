@@ -160,6 +160,14 @@ export const STOCK_MOVEMENT_TYPES = [
 ] as const;
 export type StockMovementType = (typeof STOCK_MOVEMENT_TYPES)[number];
 
+// Signo del movimiento de stock (migration 0032).
+// `qty` es SIEMPRE positivo; esta columna dice si suma o resta.
+// Para 4 de los 5 types se deriva del type (sale/loss restan, purchase/return
+// suman). Para `adjustment` la elige quien ajusta y NO es derivable: ese es el
+// motivo por el que la dirección se persiste en vez de recalcularse al leer.
+export const MOVEMENT_DIRECTIONS = ['in', 'out'] as const;
+export type MovementDirection = (typeof MOVEMENT_DIRECTIONS)[number];
+
 // Cash movement types — Sprint 4 ROADMAP Cash context (C-OPS-01).
 // Movimientos MANUALES de caja (no ventas — esos van a sales/sale_payments).
 // - withdraw: comerciante retira efectivo de caja (gastos del día, transferir al banco)

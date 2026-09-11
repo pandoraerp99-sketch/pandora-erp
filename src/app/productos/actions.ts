@@ -96,12 +96,21 @@ export async function updateProductAction(
  *
  * **`delta`, no valor absoluto.** Se manda cuánto SUMAR o RESTAR (`"-3"`,
  * `"10"`), no el stock final. Es a propósito: si dos personas ajustan casi al
- * mismo tiempo, dos deltas se acumulan bien y dos absolutos se pisan.
+ * mismo tiempo, dos deltas se acumulan bien y dos absolutos se pisan. Además
+ * el service toma un lock sobre el producto, así que ni siquiera se solapan.
  *
  * El motivo es OBLIGATORIO (mínimo 3 caracteres) y el service deja el
- * movimiento en `stock_movements`, que es append-only. Nunca es un UPDATE del
- * número: es un movimiento con su razón, y eso es lo que después permite
- * reconstruir por qué el stock cambió.
+ * movimiento en `stock_movements`, que es append-only.
+ *
+ * ⚠️ Esto último era FALSO hasta la migration 0032: este comentario afirmaba
+ * que el movimiento quedaba registrado y `adjustStock` no escribía una sola
+ * fila en esa tabla. Se deja anotado porque es el tipo de comentario que hace
+ * invisible un agujero: describía el diseño correcto, no lo que el código
+ * hacía.
+ *
+ * ⚠️ Esta action todavía NO la llama ningún componente — la pantalla de
+ * Productos no tiene flujo de ajuste. Por eso el agujero no llegó a perder
+ * datos, y por eso se arregló antes de cablearla.
  */
 export async function adjustStockAction(
   productId: string,

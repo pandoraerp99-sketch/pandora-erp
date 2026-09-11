@@ -30,7 +30,12 @@ import { companies } from './companies.js';
 import { products } from './products.js';
 import { sales } from './sales.js';
 import { users } from './users.js';
-import { createdAt, STOCK_MOVEMENT_TYPES } from './_common.js';
+import {
+  createdAt,
+  MOVEMENT_DIRECTIONS,
+  STOCK_MOVEMENT_TYPES,
+  type MovementDirection,
+} from './_common.js';
 
 export const stock_movements = pgTable(
   'stock_movements',
@@ -52,11 +57,21 @@ export const stock_movements = pgTable(
     // Tipo de movimiento (catálogo cerrado en STOCK_MOVEMENT_TYPES).
     type: text('type').notNull(),
 
-    // Cantidad — siempre POSITIVA. El signo (suma/resta sobre stock_current)
-    // se deriva del type en application service (sale/loss restan,
-    // purchase/return suman, adjustment puede ser + o - según reason).
+    // Cantidad — siempre POSITIVA. El signo vive en `direction`.
     // Decimal para soportar venta por metro/kg/litro (productos.unit_type).
     qty: numeric('qty', { precision: 19, scale: 4 }).notNull(),
+
+    // Signo del movimiento (migration 0032): 'in' suma, 'out' resta.
+    //
+    // Para sale/loss/purchase/return se deriva del type y guardarlo es
+    // redundante a propósito: quien lee el ledger hace UNA cuenta
+    // (`CASE WHEN direction='in' THEN qty ELSE -qty END`) sin conocer el
+    // catálogo de types.
+    //
+    // Para `adjustment` NO es redundante: la elige quien ajusta y no se puede
+    // reconstruir después. Antes de 0032 no se guardaba, y dos ajustes de la
+    // misma cantidad en sentidos opuestos quedaban como filas idénticas.
+    direction: text('direction').$type<MovementDirection>().notNull(),
 
     // Para adjustment: motivo obligatorio (CHECK constraint abajo).
     // Para sale: opcional (puede heredar de sales.notes).
@@ -109,7 +124,13 @@ export const stock_movements = pgTable(
       sql`${table.type} IN (${sql.raw(STOCK_MOVEMENT_TYPES.map((t) => `'${t}'`).join(','))})`
     ),
 
-    // qty siempre positiva — el signo va por type.
+    // Direction del catálogo cerrado (migration 0032).
+    directionCheck: check(
+      'stock_movements_direction_check',
+      sql`${table.direction} IN (${sql.raw(MOVEMENT_DIRECTIONS.map((d) => `'${d}'`).join(','))})`
+    ),
+
+    // qty siempre positiva — el signo va por `direction`.
     qtyPositiveCheck: check(
       'stock_movements_qty_positive',
       sql`${table.qty} > 0`

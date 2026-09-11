@@ -574,10 +574,16 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
                   </svg>
                   Editar
                 </button>
-                {/* Historial: los movimientos SI existen (stock_movements es
-                    append-only y guarda cada ajuste con su motivo), pero no hay
-                    pantalla que los muestre. Se deja visible y apagada en vez
-                    de un boton que no lleva a ningun lado. */}
+                {/* Historial: las VENTAS dejan su movimiento en
+                    stock_movements, y desde la migration 0032 los ajustes
+                    manuales tambien (con su motivo, su signo y quien lo hizo).
+                    Falta la pantalla que los muestre, asi que el boton queda
+                    visible y apagado en vez de llevar a ningun lado.
+
+                    Ojo: esta pantalla todavia no ajusta stock — no hay flujo
+                    de ajuste cableado. Antes de 0032 este comentario afirmaba
+                    que cada ajuste quedaba guardado, y adjustStock no escribia
+                    ninguno. */}
                 <button
                   type="button"
                   className="hbtn"

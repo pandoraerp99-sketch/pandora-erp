@@ -36,6 +36,14 @@ import {
 } from '../../multi_tenant/errors.js';
 import { requireTenantId } from '../../tracing/context.js';
 import {
+  recordStockMovement,
+  OversellError,
+  ProductInactiveError,
+  ProductNotFoundForMovementError,
+  StockValidationError,
+  type MovementDirection,
+} from '../../inventory/stock.js';
+import {
   CreateProductInputSchema,
   SearchProductsInputSchema,
   StockAdjustmentInputSchema,
@@ -359,8 +367,46 @@ export async function listLowStockProducts(): Promise<Product[]> {
     .orderBy(products.stock_current);
 }
 
+/**
+ * Ajuste manual de stock.
+ *
+ * **Delega en `recordStockMovement`.** Antes esta función hacía su propio
+ * UPDATE de `products.stock_current` + audit, sin escribir nunca en
+ * `stock_movements` — el libro append-only que existe justamente para poder
+ * reconstruir el stock a una fecha pasada.
+ *
+ * El agujero era LATENTE, no estaba perdiendo datos: `adjustStockAction` está
+ * definida en `src/app/productos/actions.ts` pero ningún componente la llama
+ * todavía, así que no hubo ajustes reales sin registrar (medido:
+ * `stock_movements` tenía 27 filas, todas `type='sale'`). Se arregla ahora,
+ * antes de cablear la pantalla, porque después cada ajuste que entrara por ahí
+ * sería un hueco imposible de backfillear.
+ *
+ * `recordStockMovement` hace lo mismo y tres cosas más, todas en una sola
+ * transacción: toma el lock `SELECT FOR UPDATE` sobre el producto (dos ajustes
+ * simultáneos ya no se pisan), inserta el movimiento append-only, y respeta
+ * `stock_tracking_enabled`.
+ *
+ * **Traducción de errores.** Los errores de `src/lib/inventory` son `Error`
+ * planas, y el boundary (`runAction` en `src/app/productos/actions.ts`) solo
+ * sabe convertir `DomainError` en un mensaje para la pantalla: cualquier otra
+ * cosa se relanza y queda sin manejar. Por eso se traducen acá, en el service,
+ * que es donde ya vivía ese contrato. Los mensajes son los mismos que antes.
+ *
+ * **Cambios de comportamiento** respecto de la versión anterior, los tres a
+ * favor de la corrección y cubiertos en T-INV-10:
+ *   - producto dado de baja: antes se le podía ajustar el stock, ahora no.
+ *   - `stock_tracking_enabled = false`: antes movía el número igual, ahora
+ *     registra el movimiento y deja el stock quieto (que es lo que el flag
+ *     significa).
+ *   - `delta = 0`: antes escribía una línea de auditoría diciendo que no pasó
+ *     nada, ahora se rechaza.
+ */
 export async function adjustStock(rawInput: unknown): Promise<Product> {
-  const tenantId = requireTenantId();
+  // Fail-fast del tenant en el boundary del service. `recordStockMovement` lo
+  // vuelve a exigir desde el tracing context — es a propósito, no redundancia
+  // accidental: acá se falla con el error de siempre antes de tocar nada.
+  requireTenantId();
 
   const parsed = StockAdjustmentInputSchema.safeParse(rawInput);
   if (!parsed.success) {
@@ -371,72 +417,65 @@ export async function adjustStock(rawInput: unknown): Promise<Product> {
   }
   const input: StockAdjustmentInput = parsed.data;
 
-  const existing = await getByIdInternal(tenantId, input.product_id);
-  if (!existing) {
-    throw new NotFoundError('Producto', input.product_id);
+  const delta = money(input.delta);
+
+  if (delta.isZero()) {
+    throw new ValidationError('Ajuste de stock invalido', {
+      delta: 'Un ajuste de 0 no cambia nada. Indica cuanto sumar o restar.',
+    });
   }
 
-  const currentStock = money(existing.stock_current);
-  const delta = money(input.delta);
-  const newStock = moneyAdd(currentStock, delta);
+  // El ledger guarda `qty` siempre positiva y el signo aparte (migration 0032).
+  // El delta que manda la pantalla trae las dos cosas juntas, así que acá se
+  // separan: el signo va a `direction` y el valor absoluto a `qty`.
+  const direction: MovementDirection = delta.isNegative() ? 'out' : 'in';
 
-  if (newStock.lt(0)) {
-    throw new FiscalIntegrityError(
-      'Stock final no puede ser negativo. Verifica delta vs stock actual.',
+  try {
+    const { product } = await recordStockMovement({
+      product_id: input.product_id,
+      type: 'adjustment',
+      qty: moneyToStorage(delta.abs()),
+      direction,
+      reason: input.reason,
+    });
+
+    logger.info(
       {
         product_id: input.product_id,
-        current: currentStock.toString(),
         delta: delta.toString(),
-        would_be: newStock.toString(),
-      }
-    );
-  }
-
-  const updated = await db.transaction(async (tx) => {
-    const [row] = await tx
-      .update(products)
-      .set({
-        stock_current: moneyToStorage(newStock),
-        updated_at: new Date(),
-      })
-      .where(and(eq(products.tenant_id, tenantId), eq(products.id, input.product_id)))
-      .returning();
-
-    if (!row) {
-      throw new Error('Update de stock no devolvio fila');
-    }
-
-    await writeAuditLog(
-      {
-        event_name: 'stock.adjusted_manually',
-        payload: {
-          product_id: input.product_id,
-          product_name: row.name,
-          before: currentStock.toString(),
-          after: newStock.toString(),
-          delta: delta.toString(),
-          reason: input.reason,
-        },
-        pii_level: 'internal',
-        severity: 'notice',
+        new_stock: product.stock_current,
+        reason: input.reason,
       },
-      tx
+      'stock.adjusted_manually'
     );
 
-    return row;
-  });
-
-  logger.info(
-    {
-      product_id: input.product_id,
-      delta: delta.toString(),
-      new_stock: newStock.toString(),
-      reason: input.reason,
-    },
-    'stock.adjusted_manually'
-  );
-
-  return updated;
+    return product;
+  } catch (e) {
+    if (e instanceof ProductNotFoundForMovementError) {
+      throw new NotFoundError('Producto', input.product_id);
+    }
+    if (e instanceof ProductInactiveError) {
+      throw new ValidationError('Ajuste de stock invalido', {
+        product_id:
+          'El producto esta dado de baja. Reactivalo antes de ajustar su stock.',
+      });
+    }
+    if (e instanceof OversellError) {
+      throw new FiscalIntegrityError(
+        'Stock final no puede ser negativo. Verifica delta vs stock actual.',
+        {
+          product_id: input.product_id,
+          current: e.available,
+          delta: delta.toString(),
+          requested: e.requested,
+        }
+      );
+    }
+    if (e instanceof StockValidationError) {
+      throw new ValidationError('Ajuste de stock invalido', { delta: e.message });
+    }
+    throw e;
+  }
 }
 
 export async function softDeleteProduct(id: string): Promise<void> {

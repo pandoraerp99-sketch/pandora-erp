@@ -42,7 +42,11 @@ import {
   type NewStockMovement,
   type StockMovement,
 } from '../db/schema/stock_movements.js';
-import { STOCK_MOVEMENT_TYPES, type StockMovementType } from '../db/schema/_common.js';
+import {
+  STOCK_MOVEMENT_TYPES,
+  type StockMovementType,
+  type MovementDirection as SchemaMovementDirection,
+} from '../db/schema/_common.js';
 import { requireTracingContext } from '../tracing/context.js';
 import type { TracingContext } from '../tracing/context.js';
 import { CrossTenantAccessError } from '../multi_tenant/errors.js';
@@ -115,8 +119,12 @@ export class ProductInactiveError extends Error {
  * - `sale` | `loss` → siempre `out`
  * - `purchase` | `return` → siempre `in`
  * - `adjustment` → requiere `direction` explícito del caller
+ *
+ * Desde migration 0032 se PERSISTE en `stock_movements.direction`. El tipo vive
+ * en el schema (una sola definición) y se re-exporta acá para no romper a los
+ * callers que lo importan desde `@/lib/inventory`.
  */
-export type MovementDirection = 'in' | 'out';
+export type MovementDirection = SchemaMovementDirection;
 
 /**
  * Infiere dirección del tipo de movimiento. `adjustment` requiere explicit
@@ -375,6 +383,10 @@ export function prepareStockMovementValues(
     product_id: input.product_id,
     type: input.type,
     qty,
+    // El signo forma parte de la fila desde migration 0032. Se calcula acá, en
+    // el mismo lugar que valida el resto del input, para que sea imposible
+    // insertar un movimiento sin dirección.
+    direction: inferDirection(input.type, input.direction),
     reason: input.reason?.trim() || null,
     related_sale_id: input.related_sale_id ?? null,
     related_purchase_id: input.related_purchase_id ?? null,
@@ -416,8 +428,11 @@ export async function recordStockMovement(
   txOrDb: DbOrTransaction = db
 ): Promise<RecordMovementResult> {
   const ctx = requireTracingContext();
-  const direction = inferDirection(input.type, input.direction);
   const values = prepareStockMovementValues(input, ctx);
+  // Una sola fuente: la dirección que se calcula para la fila es la misma que
+  // decide si el stock sube o baja. Calcularla dos veces abriría la puerta a
+  // que el movimiento diga una cosa y el stock haga otra.
+  const direction = values.direction;
 
   const runInTx = async (
     tx: DbOrTransaction
@@ -506,7 +521,11 @@ export async function recordStockMovement(
             reason: movement.reason,
           },
           pii_level: 'internal',
-          severity: 'info',
+          // `notice`, no `info`: es lo que dice el catálogo para este evento
+          // (EVENT-TAXONOMY `stock.adjusted_manually | notice | internal`) y es
+          // la severidad con la que `adjustStock` ya lo venía emitiendo. Estaba
+          // en 'info' acá y nadie lo notaba porque este camino no se usaba.
+          severity: 'notice',
           ...(input.override_tenant_id !== undefined && {
             override_tenant_id: input.override_tenant_id,
           }),

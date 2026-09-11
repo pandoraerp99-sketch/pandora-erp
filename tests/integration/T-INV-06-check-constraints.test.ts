@@ -106,6 +106,10 @@ describe('T-INV-06 — CHECK constraints SQL stock_movements (defense layered)',
     product_id?: string;
     type: string;
     qty: string;
+    // `direction` es NOT NULL desde migration 0032. Default 'out' porque cada
+    // uno de estos tests apunta a OTRO constraint: sin un valor válido acá,
+    // todos fallarian por el NOT NULL y no probarian nada de lo que dicen.
+    direction?: string;
     reason?: string | null;
     related_sale_id?: string | null;
     related_purchase_id?: string | null;
@@ -113,13 +117,14 @@ describe('T-INV-06 — CHECK constraints SQL stock_movements (defense layered)',
     try {
       await db.execute(sql`
         INSERT INTO stock_movements (
-          tenant_id, product_id, type, qty, reason,
+          tenant_id, product_id, type, qty, direction, reason,
           related_sale_id, related_purchase_id
         ) VALUES (
           ${values.tenant_id ?? tenantId}::uuid,
           ${values.product_id ?? productId}::uuid,
           ${values.type},
           ${values.qty}::numeric,
+          ${'direction' in values ? values.direction : 'out'},
           ${values.reason ?? null},
           ${values.related_sale_id ?? null}::uuid,
           ${values.related_purchase_id ?? null}::uuid
@@ -130,6 +135,38 @@ describe('T-INV-06 — CHECK constraints SQL stock_movements (defense layered)',
       return { ok: false, error: unwrapPgError(e) };
     }
   }
+
+  it('direction fuera del catálogo cerrado → stock_movements_direction_check', async () => {
+    // migration 0032. El signo tiene exactamente dos valores posibles; si la DB
+    // aceptara un tercero, la cuenta que reconstruye el stock
+    // (`CASE WHEN direction='in' THEN qty ELSE -qty END`) trataria ese valor
+    // desconocido como una RESTA, en silencio.
+    const result = await rawInsert({
+      type: 'adjustment',
+      qty: '5',
+      direction: 'entrada',
+      reason: 'direction invalida',
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('23514');
+      expect(result.error.constraint).toBe('stock_movements_direction_check');
+    }
+  });
+
+  it('direction NULL → NOT NULL (no hay movimiento sin signo)', async () => {
+    const result = await rawInsert({
+      type: 'adjustment',
+      qty: '5',
+      direction: null as unknown as string,
+      reason: 'sin direction',
+    });
+    expect(result.ok).toBe(false);
+    // 23502 = not_null_violation.
+    if (!result.ok) {
+      expect(result.error.code).toBe('23502');
+    }
+  });
 
   it('type fuera del catálogo cerrado → stock_movements_type_check', async () => {
     // 'cucharada' NO está en STOCK_MOVEMENT_TYPES enum.
