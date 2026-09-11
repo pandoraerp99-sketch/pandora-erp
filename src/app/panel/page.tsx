@@ -62,6 +62,10 @@ import {
 } from '@/lib/services/reporting/calendar.report';
 import { computeCashBreakdown, getActiveCashSession } from '@/lib/cash/sessions';
 import { listOpenTasks } from '@/lib/services/tasks/task.service';
+import {
+  getDiasDeHistoria,
+  getDiasDeStock,
+} from '@/lib/services/reporting/stock.report';
 import { PanelClient } from './PanelClient';
 
 // F0: un único punto de venta, igual que el resto de la app.
@@ -86,6 +90,11 @@ export default async function PanelPage() {
 
   const datos = await withServerActionTracing(
     async () => {
+      // Va PRIMERO y solo: la ventana de dias-de-stock se calcula a partir
+      // de esto, asi que no puede ir en el mismo Promise.all que la usa.
+      // Es una consulta de una fila sobre un indice; no mueve la aguja.
+      const diasDeHistoria = await getDiasDeHistoria();
+
       const [
         hoy,
         mes,
@@ -104,6 +113,7 @@ export default async function PanelPage() {
         feriados,
         coberturaFeriados,
         pendientes,
+        diasDeStock,
       ] = await Promise.all([
         getPanelHoy(),
         getPanelMes(),
@@ -129,6 +139,7 @@ export default async function PanelPage() {
         // existe para que una lista abandonada de 3.000 items no cuelgue
         // el panel entero.
         listOpenTasks(60),
+        getDiasDeStock(diasDeHistoria),
       ]);
 
       // El desglose de la caja sale de `computeCashBreakdown`, que es LA MISMA
@@ -166,6 +177,8 @@ export default async function PanelPage() {
         diasCalendario,
         feriados,
         coberturaFeriados,
+        diasDeHistoria,
+        diasDeStock,
         // `due_date` ya viene como texto 'AAAA-MM-DD' de Postgres (columna
         // `date`). `done_at` se serializa a ISO — solo para poder pasar por
         // el limite server/client, porque en esta lista siempre es null.

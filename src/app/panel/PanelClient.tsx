@@ -21,6 +21,7 @@ import { Sparkline } from '@/components/charts/Sparkline';
 import { EvolucionVentas } from '@/components/charts/EvolucionVentas';
 import { CalendarioMes } from '@/components/calendar/CalendarioMes';
 import { Pendientes, type PendienteVista } from '@/components/tasks/Pendientes';
+import { DiasDeStock, type DiasDeStockItem } from '@/components/stock/DiasDeStock';
 import { PANEL_CSS } from './panelCss';
 
 export interface PanelProps {
@@ -98,6 +99,9 @@ export interface PanelProps {
     verified_at: string;
   }>;
   pendientes: PendienteVista[];
+  diasDeStock: DiasDeStockItem[];
+  /** Dias desde la PRIMERA venta. 0 = el comercio todavia no vendio. */
+  diasDeHistoria: number;
   /** Dia DEL COMERCIO en que se abrio la caja que sigue abierta. */
   cajaAbiertaDesde: string | null;
   comercio: string;
@@ -332,6 +336,8 @@ export function PanelClient({
   feriados,
   coberturaFeriados,
   pendientes,
+  diasDeStock,
+  diasDeHistoria,
   cajaAbiertaDesde,
   comercio,
   usuario,
@@ -1359,6 +1365,12 @@ export function PanelClient({
               </div>
             </div>
           ) : null}
+
+          {/* ═══ DIAS DE STOCK ═══
+              Arriba de Reponer, que es su pariente: Reponer dice QUE esta
+              por debajo del minimo; esto dice CUANTO FALTA para que se
+              acabe. Separadas hay que cruzarlas a mano. */}
+          <DiasDeStock items={diasDeStock} diasDeHistoria={diasDeHistoria} />
 
           {/* ═══ STOCK BAJO ═══ */}
           {stockBajo.length > 0 ? (

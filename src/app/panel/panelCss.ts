@@ -814,4 +814,38 @@ html[data-theme="dark"] .pend-err{ color:#ff9aa4; }
 .pend-mover::-webkit-calendar-picker-indicator{ cursor:pointer; opacity:0.75; }
 html[data-theme="dark"] .pend-mover{ color-scheme:dark; }
 
+/* ── Dias de stock ─────────────────────────────────────────────────────────
+   La primera proyeccion. El subtitulo de cada fila NO es decoracion: es de
+   que esta hecho el numero, y es lo que permite discutirlo en vez de creerlo. */
+.ds-row{ display:flex; align-items:center; gap:11px; padding:9px 2px; }
+.ds-row + .ds-row{ border-top:1px solid rgba(13,20,36,0.05); }
+.ds-tx{ flex:1; min-width:0; }
+.ds-n{ font-size:13px; font-weight:500; color:var(--ink-1); }
+.ds-s{ font-size:10.5px; color:var(--ink-3); margin-top:2px;
+       font-family:var(--mono); }
+.ds-tag{ flex:0 0 auto; font-size:10.5px; font-weight:700; padding:3px 9px;
+         border-radius:8px; white-space:nowrap; }
+.ds-pie{ font-size:10px; color:var(--ink-3); margin-top:10px; padding-top:9px;
+         border-top:1px solid rgba(13,20,36,0.06); font-family:var(--mono); }
+
+/* El estado de espera dice CUANTO FALTA, no "no hay datos": lo primero es una
+   cuenta regresiva, lo segundo se lee como que algo esta roto. */
+.ds-espera, .ds-ok{ font-size:12.5px; color:var(--ink-2); line-height:1.55;
+                    padding:4px 2px; }
+.ds-espera span, .ds-ok span{ display:block; font-size:11px; color:var(--ink-3);
+                              margin-top:5px; }
+
+html[data-theme="dark"] .ds-row + .ds-row{ border-top-color:rgba(255,255,255,0.06); }
+html[data-theme="dark"] .ds-pie{ border-top-color:rgba(255,255,255,0.07); }
+
+/* Los colores de los badges. Cada uno con su variante oscura: en oscuro el
+   tono claro va al TEXTO y el oscuro al fondo, no al reves — que es como daba
+   2.65 de contraste cuando esto era un estilo inline. */
+.ds-sin-stock{ background:rgba(201,53,69,0.14); color:#a72c3a; }
+.ds-se-acaba{ background:rgba(247,152,74,0.18); color:#8a520c; }
+.ds-sin-rotacion{ background:rgba(118,129,160,0.16); color:#4a5570; }
+html[data-theme="dark"] .ds-sin-stock{ background:rgba(201,53,69,0.22); color:#ff9aa4; }
+html[data-theme="dark"] .ds-se-acaba{ background:rgba(247,152,74,0.20); color:#ffc79a; }
+html[data-theme="dark"] .ds-sin-rotacion{ background:rgba(255,255,255,0.09); color:#cdd6f0; }
+
 ` + RESET_CARD_POS;
