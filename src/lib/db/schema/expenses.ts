@@ -18,6 +18,7 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { companies } from './companies.js';
 import { terceros } from './terceros.js';
 import { users } from './users.js';
@@ -83,6 +84,16 @@ export const expenses = pgTable(
     // bigint: cash_movements usa bigserial.
     cash_movement_id: bigint('cash_movement_id', { mode: 'bigint' }),
 
+    /**
+     * Gasto que esta fila corrige o anula (migration 0033, patrón ADR-0026).
+     *
+     * La tabla es append-only por trigger: corregir es INSERTAR una fila con
+     * los valores correctos apuntando a la vieja, y anular es insertar una en
+     * CERO. Una fila está **vigente** si nadie la apunta y su `total > 0` —
+     * ver `GASTO_VIGENTE`, que es el único lugar donde esa regla se escribe.
+     */
+    corrects_id: uuid('corrects_id'),
+
     created_by: uuid('created_by').references(() => users.id, {
       onDelete: 'restrict',
     }),
@@ -99,3 +110,33 @@ export const expenses = pgTable(
 );
 
 export type Expense = typeof expenses.$inferSelect;
+
+/**
+ * Qué gasto CUENTA.
+ *
+ * Las dos condiciones son necesarias y cada una tapa un agujero distinto:
+ *
+ * - `NOT EXISTS (...)` saca al original que ya fue corregido. Si faltara, el
+ *   gasto se contaría dos veces: el viejo y el nuevo.
+ * - `total > 0` saca a la fila de anulación. Si faltara, la anulación sumaría
+ *   $0 (inofensivo) pero **contaría como un comprobante más** en todos los
+ *   `count(*)` — incluido el CSV de proveedores que va al estudio, que
+ *   reportaría comprobantes anulados como si existieran.
+ *
+ * Se exporta como fragmento único a propósito: son 7 consultas las que leen
+ * esta tabla, y la regla escrita 7 veces es la regla que se desincroniza.
+ */
+export const GASTO_VIGENTE = sql`
+  ${expenses.total} > 0
+  AND NOT EXISTS (
+    SELECT 1 FROM expenses c WHERE c.corrects_id = ${expenses.id}
+  )
+`;
+
+/** Igual que `GASTO_VIGENTE` pero para SQL crudo, donde la tabla se llama `expenses`. */
+export const GASTO_VIGENTE_SQL = sql`
+  expenses.total > 0
+  AND NOT EXISTS (
+    SELECT 1 FROM expenses c WHERE c.corrects_id = expenses.id
+  )
+`;

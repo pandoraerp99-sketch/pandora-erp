@@ -18,6 +18,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
+import { GASTO_VIGENTE_SQL } from '../../db/schema/expenses.js';
 import { requireTracingContext } from '../../tracing/context.js';
 import { CrossTenantAccessError } from '../../multi_tenant/errors.js';
 import { csvArmar, csvNum, csvTxt } from './csv.js';
@@ -338,7 +339,8 @@ export async function getResumenContable(
                count(*) FILTER (WHERE en_iva_compras)::int              AS comprobantes
         FROM expenses
         WHERE tenant_id = ${tenantId}
-          AND fecha >= ${desde}::date AND fecha < ${hasta}::date`
+          AND fecha >= ${desde}::date AND fecha < ${hasta}::date
+          AND ${GASTO_VIGENTE_SQL}`
   );
 
   return {

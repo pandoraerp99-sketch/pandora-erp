@@ -18,6 +18,8 @@ import Decimal from 'decimal.js';
 import { db } from '../../db/client.js';
 import {
   expenses,
+  GASTO_VIGENTE,
+  GASTO_VIGENTE_SQL,
   EXPENSE_CATEGORIES,
   EXPENSE_PAYMENT_METHODS,
   type Expense,
@@ -231,6 +233,177 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
   });
 }
 
+export interface AnulacionGasto {
+  /** Gasto a anular. */
+  expense_id: string;
+  /** Por qué se anula. Obligatorio: queda en la fila de anulación. */
+  motivo: string;
+  /**
+   * Caja ABIERTA donde devolver la plata. Sólo hace falta si el gasto original
+   * se pagó en efectivo (si no, no hay nada que devolver).
+   */
+  cash_session_id?: string;
+}
+
+/**
+ * Anula un gasto.
+ *
+ * ── POR QUÉ EXISTE ────────────────────────────────────────────────────────
+ * Hasta la migration 0033 un gasto cargado de más NO se podía deshacer por
+ * ningún camino: el trigger bloquea UPDATE y DELETE, y el CHECK `total > 0`
+ * impedía el "gasto de ajuste" negativo que el brief de gastos daba por
+ * disponible. Se encontró construyendo compras de mercadería — una compra mal
+ * tipeada corrompería el inventario valorizado que va al estudio.
+ *
+ * ── CÓMO ──────────────────────────────────────────────────────────────────
+ * No edita nada: INSERTA una fila en CERO que apunta al original con
+ * `corrects_id` (patrón ADR-0026). El original deja de estar vigente porque
+ * alguien lo apunta; la fila nueva no cuenta porque su total es 0. Las dos
+ * quedan, y se puede ver qué se anuló y por qué.
+ *
+ * ⚠️ **Hereda la `fecha` del original, no la de hoy.** Las 7 consultas que
+ * leen esta tabla filtran por rango de fechas. Si la anulación de un gasto de
+ * marzo llevara la fecha de hoy, marzo perdería el gasto y septiembre ganaría
+ * una fila fantasma — y ningún total se vería mal, la plata cambiaría de
+ * período en silencio.
+ *
+ * ── LA PLATA VUELVE A LA CAJA DE HOY ──────────────────────────────────────
+ * Si el gasto se pagó en efectivo salió del cajón. Devolverla es un `deposit`
+ * en la caja **abierta ahora**, no en la sesión vieja: esa puede estar cerrada
+ * y arqueada, y meterle un movimiento cambiaría un cierre ya hecho. Es además
+ * lo que pasa en la realidad: la plata vuelve al cajón el día que te das
+ * cuenta.
+ *
+ * Para corregir un IMPORTE (no anular): anular y volver a cargar con el valor
+ * correcto. No se implementa una corrección parcial porque obligaría a
+ * calcular el delta contra la caja, y anular+cargar da el mismo resultado.
+ */
+export async function annulExpense(input: AnulacionGasto): Promise<Expense> {
+  const { tenantId, userId } = ctx();
+
+  const motivo = input.motivo?.trim() ?? '';
+  if (motivo.length < 3) {
+    throw new ExpenseError(
+      'motivo_requerido',
+      'Anular un gasto necesita un motivo (mínimo 3 caracteres)'
+    );
+  }
+
+  return db.transaction(async (tx) => {
+    const [original] = await tx
+      .select()
+      .from(expenses)
+      .where(and(eq(expenses.tenant_id, tenantId), eq(expenses.id, input.expense_id)))
+      .limit(1);
+
+    if (!original) {
+      throw new ExpenseError('no_existe', 'No existe ese gasto');
+    }
+
+    // Ya anulado o ya corregido. El UNIQUE parcial sobre `corrects_id` es la
+    // defensa real contra dos anulaciones concurrentes; este chequeo es para
+    // dar un mensaje entendible en el caso normal.
+    const [yaCorregido] = await tx
+      .select({ id: expenses.id })
+      .from(expenses)
+      .where(eq(expenses.corrects_id, original.id))
+      .limit(1);
+    if (yaCorregido) {
+      throw new ExpenseError('ya_anulado', 'Ese gasto ya fue anulado o corregido');
+    }
+    if (new Decimal(original.total).lte(0)) {
+      throw new ExpenseError(
+        'no_anulable',
+        'Esa fila ya es una anulación: no se anula una anulación'
+      );
+    }
+
+    // ── Devolver la plata al cajón, si había salido de ahí ──
+    if (original.cash_movement_id !== null) {
+      if (!userId) {
+        throw new ExpenseError(
+          'no_actor',
+          'Devolver plata a la caja necesita un usuario identificado'
+        );
+      }
+      if (!input.cash_session_id) {
+        throw new ExpenseError(
+          'caja_requerida',
+          'Ese gasto se pagó en efectivo: hace falta una caja abierta para devolver la plata'
+        );
+      }
+      const [sesion] = await tx
+        .select({ id: cash_sessions.id, closed_at: cash_sessions.closed_at })
+        .from(cash_sessions)
+        .where(
+          and(
+            eq(cash_sessions.tenant_id, tenantId),
+            eq(cash_sessions.id, input.cash_session_id)
+          )
+        )
+        .limit(1);
+      if (!sesion) throw new ExpenseError('session_not_found', 'No existe esa caja');
+      if (sesion.closed_at !== null) {
+        throw new ExpenseError(
+          'session_closed',
+          'La caja ya está cerrada: abrí la caja para devolver la plata del gasto anulado'
+        );
+      }
+
+      await tx.insert(cash_movements).values({
+        cash_session_id: input.cash_session_id,
+        type: 'deposit',
+        amount: new Decimal(original.total).toFixed(4),
+        // El deposit NO se linkea a la fila de anulación: `cash_movement_id` es
+        // el 1:1 gasto→egreso, y un ingreso no es el pago de un gasto. El
+        // vínculo queda acá, en texto, que es donde lo va a leer una persona.
+        reason: `Anulación de gasto · ${original.payee_name ?? original.categoria}`,
+        created_by: userId,
+      });
+    }
+
+    const [fila] = await tx
+      .insert(expenses)
+      .values({
+        tenant_id: tenantId,
+        // Todo lo que describe QUÉ se anula se copia tal cual.
+        fecha: original.fecha,
+        categoria: original.categoria,
+        tercero_id: original.tercero_id,
+        payee_name: original.payee_name,
+        payee_doc: original.payee_doc,
+        comprobante_tipo: original.comprobante_tipo,
+        comprobante_numero: original.comprobante_numero,
+        en_iva_compras: original.en_iva_compras,
+        medio_pago: original.medio_pago,
+        // Los importes en cero son lo que hace que no cuente en ningún lado.
+        total: '0.0000',
+        neto: '0.0000',
+        iva: '0.0000',
+        descripcion: `ANULADO: ${motivo}`,
+        corrects_id: original.id,
+        cash_movement_id: null,
+        created_by: userId,
+      })
+      .returning();
+
+    if (!fila) throw new Error('Insert de anulacion no devolvio fila');
+
+    logger.info(
+      {
+        expense_id: original.id,
+        anulacion_id: fila.id,
+        total_anulado: original.total,
+        devolvio_a_caja: original.cash_movement_id !== null,
+        motivo,
+      },
+      'expense.annulled'
+    );
+
+    return fila;
+  });
+}
+
 /** Gastos de un rango, del más nuevo al más viejo. */
 export async function listExpenses(
   desde: string,
@@ -244,7 +417,8 @@ export async function listExpenses(
       and(
         eq(expenses.tenant_id, tenantId),
         gte(expenses.fecha, desde),
-        lt(expenses.fecha, hasta)
+        lt(expenses.fecha, hasta),
+        GASTO_VIGENTE
       )
     )
     .orderBy(sql`fecha DESC, created_at DESC`);
@@ -282,6 +456,7 @@ export async function getExpenseTotals(
         FROM expenses
         WHERE tenant_id = ${tenantId}
           AND fecha >= ${desde}::date AND fecha < ${hasta}::date
+          AND ${GASTO_VIGENTE_SQL}
           ${soloFueraDeArca ? sql`AND en_iva_compras = false` : sql``}
         GROUP BY categoria
         -- ORDER BY sum(total), NO 'ORDER BY 2'. La columna 2 es el total ya
@@ -333,7 +508,8 @@ export async function getExpenseSummary(
                count(*)   FILTER (WHERE NOT en_iva_compras)::text          AS fuera_cantidad
         FROM expenses
         WHERE tenant_id = ${tenantId}
-          AND fecha >= ${desde}::date AND fecha < ${hasta}::date`
+          AND fecha >= ${desde}::date AND fecha < ${hasta}::date
+          AND ${GASTO_VIGENTE_SQL}`
   );
   const cero: ResumenGastos = {
     total: '0',
@@ -448,6 +624,7 @@ export async function getProveedoresDelPeriodo(
         FROM expenses
         WHERE tenant_id = ${tenantId}
           AND fecha >= ${desde}::date AND fecha < ${hasta}::date
+          AND ${GASTO_VIGENTE_SQL}
         GROUP BY coalesce(tercero_id::text, lower(trim(payee_name)))
         ORDER BY sum(total) DESC`
   );
@@ -500,7 +677,8 @@ export async function getIvaCredito(
         FROM expenses
         WHERE tenant_id = ${tenantId}
           AND en_iva_compras = true
-          AND fecha >= ${desde}::date AND fecha < ${hasta}::date`
+          AND fecha >= ${desde}::date AND fecha < ${hasta}::date
+          AND ${GASTO_VIGENTE_SQL}`
   );
   return {
     credito: fila?.credito ?? '0',

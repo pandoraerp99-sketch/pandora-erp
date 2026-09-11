@@ -21,6 +21,7 @@
 import { sql } from 'drizzle-orm';
 import Decimal from 'decimal.js';
 import { db } from '../../db/client.js';
+import { GASTO_VIGENTE_SQL } from '../../db/schema/expenses.js';
 import { requireTracingContext } from '../../tracing/context.js';
 import { CrossTenantAccessError } from '../../multi_tenant/errors.js';
 import { getBalancesByCustomer } from '../customers/account.service.js';
@@ -322,6 +323,7 @@ export async function getIngresosVsGastos(meses = 6): Promise<MesIngresoGasto[]>
           SELECT date_trunc('month', fecha)::date AS mes, sum(total) AS monto
           FROM expenses
           WHERE tenant_id = ${tenantId}
+            AND ${GASTO_VIGENTE_SQL}
           GROUP BY 1
         )
         SELECT m.mes::text                        AS mes,
