@@ -8,12 +8,12 @@
  * la historia del costo no existe en ningún lado.
  *
  * **Lo que estos tests protegen**, en orden de importancia:
- *   1. NULL sigue siendo NULL. `products.cost` es nullable y hoy 9 de 20.009
- *      productos activos lo tienen cargado, así que la mayoría de las líneas
- *      van a guardar NULL. "No había costo cargado" NO es "el costo era 0":
- *      con 0 el margen da 100%, un número alto y redondo del lado que nadie
- *      revisa. Ningún producto tiene costo 0 hoy, así que la confusión sería
- *      silenciosa.
+ *   1. NULL sigue siendo NULL. `products.cost` es nullable: un comercio puede
+ *      tener productos sin costo cargado, y esa ausencia es información.
+ *      "No había costo cargado" NO es "el costo era 0": con 0 el margen da
+ *      100%, un número alto y redondo del lado que nadie revisa. Y como nadie
+ *      carga un costo de 0 a propósito, la confusión sería silenciosa — no
+ *      habría ninguna fila con 0 legítimo contra la cual contrastar.
  *   2. El snapshot no sigue al producto. Es toda la razón de ser de la
  *      columna; si el costo se re-leyera después, no habríamos ganado nada
  *      sobre hacer un JOIN a `products`.

@@ -17,13 +17,14 @@
 -- el costo de otro es precisamente lo que haria el margen inexplicable.
 --
 -- ── NULLABLE, Y NO ES UN DESCUIDO ─────────────────────────────────────────
--- `products.cost` es nullable y HOY 9 de 20.009 productos activos lo tienen
--- cargado. O sea: la enorme mayoria de las lineas van a guardar NULL, y eso es
--- informacion — "no habia costo cargado" NO es lo mismo que "el costo era 0".
+-- `products.cost` es nullable: un comercio puede tener productos cargados sin
+-- costo, y esa ausencia es INFORMACION. "No habia costo cargado" NO es lo
+-- mismo que "el costo era 0".
+--
 -- Un DEFAULT 0 convertiria cada producto sin costo en uno que se regala, y el
 -- margen daria 100%: un numero alto, redondo y falso, del lado que nadie
--- revisa. Hoy ningun producto tiene costo 0, asi que la confusion seria
--- silenciosa.
+-- revisa. Y como en la practica nadie carga un costo de 0, la confusion seria
+-- silenciosa: no habria ninguna fila con 0 legitimo con la cual contrastar.
 --
 -- Quien lea esta columna tiene que tratar NULL como un tercer estado visible
 -- ("sin costo cargado"), igual que 'sin_rotacion' en dias de stock y que los
