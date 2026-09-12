@@ -19,7 +19,9 @@ import { periodoDe, GRANOS, type Grano } from '@/lib/services/reporting/accounta
 import {
   getExpenseSummary,
   getExpenseTotals,
+  getItemCountsByExpense,
   getProveedoresDelPeriodo,
+  listAnnulledExpenses,
   listExpenses,
 } from '@/lib/services/expenses/expense.service';
 import { listTerceros } from '@/lib/cash/terceros';
@@ -65,6 +67,7 @@ export default async function GastosPage({
     porProveedor,
     proveedores,
     cajaAbierta,
+    anulados,
   ] = await withServerActionTracing(
       async () =>
         Promise.all([
@@ -80,9 +83,21 @@ export default async function GastosPage({
           getProveedoresDelPeriodo(desde, hasta),
           listTerceros('proveedor'),
           getActiveCashSession(1).then((s) => s !== null),
+          // Anular saca al gasto de TODAS las demás lecturas (deja de estar
+          // vigente y la fila de anulación vale 0). Sin esta lista, el
+          // comerciante lo ve desaparecer y no puede distinguir "lo anulé" de
+          // "apreté mal y borré algo".
+          listAnnulledExpenses(desde, hasta),
         ]),
       { requireAuth: true }
     );
+
+  // Cuántos renglones tiene cada compra, para ofrecer "ver detalle" sólo donde
+  // hay algo que ver.
+  const renglones = await withServerActionTracing(
+    () => getItemCountsByExpense(gastos.map((g) => g.id)),
+    { requireAuth: true }
+  );
 
   // DTO explícito, no la fila de Drizzle: `cash_movement_id` es un BigInt y
   // React no lo puede serializar hacia el cliente. Además la pantalla no
@@ -102,12 +117,23 @@ export default async function GastosPage({
     en_iva_compras: g.en_iva_compras,
     medio_pago: g.medio_pago,
     salio_de_caja: g.cash_movement_id !== null,
+    renglones: renglones[g.id] ?? 0,
     created_at: g.created_at.toISOString(),
   }));
 
   return (
     <GastosClient
       gastos={dtos}
+      anulados={anulados.map((a) => ({
+        id: a.id,
+        fecha: a.fecha,
+        categoria: a.categoria,
+        payee_name: a.payee_name,
+        comprobante_numero: a.comprobante_numero,
+        total: a.total,
+        motivo: a.motivo,
+        anulado_el: a.anulado_el,
+      }))}
       resumen={resumen}
       porCategoria={porCategoria}
       porProveedor={porProveedor}

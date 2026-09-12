@@ -26,10 +26,15 @@ import Decimal from 'decimal.js';
 import { AppShell } from '@/components/shell/AppShell';
 import { GASTOS_CSS } from './gastosCss';
 import {
+  anularGastoAction,
+  buscarProductosAction,
   exportarGastosCsvAction,
   exportarProveedoresCsvAction,
+  getDetalleAction,
   registrarGastoAction,
   type GastoFormInput,
+  type LineaDTO,
+  type ProductoBuscadoDTO,
 } from './actions';
 
 export interface GastoDTO {
@@ -49,7 +54,27 @@ export interface GastoDTO {
   medio_pago: string;
   /** Si generó movimiento de caja. El id no se manda: es un BigInt. */
   salio_de_caja: boolean;
+  /** Renglones del detalle. 0 = no hay nada que mostrar. */
+  renglones: number;
   created_at: string;
+}
+
+/**
+ * Un gasto anulado, con su anulación al lado.
+ *
+ * No entra en ningún total — el original dejó de estar vigente y la fila de
+ * anulación vale 0 — pero se muestra igual, porque anular no es borrar y el
+ * comerciante tiene que poder ver qué anuló y por qué.
+ */
+export interface GastoAnuladoDTO {
+  id: string;
+  fecha: string;
+  categoria: string;
+  payee_name: string | null;
+  comprobante_numero: string | null;
+  total: string;
+  motivo: string | null;
+  anulado_el: string;
 }
 
 export interface ResumenGastosDTO {
@@ -90,6 +115,7 @@ type Grano = 'mes' | 'trimestre' | 'anio' | 'ejercicio';
 
 interface Props {
   gastos: GastoDTO[];
+  anulados: GastoAnuladoDTO[];
   resumen: ResumenGastosDTO;
   porCategoria: TotalCategoriaDTO[];
   porProveedor: ProveedorPeriodoDTO[];
@@ -178,10 +204,11 @@ function hoyLocal(): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-type Filtro = 'todos' | 'manda' | 'arca';
+type Filtro = 'todos' | 'manda' | 'arca' | 'anulados';
 
 export function GastosClient({
   gastos,
+  anulados,
   resumen,
   porCategoria,
   porProveedor,
@@ -197,6 +224,10 @@ export function GastosClient({
   const [error, setError] = useState<string | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
   const [filtro, setFiltro] = useState<Filtro>('todos');
+  /** Gasto cuyo detalle se está mirando. */
+  const [viendo, setViendo] = useState<GastoDTO | null>(null);
+  /** Gasto que se está por anular. */
+  const [anulando, setAnulando] = useState<GastoDTO | null>(null);
 
   // El período vive en la URL, así que cambiarlo es NAVEGAR. Con
   // `window.location.href = ...` el navegador recarga la app entera (y el
@@ -221,6 +252,32 @@ export function GastosClient({
         return;
       }
       setModalAbierto(false);
+    });
+  };
+
+  /**
+   * Anular.
+   *
+   * El error del service se muestra TAL CUAL: el de mercadería ya vendida
+   * nombra el producto y sus números, y eso es lo que le dice al comerciante
+   * qué hacer. Reemplazarlo por un "no se pudo" tiraría justo la parte útil.
+   */
+  const anular = (motivo: string) => {
+    const gasto = anulando;
+    if (gasto === null) return;
+    setError(null);
+    startTransition(async () => {
+      const res = await anularGastoAction(gasto.id, motivo);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setAnulando(null);
+      // Queda en la pestaña de anulados, que es a dónde se fue el gasto: si la
+      // lista volviera a "Todos", el comerciante vería que desapareció y no
+      // sabría si se anuló o si pasó otra cosa.
+      setFiltro('anulados');
+      router.refresh();
     });
   };
 
@@ -397,10 +454,23 @@ export function GastosClient({
               >
                 En ARCA ({resumen.arca_cantidad})
               </button>
+              {/* Anular saca al gasto de todos los demás filtros y de todos los
+                  totales. Sin esta pestaña se vería como si se hubiera
+                  borrado, y la tabla es append-only justamente para que nada
+                  se borre. */}
+              <button
+                type="button"
+                className={filtro === 'anulados' ? 'gf on' : 'gf'}
+                onClick={() => setFiltro('anulados')}
+              >
+                Anulados ({anulados.length})
+              </button>
             </div>
           </div>
 
-          {visibles.length === 0 ? (
+          {filtro === 'anulados' ? (
+            <ListaAnulados filas={anulados} />
+          ) : visibles.length === 0 ? (
             <div className="gempty">
               <div className="t">
                 {gastos.length === 0
@@ -434,6 +504,7 @@ export function GastosClient({
                 <span style={{ width: 104, flex: '0 0 auto', textAlign: 'right' }}>
                   Importe
                 </span>
+                <span style={{ width: 148, flex: '0 0 auto' }} />
               </div>
 
               <div className="cl-list">
@@ -466,6 +537,26 @@ export function GastosClient({
                     </span>
                     <span className="gmedio">{medioLabel(g.medio_pago)}</span>
                     <span className="gtotal">{plata(g.total)}</span>
+                    <span className="gacts">
+                      {g.renglones > 0 ? (
+                        <button
+                          type="button"
+                          className="gact"
+                          onClick={() => setViendo(g)}
+                          title="Ver los renglones de esta compra"
+                        >
+                          Detalle ({g.renglones})
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="gact danger"
+                        onClick={() => setAnulando(g)}
+                        title="Anular este gasto"
+                      >
+                        Anular
+                      </button>
+                    </span>
                   </div>
                 ))}
               </div>
@@ -591,6 +682,23 @@ export function GastosClient({
           pending={pending}
           onCancelar={() => setModalAbierto(false)}
           onGuardar={guardar}
+        />
+      ) : null}
+
+      {viendo !== null ? (
+        <DetalleModal gasto={viendo} onCerrar={() => setViendo(null)} />
+      ) : null}
+
+      {anulando !== null ? (
+        <AnularModal
+          gasto={anulando}
+          pending={pending}
+          error={error}
+          onCancelar={() => {
+            setAnulando(null);
+            setError(null);
+          }}
+          onConfirmar={anular}
         />
       ) : null}
     </AppShell>
@@ -753,6 +861,399 @@ function MenuExportar({
   );
 }
 
+// ════════════════════════ Anulados ════════════════════════
+
+/**
+ * Los gastos anulados del período.
+ *
+ * Deliberadamente NO tiene totales. Un anulado no suma en ningún lado — ése es
+ * el punto de anularlo — y poner un "total anulado" abajo invitaría a leerlo
+ * como si fuera plata que salió.
+ */
+function ListaAnulados({ filas }: { filas: GastoAnuladoDTO[] }) {
+  if (filas.length === 0) {
+    return (
+      <div className="gempty">
+        <div className="t">No anulaste ningún gasto en este período</div>
+        <div className="s">
+          Cuando anulás uno, queda acá con su motivo. Nada se borra: el
+          comprobante original y su anulación quedan los dos registrados.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="cl-colhead">
+        <span style={{ width: 78, flex: '0 0 auto' }}>Fecha</span>
+        <span style={{ flex: 1 }}>Proveedor / motivo de la anulación</span>
+        <span style={{ width: 118, flex: '0 0 auto', textAlign: 'center' }}>
+          Categoría
+        </span>
+        <span style={{ width: 104, flex: '0 0 auto', textAlign: 'right' }}>
+          Importe
+        </span>
+      </div>
+      <div className="cl-list">
+        {filas.map((a) => (
+          <div key={a.id} className="clrow anulada" style={{ cursor: 'default' }}>
+            <span className="gfecha">{fechaCorta(a.fecha)}</span>
+            <div className="clmain">
+              <div className="clname">
+                {a.payee_name ?? catLabel(a.categoria)}
+                {a.comprobante_numero !== null ? ` · ${a.comprobante_numero}` : ''}
+              </div>
+              <div className="clid">
+                {a.motivo ?? 'sin motivo'} · anulado el{' '}
+                {fechaCorta(a.anulado_el.slice(0, 10))}
+              </div>
+            </div>
+            <span className={`gcat ${catClase(a.categoria)}`}>
+              {catLabel(a.categoria)}
+            </span>
+            {/* Tachado: el importe existió y se anuló. Mostrarlo en 0 escondería
+                de cuánto era el comprobante que se dio de baja. */}
+            <span className="gtotal tachado">{plata(a.total)}</span>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+// ════════════════════════ Ver el detalle ════════════════════════
+
+/** Los renglones de una compra ya cargada, en modo lectura. */
+function DetalleModal({
+  gasto,
+  onCerrar,
+}: {
+  gasto: GastoDTO;
+  onCerrar: () => void;
+}) {
+  const [lineas, setLineas] = useState<LineaDTO[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    getDetalleAction(gasto.id).then((res) => {
+      if (!vivo) return;
+      if (res.ok) setLineas(res.data);
+      else setError(res.error);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [gasto.id]);
+
+  const suma =
+    lineas === null
+      ? null
+      : lineas.reduce(
+          (acc, l) => acc.plus(new Decimal(l.qty).times(l.unit_cost)),
+          new Decimal(0)
+        );
+
+  return (
+    <div className="pmov open" onClick={onCerrar}>
+      <div
+        className="pmod"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Detalle de la compra"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="pm-head">
+          <div>
+            <div className="pm-title">Detalle de la compra</div>
+            <div className="pm-sub">
+            {gasto.payee_name ?? 'Sin proveedor'}
+            {gasto.comprobante_numero !== null
+              ? ` · ${gasto.comprobante_tipo ?? 'Comp.'} ${gasto.comprobante_numero}`
+              : ''}{' '}
+            · {fechaCorta(gasto.fecha)}
+            </div>
+          </div>
+          <button type="button" className="pm-x" onClick={onCerrar} aria-label="Cerrar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {error !== null ? <div className="gerr">{error}</div> : null}
+
+        {lineas === null && error === null ? (
+          <div className="pm-note">Buscando los renglones…</div>
+        ) : null}
+
+        {lineas !== null ? (
+          <>
+            <div className="dtab">
+              <div className="dth">
+                <span style={{ width: 26 }}>#</span>
+                <span style={{ flex: 1 }}>Producto</span>
+                <span style={{ width: 70, textAlign: 'right' }}>Cant.</span>
+                <span style={{ width: 96, textAlign: 'right' }}>Costo u.</span>
+                <span style={{ width: 104, textAlign: 'right' }}>Subtotal</span>
+              </div>
+              {lineas.map((l) => (
+                <div key={l.linea} className="dtr">
+                  <span style={{ width: 26 }} className="dnum">
+                    {l.linea}
+                  </span>
+                  {/* Nombre al momento de la compra: si después lo renombraron,
+                      el comprobante viejo sigue diciendo lo que decía. */}
+                  <span style={{ flex: 1 }}>{l.product_name}</span>
+                  <span style={{ width: 70, textAlign: 'right' }} className="dnum">
+                    {new Decimal(l.qty).toFixed(2)}
+                  </span>
+                  <span style={{ width: 96, textAlign: 'right' }} className="dnum">
+                    {plata(l.unit_cost)}
+                  </span>
+                  <span style={{ width: 104, textAlign: 'right' }} className="dnum">
+                    {plata(new Decimal(l.qty).times(l.unit_cost).toFixed(4))}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="dsum">
+              <span>Suma del detalle</span>
+              <b className="dnum">{plata(suma!.toFixed(4))}</b>
+            </div>
+            {/* El costo es NETO de IVA recuperable: por eso la suma del detalle
+                cierra contra el neto cuando el comprobante lo discrimina, y
+                contra el total cuando no. Sin esta línea, ver "suma 10.000" al
+                lado de un total de 12.100 parece un error. */}
+            <div className="pm-note">
+              Los costos son <b>netos de IVA</b> cuando el comprobante lo
+              discrimina, porque ese IVA se recupera y no es costo de la
+              mercadería. Comprobante: {plata(gasto.total)}
+              {new Decimal(gasto.neto).gt(0)
+                ? ` (neto ${plata(gasto.neto)} + IVA ${plata(gasto.iva)})`
+                : ''}
+              .
+            </div>
+          </>
+        ) : null}
+
+        <div className="pm-acts">
+          <button type="button" className="pm-btn ghost" onClick={onCerrar}>
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════ Anular ════════════════════════
+
+/**
+ * Confirmación de anulación.
+ *
+ * Dice QUÉ va a pasar antes de que pase — la plata vuelve, la mercadería
+ * vuelve — porque anular un gasto de mercadería mueve stock, y eso no se
+ * adivina desde un botón que dice "Anular".
+ */
+function AnularModal({
+  gasto,
+  pending,
+  error,
+  onCancelar,
+  onConfirmar,
+}: {
+  gasto: GastoDTO;
+  pending: boolean;
+  error: string | null;
+  onCancelar: () => void;
+  onConfirmar: (motivo: string) => void;
+}) {
+  const [motivo, setMotivo] = useState('');
+  const puede = motivo.trim().length >= 3 && !pending;
+
+  return (
+    <div className="pmov open" onClick={onCancelar}>
+      <div
+        className="pmod"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Anular gasto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="pm-head">
+          <div>
+            <div className="pm-title">Anular este gasto</div>
+            <div className="pm-sub">
+              {gasto.payee_name ?? catLabel(gasto.categoria)} ·{' '}
+              {fechaCorta(gasto.fecha)} · {plata(gasto.total)}
+            </div>
+          </div>
+          <button type="button" className="pm-x" onClick={onCancelar} aria-label="Cerrar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <ul className="pm-lista">
+          <li>
+            El gasto <b>no se borra</b>: queda registrado junto con su anulación,
+            y lo vas a ver en la pestaña “Anulados”.
+          </li>
+          {gasto.salio_de_caja ? (
+            <li>
+              Se pagó en efectivo, así que <b>la plata vuelve a la caja de hoy</b>{' '}
+              (no a la del día del gasto, que puede estar cerrada y arqueada).
+            </li>
+          ) : null}
+          {gasto.renglones > 0 ? (
+            <li>
+              Tiene {gasto.renglones} renglón{gasto.renglones === 1 ? '' : 'es'} de
+              mercadería: <b>el stock vuelve atrás</b>. Si ya vendiste parte, no se
+              va a poder anular y te vamos a decir de qué producto se trata.
+            </li>
+          ) : null}
+        </ul>
+
+        <div className="pm-fld">
+          <label htmlFor="motivoAnul">Motivo (queda registrado)</label>
+          <input
+            id="motivoAnul"
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            placeholder="Lo cargué dos veces / el importe estaba mal / era de otro comercio"
+            autoFocus
+          />
+        </div>
+
+        {error !== null ? <div className="gerr">{error}</div> : null}
+
+        <div className="pm-acts">
+          <button type="button" className="pm-btn ghost" onClick={onCancelar}>
+            Volver
+          </button>
+          <button
+            type="button"
+            className="pm-btn danger"
+            disabled={!puede}
+            onClick={() => onConfirmar(motivo.trim())}
+          >
+            {pending ? 'Anulando…' : 'Anular el gasto'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════ Detalle: el renglón en borrador ════════════════════
+
+/**
+ * Un renglón mientras se está cargando.
+ *
+ * Guarda `productId` porque una línea **es un lote**: sin producto no puede
+ * mover stock ni valorizar nada. La maqueta de facturas recibidas tiene ahí un
+ * texto libre — sirve para transcribir un papel, no para esto.
+ */
+interface BorradorLinea {
+  key: string;
+  productId: string;
+  nombre: string;
+  qty: string;
+  costo: string;
+}
+
+/**
+ * Buscador de productos del catálogo. Mismo gesto que el POS: se tipea, se
+ * elige, se agrega el renglón.
+ *
+ * No permite crear productos desde acá, y es a propósito: un alta de catálogo
+ * (precio de venta, alícuota, rubro, exención Ley 19.640) metida adentro de la
+ * carga de una factura son dos decisiones distintas en el mismo formulario.
+ */
+function BuscadorProducto({
+  onElegir,
+}: {
+  onElegir: (p: ProductoBuscadoDTO) => void;
+}) {
+  const [texto, setTexto] = useState('');
+  const [opciones, setOpciones] = useState<ProductoBuscadoDTO[]>([]);
+  const [buscando, setBuscando] = useState(false);
+
+  useEffect(() => {
+    const q = texto.trim();
+    let vivo = true;
+    // Todo el estado se toca DENTRO del timer, nunca sincrónicamente en el
+    // efecto: hacerlo sincrónico encadena renders (`react-hooks`, y el lint lo
+    // marca como error). Y el timer es lo que evita una consulta por tecla.
+    const t = setTimeout(async () => {
+      if (q === '') {
+        if (vivo) {
+          setBuscando(false);
+          setOpciones([]);
+        }
+        return;
+      }
+      if (vivo) setBuscando(true);
+      const res = await buscarProductosAction(q);
+      if (!vivo) return;
+      setBuscando(false);
+      setOpciones(res.ok ? res.data : []);
+    }, 220);
+    return () => {
+      vivo = false;
+      clearTimeout(t);
+    };
+  }, [texto]);
+
+  return (
+    <div className="det-busc">
+      <input
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+        placeholder="Buscar un producto por nombre, código o SKU…"
+        aria-label="Buscar un producto para agregar al detalle"
+      />
+      {texto.trim() !== '' ? (
+        <div className="det-op">
+          {buscando && opciones.length === 0 ? (
+            <div className="det-vacio">Buscando…</div>
+          ) : opciones.length === 0 ? (
+            <div className="det-vacio">
+              No hay productos que coincidan. Si es nuevo, cargalo primero en
+              Productos.
+            </div>
+          ) : (
+            opciones.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className="det-opi"
+                onClick={() => {
+                  onElegir(p);
+                  setTexto('');
+                  setOpciones([]);
+                }}
+              >
+                <span className="det-opn">{p.name}</span>
+                <span className="det-opc">
+                  {p.sku !== null ? `${p.sku} · ` : ''}
+                  {p.cost !== null
+                    ? `última compra ${plata(p.cost)}`
+                    : 'sin costo cargado'}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // ════════════════════════ Modal de carga ════════════════════════
 
 function GastoModal({
@@ -783,6 +1284,7 @@ function GastoModal({
   const [compNumero, setCompNumero] = useState('');
   const [enIvaCompras, setEnIvaCompras] = useState(false);
   const [descripcion, setDescripcion] = useState('');
+  const [lineas, setLineas] = useState<BorradorLinea[]>([]);
 
   const dec = (v: string): Decimal | null => {
     if (v.trim() === '') return null;
@@ -811,12 +1313,53 @@ function GastoModal({
   const faltaComprobante = enIvaCompras && compNumero.trim() === '';
   const efectivoBloqueado = medio === 'efectivo' && !hayCajaAbierta;
 
+  // ── El detalle ──
+  const esMercaderia = categoria === 'mercaderia';
+
+  const cambiarLinea = (i: number, cambio: Partial<BorradorLinea>) =>
+    setLineas((prev) => prev.map((l, j) => (j === i ? { ...l, ...cambio } : l)));
+
+  const subtotalDe = (l: BorradorLinea): Decimal | null => {
+    const q = dec(l.qty);
+    const c = dec(l.costo);
+    if (q === null || c === null || q.lte(0) || c.lt(0)) return null;
+    return q.times(c);
+  };
+
+  const lineasIncompletas =
+    esMercaderia && lineas.some((l) => subtotalDe(l) === null);
+
+  const sumaDetalle = lineas.reduce(
+    (acc, l) => acc.plus(subtotalDe(l) ?? 0),
+    new Decimal(0)
+  );
+
+  // Contra el NETO si el comprobante discrimina IVA, contra el TOTAL si no: el
+  // IVA discriminado se recupera y no es costo de la mercadería. Es la misma
+  // regla que aplica el service — acá se muestra ANTES de mandar, para que un
+  // error de tipeo se vea en el momento y no vuelva como error del servidor.
+  const baseDetalle = discrimina ? dNeto : dTotal;
+
+  // El margen de $0,50 es `TOLERANCE_RECONCILIATION` de `lib/money/decimal.ts`.
+  // Se repite acá en vez de importarlo porque ese módulo arrastra `env` al
+  // bundle del navegador y tira la página (ya pasó con `formatARS`). Si cambia
+  // allá, cambia acá: son dos lugares y esta nota es el hilo entre los dos.
+  const TOLERANCIA = new Decimal('0.50');
+  const detalleNoCierra =
+    esMercaderia &&
+    lineas.length > 0 &&
+    !lineasIncompletas &&
+    baseDetalle !== null &&
+    sumaDetalle.minus(baseDetalle).abs().gt(TOLERANCIA);
+
   const puedeGuardar =
     !totalInvalido &&
     !noCierra &&
     !faltaDiscriminar &&
     !faltaComprobante &&
     !efectivoBloqueado &&
+    !lineasIncompletas &&
+    !detalleNoCierra &&
     !pending;
 
   /** Completa el IVA al 21% desde el total, que es el caso común. */
@@ -848,6 +1391,18 @@ function GastoModal({
         : {}),
       en_iva_compras: enIvaCompras,
       ...(descripcion.trim() !== '' ? { descripcion: descripcion.trim() } : {}),
+      // Sólo viajan si hay: `items: []` y sin `items` son lo mismo para el
+      // service, pero mandar un array vacío en una categoría que no es
+      // mercadería lo haría rechazar el gasto entero.
+      ...(esMercaderia && lineas.length > 0
+        ? {
+            items: lineas.map((l) => ({
+              product_id: l.productId,
+              qty: new Decimal(l.qty.replace(',', '.')).toFixed(4),
+              unit_cost: new Decimal(l.costo.replace(',', '.')).toFixed(4),
+            })),
+          }
+        : {}),
     });
   };
 
@@ -1063,6 +1618,119 @@ function GastoModal({
             comprobante</b>: es lo que después permite cruzarlo con lo que el
             estudio ve en ARCA.
           </p>
+        ) : null}
+
+        {/* ── El detalle: sólo mercadería ──────────────────────────────────
+            Una línea es un LOTE: entra al stock y deja registrado a qué costo.
+            En las otras categorías no hay nada que contar, y el service las
+            rechaza — mostrar la sección igual sería ofrecer algo que no se
+            puede hacer. */}
+        {esMercaderia ? (
+          <div className="det">
+            <div className="det-h">
+              <span className="det-t">Detalle de la mercadería</span>
+              <span className="det-s">
+                Opcional. Si lo cargás, entra al stock y queda el costo de cada
+                producto — que es lo que el inventario al cierre necesita.
+              </span>
+            </div>
+
+            {lineas.length > 0 ? (
+              <div className="det-tab">
+                <div className="det-th">
+                  <span style={{ flex: 1 }}>Producto</span>
+                  <span style={{ width: 74, textAlign: 'right' }}>Cant.</span>
+                  <span style={{ width: 104, textAlign: 'right' }}>Costo u. neto</span>
+                  <span style={{ width: 100, textAlign: 'right' }}>Subtotal</span>
+                  <span style={{ width: 28 }} />
+                </div>
+                {lineas.map((l, i) => (
+                  <div key={l.key} className="det-tr">
+                    <span style={{ flex: 1 }} className="det-nom">
+                      {l.nombre}
+                    </span>
+                    <input
+                      className="det-in"
+                      style={{ width: 74 }}
+                      inputMode="decimal"
+                      value={l.qty}
+                      aria-label={`Cantidad de ${l.nombre}`}
+                      onChange={(e) => cambiarLinea(i, { qty: e.target.value })}
+                    />
+                    <input
+                      className="det-in"
+                      style={{ width: 104 }}
+                      inputMode="decimal"
+                      value={l.costo}
+                      aria-label={`Costo unitario de ${l.nombre}`}
+                      onChange={(e) => cambiarLinea(i, { costo: e.target.value })}
+                    />
+                    <span style={{ width: 100, textAlign: 'right' }} className="det-sub">
+                      {subtotalDe(l) === null ? '—' : plata(subtotalDe(l)!.toFixed(4))}
+                    </span>
+                    <button
+                      type="button"
+                      className="det-x"
+                      aria-label={`Sacar ${l.nombre}`}
+                      onClick={() => setLineas((prev) => prev.filter((_, j) => j !== i))}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            <BuscadorProducto
+              onElegir={(p) => {
+                setLineas((prev) => [
+                  ...prev,
+                  {
+                    key: `${p.id}-${prev.length}-${Date.now()}`,
+                    productId: p.id,
+                    nombre: p.name,
+                    qty: '',
+                    // El costo de la última compra viene cargado: el proveedor
+                    // casi siempre repite precio, y si aumentó se ve contra qué.
+                    costo: p.cost !== null ? new Decimal(p.cost).toFixed(2) : '',
+                  },
+                ]);
+              }}
+            />
+
+            {lineas.length > 0 ? (
+              <div className="det-sum">
+                <span>
+                  Suma del detalle{' '}
+                  <i>{discrimina ? '(contra el neto)' : '(contra el total)'}</i>
+                </span>
+                <b className="det-nom">{plata(sumaDetalle.toFixed(4))}</b>
+              </div>
+            ) : null}
+
+            {/* El costo es NETO de IVA recuperable: el IVA discriminado se
+                recupera, así que no es costo de la mercadería. De acá sale
+                `products.cost` y de ahí el margen de cada venta. */}
+            {detalleNoCierra ? (
+              <p className="pm-warn red">
+                El detalle suma <b>{plata(sumaDetalle.toFixed(2))}</b> y el
+                comprobante dice{' '}
+                <b>{plata((baseDetalle ?? new Decimal(0)).toFixed(2))}</b>
+                {discrimina ? ' (neto, sin IVA)' : ''}. Tienen que coincidir.
+              </p>
+            ) : lineas.length > 0 && discrimina ? (
+              <p className="pm-note">
+                Los costos van <b>netos</b>: el IVA discriminado se recupera, así
+                que no es costo de la mercadería.
+              </p>
+            ) : null}
+
+            {lineasIncompletas ? (
+              <p className="pm-warn red">
+                Hay renglones sin cantidad o sin costo. Completalos o sacalos.
+              </p>
+            ) : null}
+          </div>
         ) : null}
 
         <div className="pm-fld">

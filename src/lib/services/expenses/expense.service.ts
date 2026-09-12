@@ -684,6 +684,23 @@ export async function annulExpense(input: AnulacionGasto): Promise<Expense> {
 }
 
 /**
+ * Un gasto por id, sin filtro de vigencia.
+ *
+ * A diferencia de `listExpenses`, devuelve también un gasto ya anulado: esta
+ * lectura es para operar sobre una fila puntual (anularla, ver su detalle), no
+ * para sumar ni informar. La vigencia la decide quien la usa.
+ */
+export async function getExpenseById(id: string): Promise<Expense | null> {
+  const { tenantId } = ctx();
+  const [fila] = await db
+    .select()
+    .from(expenses)
+    .where(and(eq(expenses.tenant_id, tenantId), eq(expenses.id, id)))
+    .limit(1);
+  return fila ?? null;
+}
+
+/**
  * El detalle de una compra: los renglones tal como se cargaron.
  *
  * Ordenado por `linea` (migration 0036) y no por `created_at`, porque las
@@ -706,6 +723,33 @@ export async function getExpenseItems(expenseId: string): Promise<ExpenseItem[]>
       )
     )
     .orderBy(expense_items.linea);
+}
+
+/**
+ * Cuántos renglones tiene cada gasto de la lista.
+ *
+ * Es para que la pantalla sepa a cuáles ofrecerles "ver detalle" sin pedir el
+ * detalle de todos. Un botón que al apretarlo dice "no hay nada" es peor que no
+ * tener botón.
+ */
+export async function getItemCountsByExpense(
+  expenseIds: string[]
+): Promise<Record<string, number>> {
+  const { tenantId } = ctx();
+  if (expenseIds.length === 0) return {};
+
+  const filas = await db.execute<{ expense_id: string; cantidad: string }>(sql`
+    SELECT expense_id::text AS expense_id, count(*)::text AS cantidad
+      FROM expense_items
+     WHERE tenant_id = ${tenantId}
+       AND expense_id IN (${sql.join(
+         expenseIds.map((id) => sql`${id}::uuid`),
+         sql`, `
+       )})
+     GROUP BY expense_id
+  `);
+
+  return Object.fromEntries(filas.map((f) => [f.expense_id, Number(f.cantidad)]));
 }
 
 /**

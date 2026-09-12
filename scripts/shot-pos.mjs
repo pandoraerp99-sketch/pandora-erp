@@ -177,6 +177,78 @@ if (ACCION === 'cobro') {
   await dormir(600);
 }
 
+if (ACCION === 'gasto') {
+  // /gastos: abrir el alta, ponerla en mercaderia y cargar un renglon del
+  // detalle. Es la parte que el typecheck no puede verificar: que el buscador
+  // traiga productos de verdad y que la suma del detalle cierre en vivo.
+  const set = `(sel, v) => {
+    const el = document.querySelector(sel); if (!el) return false;
+    const proto = Object.getPrototypeOf(el);
+    Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }`;
+  await evaluar(`[...document.querySelectorAll('button')].find(b=>/Nuevo gasto/i.test(b.textContent||''))?.click(), true`);
+  await dormir(900);
+  await evaluar(`((set) => { set('#gCat','mercaderia'); set('#gTotal','12100'); return true; })(${set})`);
+  await dormir(500);
+  await evaluar(`((set) => set('.det-busc input','a'))(${set})`);
+  await dormir(1500);
+  console.log('OPCIONES>>>', await evaluar(`JSON.stringify([...document.querySelectorAll('.det-opi .det-opn')].map(e=>e.textContent))`));
+  await evaluar(`document.querySelector('.det-opi')?.click(), true`);
+  await dormir(700);
+  await evaluar(`((set) => {
+    const ins = [...document.querySelectorAll('.det-in')];
+    const poner = (el, v) => { const p = Object.getPrototypeOf(el);
+      Object.getOwnPropertyDescriptor(p,'value').set.call(el, v);
+      el.dispatchEvent(new Event('input',{bubbles:true})); };
+    if (ins[0]) poner(ins[0], '10');
+    if (ins[1]) poner(ins[1], '1000');
+    return ins.length;
+  })(${set})`);
+  await dormir(700);
+  console.log('DETALLE>>>', await evaluar(`JSON.stringify({
+    renglones: document.querySelectorAll('.det-tr').length,
+    subtotal: document.querySelector('.det-sub')?.textContent ?? null,
+    suma: document.querySelector('.det-sum b')?.textContent ?? null,
+    avisos: [...document.querySelectorAll('.det .pm-warn, .pm-warn')].map(e=>e.textContent.replace(/\\s+/g,' ').slice(0,120)),
+    guardar: (()=>{const b=[...document.querySelectorAll('.pm-btn.primary')].pop(); return b ? (b.disabled ? 'DESHABILITADO' : 'habilitado') : null;})(),
+  })`));
+  // ¿Se llega al boton de guardar con el detalle cargado? El modal crece y el
+  // detalle lo empuja: si no scrollea, el boton queda fuera de la pantalla y
+  // la pantalla no se puede usar aunque todo lo demas este bien.
+  console.log('ALCANZABLE>>>', await evaluar(`(() => {
+    const m = document.querySelector('.pmod');
+    if (!m) return 'sin modal';
+    m.scrollTop = m.scrollHeight;
+    const b = [...document.querySelectorAll('.pm-btn.primary')].pop();
+    if (!b) return 'sin boton';
+    const r = b.getBoundingClientRect();
+    return 'scrollea=' + (m.scrollHeight > m.clientHeight) +
+      ' botonVisible=' + (r.top >= 0 && r.bottom <= window.innerHeight) +
+      ' top=' + Math.round(r.top);
+  })()`));
+  await dormir(400);
+}
+
+if (ACCION === 'anular') {
+  // /gastos: abrir la confirmacion de anulacion de la primera fila. Es la que
+  // dice QUE va a pasar antes de que pase (vuelve la plata, vuelve el stock).
+  await evaluar(`(() => {
+    const b = [...document.querySelectorAll('.gact.danger')][0];
+    b && b.click();
+    return !!b;
+  })()`);
+  await dormir(800);
+  console.log('ANULAR>>>', await evaluar(`JSON.stringify({
+    titulo: document.querySelector('.pmod .pm-title')?.textContent ?? null,
+    sub: document.querySelector('.pmod .pm-sub')?.textContent ?? null,
+    consecuencias: [...document.querySelectorAll('.pm-lista li')].map(e=>e.textContent.replace(/\\s+/g,' ').slice(0,110)),
+    confirmar: (()=>{const b=document.querySelector('.pm-btn.danger'); return b ? (b.disabled ? 'DESHABILITADO (falta motivo)' : 'habilitado') : null;})(),
+  })`));
+}
+
 if (ACCION === 'modal') {
   // Abrir el alta y cargar precio/costo para ver el calculo en vivo.
   await evaluar(`[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Nuevo producto'))?.click(), true`);

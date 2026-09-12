@@ -8,14 +8,18 @@ import { revalidatePath } from 'next/cache';
 import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
 import { DomainError } from '@/lib/multi_tenant/errors';
 import {
+  annulExpense,
   armarCsvGastos,
   armarCsvProveedores,
+  getExpenseById,
+  getExpenseItems,
   getProveedoresDelPeriodo,
   listExpenses,
   registerExpense,
   ExpenseError,
   type NuevoGasto,
 } from '@/lib/services/expenses/expense.service';
+import { searchProducts } from '@/lib/services/products/product.service';
 import { getActiveCashSession } from '@/lib/cash/sessions';
 import {
   getMesCierreEjercicio,
@@ -84,6 +88,103 @@ export async function registrarGastoAction(
     // sigue mostrando la posición de IVA vieja.
     revalidatePath('/contador');
     return null;
+  });
+}
+
+/**
+ * Anular un gasto.
+ *
+ * La caja la resuelve el SERVIDOR, igual que al registrar: si el gasto se pagó
+ * en efectivo, la plata vuelve al cajón de HOY y no a la sesión vieja (que
+ * puede estar cerrada y arqueada). Es además lo que pasa en la realidad.
+ *
+ * Los errores del service se muestran TEXTUALES en la pantalla: el de
+ * mercadería ya vendida nombra el producto y sus números, y esa es la
+ * diferencia entre "no se pudo anular" y "de Yerba 1kg quedan 7 y la compra fue
+ * de 10".
+ */
+export async function anularGastoAction(
+  expenseId: string,
+  motivo: string
+): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    const original = await getExpenseById(expenseId);
+    if (original === null) {
+      throw new ExpenseError('no_existe', 'No existe ese gasto');
+    }
+
+    let cashSessionId: string | undefined;
+    if (original.cash_movement_id !== null) {
+      const sesion = await getActiveCashSession(SALE_POINT);
+      if (sesion === null) {
+        throw new ExpenseError(
+          'caja_requerida',
+          'Ese gasto se pagó en efectivo: abrí la caja para que la plata pueda volver al cajón.'
+        );
+      }
+      cashSessionId = sesion.id;
+    }
+
+    await annulExpense({
+      expense_id: expenseId,
+      motivo,
+      ...(cashSessionId !== undefined ? { cash_session_id: cashSessionId } : {}),
+    });
+
+    revalidatePath('/gastos');
+    revalidatePath('/contador');
+    // Anular devuelve mercadería al stock y puede mover `products.cost`.
+    revalidatePath('/productos');
+    return null;
+  });
+}
+
+export interface LineaDTO {
+  linea: number;
+  /** Nombre al momento de la compra, no el actual. */
+  product_name: string;
+  qty: string;
+  unit_cost: string;
+}
+
+/** El detalle (los renglones) de una compra ya cargada. */
+export async function getDetalleAction(
+  expenseId: string
+): Promise<ActionResult<LineaDTO[]>> {
+  return runAction(async () => {
+    const items = await getExpenseItems(expenseId);
+    return items.map((i) => ({
+      linea: i.linea,
+      product_name: i.product_name_snapshot,
+      qty: i.qty,
+      unit_cost: i.unit_cost,
+    }));
+  });
+}
+
+export interface ProductoBuscadoDTO {
+  id: string;
+  name: string;
+  sku: string | null;
+  cost: string | null;
+}
+
+/** Buscar productos para el detalle de una compra. Mismo gesto que el POS. */
+export async function buscarProductosAction(
+  query: string
+): Promise<ActionResult<ProductoBuscadoDTO[]>> {
+  return runAction(async () => {
+    if (query.trim().length === 0) return [];
+    const encontrados = await searchProducts({ query: query.trim(), limit: 8 });
+    return encontrados.map((p) => ({
+      id: p.id,
+      name: p.name,
+      sku: p.sku,
+      // El costo de la última compra se ofrece como sugerencia al cargar la
+      // línea: el proveedor casi siempre repite precio, y si aumentó, se ve
+      // contra qué.
+      cost: p.cost,
+    }));
   });
 }
 

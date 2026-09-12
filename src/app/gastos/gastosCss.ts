@@ -174,4 +174,102 @@ button.tm-item:focus-visible{ outline:2px solid var(--purple); outline-offset:-2
 .gf.on{ background:rgba(107,95,255,0.12); color:var(--purple); border-color:rgba(107,95,255,0.3); }
 html[data-theme="dark"] .gf{ background:rgba(255,255,255,0.07); }
 html[data-theme="dark"] .gf:hover{ background:rgba(255,255,255,0.12); }
+
+/* ── ACCIONES DE LA FILA ──────────────────────────────────────────────────
+   Aparecen siempre, no en hover: en una tablet no hay hover, y un boton que
+   solo existe con el mouse encima no existe para quien la usa parada atras del
+   mostrador. */
+.gacts{ width:148px; flex:0 0 auto; display:flex; gap:6px; justify-content:flex-end; }
+.gact{ font-size:11px; font-weight:600; font-family:inherit; color:var(--ink-2);
+  background:rgba(13,20,36,0.05); border:1px solid transparent;
+  padding:5px 9px; border-radius:8px; cursor:pointer; transition:all 130ms; white-space:nowrap; }
+.gact:hover{ background:rgba(13,20,36,0.10); color:var(--ink-1); }
+.gact.danger:hover{ background:rgba(192,56,74,0.12); color:var(--red); }
+.gact:focus-visible{ outline:2px solid var(--purple); outline-offset:1px; }
+html[data-theme="dark"] .gact{ background:rgba(255,255,255,0.07); }
+html[data-theme="dark"] .gact:hover{ background:rgba(255,255,255,0.13); }
+html[data-theme="dark"] .gact.danger:hover{ background:rgba(255,120,140,0.16); }
+
+/* ── ANULADOS ─────────────────────────────────────────────────────────────
+   La fila se ve apagada y el importe TACHADO: existio y se dio de baja. No se
+   muestra en cero porque eso escondria de cuanto era el comprobante. */
+.clrow.anulada{ opacity:0.72; }
+.clrow.anulada .clname{ text-decoration:line-through; text-decoration-thickness:1px; }
+.gtotal.tachado{ text-decoration:line-through; color:var(--ink-3); }
+
+/* ── ERROR DENTRO DE UN MODAL ─────────────────────────────────────────────
+   Clase, no color inline: un hex por style no puede tener variante de tema, y
+   este proyecto ya se equivoco DOS veces con eso (las pills de categoria aca
+   mismo, y el color de dias de stock en el panel). */
+.gerr{ font-size:12px; font-weight:600; color:var(--red);
+  background:rgba(192,56,74,0.10); border:1px solid rgba(192,56,74,0.25);
+  border-radius:10px; padding:9px 12px; margin:0 0 14px; line-height:1.45; }
+html[data-theme="dark"] .gerr{ color:#ff9aa9; background:rgba(255,120,140,0.13); border-color:rgba(255,120,140,0.28); }
+
+/* Lista de consecuencias antes de confirmar algo que mueve plata y stock. */
+.pm-lista{ margin:0 0 16px; padding:0 0 0 17px; display:flex; flex-direction:column; gap:7px; }
+.pm-lista li{ font-size:12px; color:var(--ink-2); line-height:1.5; }
+.pm-lista li b{ color:var(--ink-1); }
+.pm-btn.danger{ color:#fff; background:linear-gradient(140deg,#c0384a,#d9566a); box-shadow:0 6px 16px rgba(192,56,74,0.35); }
+
+/* ── DETALLE DE UNA COMPRA (lectura) ──────────────────────────────────── */
+.dtab{ margin:0 0 12px; border:1px solid rgba(13,20,36,0.09); border-radius:12px; overflow:hidden; }
+.dth{ display:flex; gap:10px; align-items:center; padding:8px 12px;
+  font-size:10.5px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase;
+  color:var(--ink-3); background:rgba(13,20,36,0.04); }
+.dtr{ display:flex; gap:10px; align-items:center; padding:9px 12px; font-size:12.5px; color:var(--ink-1);
+  border-top:1px solid rgba(13,20,36,0.06); }
+.dnum{ font-family:var(--mono,ui-monospace,monospace); font-variant-numeric:tabular-nums; }
+.dsum{ display:flex; justify-content:space-between; align-items:center;
+  font-size:12.5px; color:var(--ink-2); padding:0 2px; margin:0 0 10px; }
+.dsum b{ font-size:14px; color:var(--ink-1); }
+html[data-theme="dark"] .dtab{ border-color:rgba(255,255,255,0.10); }
+html[data-theme="dark"] .dth{ background:rgba(255,255,255,0.05); }
+html[data-theme="dark"] .dtr{ border-top-color:rgba(255,255,255,0.07); }
+
+/* ── DETALLE EN EL ALTA (edicion) ─────────────────────────────────────── */
+.det{ border-top:1px solid rgba(13,20,36,0.08); margin:4px 0 16px; padding:14px 0 0; }
+.det-h{ margin:0 0 10px; }
+.det-t{ display:block; font-size:12.5px; font-weight:700; color:var(--ink-1); }
+.det-s{ display:block; font-size:11px; color:var(--ink-3); margin-top:3px; line-height:1.45; }
+.det-tab{ border:1px solid rgba(13,20,36,0.09); border-radius:12px; overflow:hidden; margin:0 0 10px; }
+.det-th{ display:flex; gap:8px; align-items:center; padding:7px 10px;
+  font-size:10.5px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase;
+  color:var(--ink-3); background:rgba(13,20,36,0.04); }
+.det-tr{ display:flex; gap:8px; align-items:center; padding:7px 10px;
+  border-top:1px solid rgba(13,20,36,0.06); }
+.det-nom{ font-size:12.5px; color:var(--ink-1); }
+.det-sub{ font-size:12.5px; color:var(--ink-1); font-family:var(--mono,ui-monospace,monospace); font-variant-numeric:tabular-nums; }
+.det-in{ font-family:var(--mono,ui-monospace,monospace); font-size:12.5px; text-align:right;
+  color:var(--ink-1); background:rgba(13,20,36,0.04); border:1px solid rgba(13,20,36,0.10);
+  border-radius:8px; padding:5px 8px; outline:none; }
+.det-in:focus{ border-color:var(--purple); background:rgba(107,95,255,0.06); }
+.det-x{ width:28px; height:26px; border:none; border-radius:7px; cursor:pointer; font-size:16px; line-height:1;
+  color:var(--ink-3); background:rgba(13,20,36,0.05); font-family:inherit; }
+.det-x:hover{ color:var(--red); background:rgba(192,56,74,0.12); }
+.det-busc{ position:relative; }
+.det-busc input{ width:100%; font-family:inherit; font-size:12.5px; color:var(--ink-1);
+  background:rgba(13,20,36,0.04); border:1px solid rgba(13,20,36,0.10);
+  border-radius:10px; padding:9px 11px; outline:none; }
+.det-busc input:focus{ border-color:var(--purple); }
+.det-op{ position:absolute; z-index:60; left:0; right:0; top:calc(100% + 5px);
+  background:rgba(255,255,255,0.97); border:1px solid rgba(13,20,36,0.10); border-radius:12px;
+  box-shadow:0 18px 44px rgba(20,26,44,0.22); max-height:230px; overflow-y:auto; }
+.det-opi{ display:block; width:100%; text-align:left; padding:8px 11px; border:none; cursor:pointer;
+  background:transparent; font-family:inherit; }
+.det-opi:hover{ background:rgba(107,95,255,0.10); }
+.det-opn{ display:block; font-size:12.5px; font-weight:600; color:var(--ink-1); }
+.det-opc{ display:block; font-size:10.5px; color:var(--ink-3); margin-top:2px; }
+.det-vacio{ padding:9px 11px; font-size:11.5px; color:var(--ink-3); line-height:1.45; }
+.det-sum{ display:flex; justify-content:space-between; align-items:center;
+  font-size:12.5px; color:var(--ink-2); padding:0 2px; margin:0 0 10px; }
+.det-sum i{ font-style:normal; color:var(--ink-3); font-size:11px; }
+html[data-theme="dark"] .det{ border-top-color:rgba(255,255,255,0.10); }
+html[data-theme="dark"] .det-tab{ border-color:rgba(255,255,255,0.10); }
+html[data-theme="dark"] .det-th{ background:rgba(255,255,255,0.05); }
+html[data-theme="dark"] .det-tr{ border-top-color:rgba(255,255,255,0.07); }
+html[data-theme="dark"] .det-in,
+html[data-theme="dark"] .det-busc input{ background:rgba(255,255,255,0.07); border-color:rgba(255,255,255,0.13); }
+html[data-theme="dark"] .det-x{ background:rgba(255,255,255,0.07); }
+html[data-theme="dark"] .det-op{ background:rgba(26,33,60,0.98); border-color:rgba(255,255,255,0.12); }
 `;
