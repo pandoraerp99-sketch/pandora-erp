@@ -32,6 +32,42 @@ import Decimal from 'decimal.js';
 /** El supuesto bajo el que se valoriza. Va en la pantalla y en el CSV. */
 export const METODO_VALUACION = 'PEPS' as const;
 
+/**
+ * La zona del comercio. Duplicada a propósito de `panel.report.ts`: este
+ * módulo es puro y no importa nada de la capa de lectura.
+ */
+const TZ_COMERCIO = 'America/Argentina/Ushuaia';
+
+/**
+ * El día al que se saca la foto del inventario: el último del período, pero
+ * **acotado a hoy**.
+ *
+ * ── POR QUÉ ACOTADO ───────────────────────────────────────────────────────
+ * Valorizar el futuro sería mostrar el stock de hoy con la etiqueta del 30 de
+ * septiembre. Para el grano "ejercicio" —el que le importa al estudio— el
+ * período ya cerró y el tope no se usa nunca.
+ *
+ * ── POR QUÉ NO ALCANZA CON `toISOString()` ────────────────────────────────
+ * `toISOString()` da el día en UTC. Ushuaia está tres horas atrás: a las 21:00
+ * del 12/09, UTC ya está en el 13/09, y la pantalla diría "al 13 de
+ * septiembre" mostrando el stock de hoy. El día se lee desde la zona del
+ * comercio, igual que toda otra frontera de tiempo del sistema.
+ *
+ * `hasta` es EXCLUSIVE y siempre medianoche UTC (ver `periodoDe`), así que de
+ * ese lado el día se lee en UTC — restarle 24 h da exactamente el último día
+ * del período, sin zona de por medio.
+ */
+export function fechaDeLaFoto(hasta: Date, ahora: Date = new Date()): string {
+  const finPeriodo = new Date(hasta.getTime() - 86_400_000);
+  const diaFin = finPeriodo.toISOString().slice(0, 10);
+  // 'en-CA' formatea como AAAA-MM-DD, que es lo que la query espera.
+  const diaHoy = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ_COMERCIO,
+  }).format(ahora);
+  // Comparar los strings alcanza: AAAA-MM-DD ordena lexicográficamente.
+  return diaFin < diaHoy ? diaFin : diaHoy;
+}
+
 export interface CompraDelProducto {
   /** 'AAAA-MM-DD' — la fecha del comprobante, que es la de adquisición. */
   fecha: string;

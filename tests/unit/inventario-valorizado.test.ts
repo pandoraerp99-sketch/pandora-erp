@@ -18,7 +18,11 @@
  */
 import { describe, expect, it } from 'vitest';
 import Decimal from 'decimal.js';
-import { valorizarProducto, METODO_VALUACION } from '@/lib/domain/inventario';
+import {
+  valorizarProducto,
+  METODO_VALUACION,
+  fechaDeLaFoto,
+} from '@/lib/domain/inventario';
 
 const compra = (fecha: string, qty: string, costo: string) => ({
   fecha,
@@ -211,5 +215,44 @@ describe('valorizarProducto — PEPS caminando hacia atrás', () => {
     });
     expect(r.lotes[0]?.qty).toBe('10.0000');
     expect(r.total).toBe('700.0000');
+  });
+});
+
+/**
+ * La fecha de la foto.
+ *
+ * El inventario se valoriza al último día del período PERO acotado a hoy: la
+ * foto del futuro no existe. Y "hoy" es el día del COMERCIO, no el de UTC —
+ * Ushuaia está tres horas atrás, así que entre las 21:00 y la medianoche el
+ * reloj UTC ya pasó a mañana. Misma regla que el resto de los reportes: toda
+ * frontera de tiempo se mira desde America/Argentina/Ushuaia.
+ */
+describe('fechaDeLaFoto — el día del comercio, no el de UTC', () => {
+  // `periodo.hasta` es EXCLUSIVE y siempre medianoche UTC (ver periodoDe).
+  const hasta = (iso: string) => new Date(iso + 'T00:00:00.000Z');
+
+  it('a las 21:30 de Ushuaia la foto sigue siendo la de HOY, no la de mañana', () => {
+    // 12/09 21:30 en Ushuaia (UTC-3) = 13/09 00:30 UTC.
+    const ahora = new Date('2026-09-13T00:30:00.000Z');
+    // Período de septiembre: termina el 01/10, así que el tope es hoy.
+    expect(fechaDeLaFoto(hasta('2026-10-01'), ahora)).toBe('2026-09-12');
+  });
+
+  it('a media mañana los dos relojes dan el mismo día', () => {
+    const ahora = new Date('2026-09-12T14:00:00.000Z'); // 11:00 en Ushuaia
+    expect(fechaDeLaFoto(hasta('2026-10-01'), ahora)).toBe('2026-09-12');
+  });
+
+  it('si el período ya cerró, la foto es la del cierre y no la de hoy', () => {
+    const ahora = new Date('2026-09-12T14:00:00.000Z');
+    // Ejercicio cerrado el 31/07: `hasta` exclusive es el 01/08.
+    expect(fechaDeLaFoto(hasta('2026-08-01'), ahora)).toBe('2026-07-31');
+  });
+
+  it('el último día del período, de noche, no salta al día siguiente', () => {
+    // 30/09 22:00 Ushuaia = 01/10 01:00 UTC. El período de septiembre termina
+    // ese mismo día: ni el tope ni el reloj pueden correrlo al 01/10.
+    const ahora = new Date('2026-10-01T01:00:00.000Z');
+    expect(fechaDeLaFoto(hasta('2026-10-01'), ahora)).toBe('2026-09-30');
   });
 });

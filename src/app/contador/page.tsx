@@ -21,6 +21,7 @@ import {
   type Grano,
 } from '@/lib/services/reporting/accountant.report';
 import { getInventarioAlCierre } from '@/lib/services/reporting/inventario.report';
+import { fechaDeLaFoto } from '@/lib/domain/inventario';
 import { ContadorClient } from './ContadorClient';
 
 export default async function ContadorPage({
@@ -50,18 +51,10 @@ export default async function ContadorPage({
 
   const periodo = periodoDe(grano, new Date(), empresa?.mesCierre ?? 12);
 
-  // ── La fecha del inventario ──────────────────────────────────────────────
-  //
   // El inventario es una FOTO, no un flujo: se valoriza a un día, no a un
-  // rango. Se usa el último día del período **acotado a hoy**, porque valorizar
-  // el futuro sería mostrar el stock de hoy con la etiqueta del 30 de
-  // septiembre. Para el grano "ejercicio" —el que le importa al estudio— ese
-  // día ya pasó, y ahí la foto es exactamente la del cierre.
-  const finPeriodo = new Date(periodo.hasta.getTime() - 86400000);
-  const hoy = new Date();
-  const fechaInventario = (finPeriodo < hoy ? finPeriodo : hoy)
-    .toISOString()
-    .slice(0, 10);
+  // rango. La regla (último día del período acotado a hoy, con "hoy" leído en
+  // la zona del comercio) vive en `fechaDeLaFoto`, que se prueba sola.
+  const fechaInventario = fechaDeLaFoto(periodo.hasta);
 
   const [resumen, deudores, inventario] = await withServerActionTracing(
     async () =>

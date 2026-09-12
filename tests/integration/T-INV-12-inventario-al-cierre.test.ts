@@ -254,10 +254,17 @@ describe('T-INV-12 — Inventario valorizado al cierre', () => {
     const csv = armarCsvInventario(inv);
     const lineas = csv.split('\r\n').filter((l) => l.trim() !== '');
 
-    // El método viaja en el encabezado: un inventario valorizado sin decir con
-    // qué criterio no se puede auditar.
-    expect(lineas[0]).toContain('metodo PEPS');
-    expect(lineas[0]).toContain(CIERRE);
+    // La primera columna se llama "Producto": es la que la contadora ordena y
+    // filtra en Excel. Una oración ahí vuelve incómoda la planilla entera.
+    // (`lineas[0]` arranca con el BOM, por eso se le saca antes de comparar.)
+    expect(lineas[0]?.replace(/^﻿/, '').split(';')[0]).toBe('Producto');
+
+    // El método y la fecha viajan en una nota AL PIE del archivo, como en el
+    // CSV de proveedores: un inventario valorizado sin decir con qué criterio
+    // no se puede auditar, y el archivo es lo que llega al estudio.
+    const pie = lineas[lineas.length - 1];
+    expect(pie).toContain('PEPS');
+    expect(pie).toContain(CIERRE);
 
     // Yerba tiene 10 unidades sin compra (la compra se anuló en el test
     // anterior) y ninguna con lote, así que va una sola fila marcada.

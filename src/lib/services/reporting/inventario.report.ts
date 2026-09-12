@@ -105,7 +105,7 @@ export interface InventarioAlCierre {
  *
  * Las unidades sin compra van en su propia fila, marcadas como tales y con la
  * fecha vacía: poner ahí una fecha inventada sería exactamente lo que este
- * reporte vino a evitar. El método de valuación viaja en el encabezado, porque
+ * reporte vino a evitar. El método de valuación viaja en una nota al pie, porque
  * un inventario sin método no se puede auditar.
  */
 export function armarCsvInventario(inv: InventarioAlCierre): string {
@@ -142,9 +142,9 @@ export function armarCsvInventario(inv: InventarioAlCierre): string {
     }
   }
 
-  return csvArmar(
+  const tabla = csvArmar(
     [
-      `Inventario de bienes de cambio al ${inv.fecha} - metodo ${inv.metodo}`,
+      'Producto',
       'SKU',
       'Fecha de adquisicion',
       'Comprobante',
@@ -155,6 +155,14 @@ export function armarCsvInventario(inv: InventarioAlCierre): string {
     ],
     filas
   );
+
+  // El método y la fecha van AL PIE, no en la primera celda del encabezado:
+  // la columna A es la que se ordena y filtra en Excel, y tiene que llamarse
+  // "Producto". Mismo lugar que la advertencia del CSV de proveedores.
+  const nota =
+    `Inventario de bienes de cambio al ${inv.fecha}. ` +
+    `Metodo de valuacion: ${inv.metodo}.`;
+  return `${tabla}\r\n${csvTxt(nota)}\r\n`;
 }
 
 /**
