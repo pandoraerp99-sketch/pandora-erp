@@ -53,7 +53,21 @@ export const CreateProductInputSchema = z.object({
 
 export type CreateProductInput = z.infer<typeof CreateProductInputSchema>;
 
-export const UpdateProductInputSchema = CreateProductInputSchema.partial();
+/**
+ * ⚠️ `stock_current` NO está — y es la única diferencia con el alta.
+ *
+ * `updateProduct` hace `.set({ ...cleanInput })` (spread, no enumeración como
+ * el alta), así que mientras el campo estuvo en este schema, editar un producto
+ * escribía el stock directo **sin un solo movimiento en el libro**. La pantalla
+ * ya lo evitaba — el input está deshabilitado al editar, con la nota "el stock
+ * se ajusta con un movimiento y su motivo" — pero una Server Action es un borde
+ * público: lo que promete la UI lo tiene que hacer cumplir el servidor.
+ *
+ * El stock se mueve por `adjustStock` (ajuste con motivo) o por una compra.
+ */
+export const UpdateProductInputSchema = CreateProductInputSchema.omit({
+  stock_current: true,
+}).partial();
 export type UpdateProductInput = z.infer<typeof UpdateProductInputSchema>;
 
 export const SearchProductsInputSchema = z.object({

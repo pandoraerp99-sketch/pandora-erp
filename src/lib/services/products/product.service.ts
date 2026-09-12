@@ -37,6 +37,7 @@ import {
 import { requireTenantId } from '../../tracing/context.js';
 import {
   recordStockMovement,
+  recordOpeningStock,
   OversellError,
   ProductInactiveError,
   ProductNotFoundForMovementError,
@@ -78,6 +79,22 @@ export async function createProduct(rawInput: unknown): Promise<Product> {
   }
   const input: CreateProductInput = parsed.data;
 
+  // ── El stock del alta entra por el LIBRO, no por la columna ──────────────
+  //
+  // Escribir `stock_current` directo en el INSERT dejaba unidades que ningún
+  // movimiento explica: el stock de hoy no se reconstruye sumando el libro, y
+  // entonces tampoco se puede decir cuánto había a una fecha pasada — que es
+  // todo lo que el inventario valorizado al cierre necesita. Ver
+  // `recordOpeningStock` y la migration 0035.
+  //
+  // Dos condiciones, y las dos importan:
+  //  - `> 0`: un alta en cero no tiene nada que declarar.
+  //  - `stock_tracking_enabled`: sin tracking, `recordStockMovement` registra el
+  //    movimiento pero NO toca `stock_current` (es deliberado). Abrir el libro
+  //    ahí dejaría la columna en 0 y el libro en N: el mismo descuadre al revés.
+  const stockInicial = money(input.stock_current);
+  const abreLibro = stockInicial.gt(0) && input.stock_tracking_enabled;
+
   const created = await db.transaction(async (tx) => {
     const [row] = await tx
       .insert(products)
@@ -96,15 +113,41 @@ export async function createProduct(rawInput: unknown): Promise<Product> {
         cost: input.cost,
         tax_rate: input.tax_rate,
         tdf_exempt: input.tdf_exempt,
-        stock_current: input.stock_current,
+        // Si el libro se abre, la columna arranca en cero y la mueve el
+        // movimiento. Escribirla acá TAMBIÉN la dejaría contada dos veces.
+        stock_current: abreLibro ? '0' : input.stock_current,
         stock_minimum: input.stock_minimum,
         stock_tracking_enabled: input.stock_tracking_enabled,
-        is_active: input.is_active,
+        // El movimiento de apertura se rechaza sobre un producto inactivo
+        // (`ProductInactiveError`, y está bien que así sea). Un alta inactiva
+        // CON stock existe — importar mercadería de algo discontinuado — así
+        // que la baja se aplica DESPUÉS de abrir el libro, unas líneas abajo.
+        // El estado intermedio no sale de esta transacción.
+        is_active: abreLibro ? true : input.is_active,
       })
       .returning();
 
     if (!row) {
       throw new Error('Insert de producto no devolvio fila');
+    }
+
+    let filaFinal = row;
+
+    if (abreLibro) {
+      const { product } = await recordOpeningStock(
+        { product_id: row.id, qty: moneyToStorage(stockInicial) },
+        tx
+      );
+      filaFinal = product;
+
+      if (!input.is_active) {
+        const [dadoDeBaja] = await tx
+          .update(products)
+          .set({ is_active: false, updated_at: new Date() })
+          .where(and(eq(products.tenant_id, tenantId), eq(products.id, row.id)))
+          .returning();
+        if (dadoDeBaja) filaFinal = dadoDeBaja;
+      }
     }
 
     await writeAuditLog(
@@ -117,6 +160,10 @@ export async function createProduct(rawInput: unknown): Promise<Product> {
           barcode: row.barcode,
           price: row.price,
           tdf_exempt: row.tdf_exempt,
+          // El stock del alta va acá y NO como `stock.adjusted_manually`: un
+          // alta no es un ajuste manual del comerciante. Sin este campo, el
+          // audit no diría con cuánta mercadería entró el producto.
+          stock_inicial: filaFinal.stock_current,
         },
         pii_level: 'internal',
         severity: 'info',
@@ -124,7 +171,7 @@ export async function createProduct(rawInput: unknown): Promise<Product> {
       tx
     );
 
-    return row;
+    return filaFinal;
   });
 
   logger.info({ product_id: created.id, name: created.name }, 'product.created');
@@ -136,6 +183,22 @@ export async function updateProduct(
   rawInput: unknown
 ): Promise<Product> {
   const tenantId = requireTenantId();
+
+  // Zod descarta las claves que no conoce, así que sin este chequeo un
+  // `stock_current` que llegue igual se ignoraría EN SILENCIO: el que lo mandó
+  // creería que movió el stock. Se rechaza fuerte y se dice por dónde va.
+  // (Se acepta `undefined` a propósito: la pantalla manda el campo en undefined
+  // al editar, que es la forma de decir "no toco el stock".)
+  if (
+    rawInput !== null &&
+    typeof rawInput === 'object' &&
+    (rawInput as { stock_current?: unknown }).stock_current !== undefined
+  ) {
+    throw new ValidationError('Datos de actualizacion invalidos', {
+      stock_current:
+        'El stock no se edita: se mueve con un ajuste y su motivo, o con una compra, para que quede el rastro de por qué cambió',
+    });
+  }
 
   const parsed = UpdateProductInputSchema.safeParse(rawInput);
   if (!parsed.success) {

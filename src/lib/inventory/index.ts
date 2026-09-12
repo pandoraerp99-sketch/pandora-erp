@@ -39,6 +39,8 @@ export { UNIT_TYPES } from '../db/schema/products.js';
 // ──── Stock: movimientos atómicos ──────────────────────────────
 export {
   recordStockMovement,
+  recordOpeningStock,
+  MOTIVO_STOCK_INICIAL,
   inferDirection,
   computeNextStockCurrent,
   isOversell,

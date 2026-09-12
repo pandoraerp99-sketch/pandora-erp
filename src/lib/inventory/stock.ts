@@ -545,3 +545,52 @@ export async function recordStockMovement(
   }
   return await runInTx(txOrDb);
 }
+
+/**
+ * El stock con el que un producto ENTRA al sistema.
+ *
+ * ── POR QUÉ EXISTE ────────────────────────────────────────────────────────
+ * Hasta la migration 0035, dar de alta un producto con stock escribía
+ * `products.stock_current` directo, sin pasar por el libro. Medido contra la
+ * base de dev: de 7 productos con movimientos, **ninguno** reconstruía, y la
+ * diferencia de cada uno era exactamente su stock de alta.
+ *
+ * Eso rompe la única invariante de la que depende el inventario valorizado al
+ * cierre (ítem 8 del pedido de la contadora): si el libro no puede reconstruir
+ * el stock de hoy, tampoco puede decir cuánto había al 31 de diciembre.
+ *
+ * ── QUÉ NO SIGNIFICA ──────────────────────────────────────────────────────
+ * Es una declaración del comerciante, **no una compra**: no tiene comprobante,
+ * ni proveedor, ni costo verificable. Por eso va como `adjustment` y no como
+ * `purchase`, y por eso el reporte de valuación tiene que mostrar estas
+ * unidades como un estado aparte ("sin compra asociada") en vez de valorizarlas
+ * como si se hubieran comprado. Un comercio que abrió con mercadería heredada
+ * siempre va a tener algunas.
+ *
+ * ── SIN AUDIT PROPIO ──────────────────────────────────────────────────────
+ * `skip_audit` a propósito: el alta ya emite `product.created`, con el stock
+ * inicial en el payload. Emitir además `stock.adjusted_manually` haría pasar un
+ * alta por un ajuste manual del comerciante, que es otra cosa y se cuenta
+ * aparte.
+ */
+export const MOTIVO_STOCK_INICIAL = 'Stock inicial declarado en el alta del producto';
+
+export async function recordOpeningStock(
+  input: { product_id: string; qty: string; override_tenant_id?: string },
+  txOrDb: DbOrTransaction = db
+): Promise<RecordMovementResult> {
+  return await recordStockMovement(
+    {
+      product_id: input.product_id,
+      type: 'adjustment',
+      direction: 'in',
+      qty: input.qty,
+      reason: MOTIVO_STOCK_INICIAL,
+      skip_audit: true,
+      ...(input.override_tenant_id !== undefined && {
+        override_tenant_id: input.override_tenant_id,
+      }),
+    },
+    txOrDb
+  );
+}

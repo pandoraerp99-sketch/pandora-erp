@@ -20,7 +20,9 @@
  * Devuelve resumen con counts (ok / fail) + errores por fila.
  */
 import { z } from 'zod';
+import Decimal from 'decimal.js';
 import { db } from '../../db/client.js';
+import { recordOpeningStock } from '../../inventory/stock.js';
 import { products } from '../../db/schema/products.js';
 import { UNIT_TYPES } from '../../db/schema/products.js';
 import { writeAuditLog } from '../../audit/audit-writer.js';
@@ -187,8 +189,27 @@ export async function importProductsFromCsv(
 
   if (rowsToInsert.length > 0) {
     await db.transaction(async (tx) => {
-      await tx.insert(products).values(rowsToInsert);
-      okCount = rowsToInsert.length;
+      // El stock de cada fila entra por el LIBRO, igual que en el alta de a
+      // uno. Insertar `stock_current` directo dejaba unidades que ningún
+      // movimiento explica, y una importación es justamente donde más entran
+      // de golpe. Ver `recordOpeningStock` y la migration 0035.
+      //
+      // ⚠️ Esta pantalla todavía no existe (la action no se expone), así que
+      // el agujero era latente. Se cierra ahora y no cuando se cablee: es el
+      // cuarto lugar de esta sesión donde el stock se movía sin pasar por el
+      // libro, y los tres anteriores aparecieron por medirlos, no por leerlos.
+      const insertados = await tx
+        .insert(products)
+        .values(rowsToInsert.map((r) => ({ ...r, stock_current: '0' })))
+        .returning({ id: products.id });
+      okCount = insertados.length;
+
+      for (const [i, fila] of insertados.entries()) {
+        const inicial = rowsToInsert[i]?.stock_current;
+        if (inicial === undefined || inicial === null) continue;
+        if (new Decimal(inicial).lte(0)) continue;
+        await recordOpeningStock({ product_id: fila.id, qty: inicial }, tx);
+      }
 
       await writeAuditLog(
         {
