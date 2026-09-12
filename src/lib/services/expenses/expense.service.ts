@@ -40,6 +40,7 @@ import { requireTracingContext } from '../../tracing/context.js';
 import { CrossTenantAccessError, DomainError } from '../../multi_tenant/errors.js';
 import { logger } from '../../observability/logger.js';
 import { csvArmar, csvNum, csvTxt } from '../reporting/csv.js';
+import { diaDelComercio } from '../../domain/fecha-comercio.js';
 
 export class ExpenseError extends DomainError {
   constructor(code: string, messageEs: string) {
@@ -164,6 +165,18 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
     throw new ExpenseError(
       'items_solo_mercaderia',
       'Sólo un gasto de mercadería lleva detalle de productos'
+    );
+  }
+
+  // La mercadería entra al stock HOY y su movimiento lleva la fecha del
+  // comprobante (migration 0037). Un comprobante de fecha futura dejaría el
+  // libro de stock sin reconstruir el stock de hoy. Se rechaza acá, antes de
+  // escribir nada, con un mensaje para el comerciante — el libro lo rechazaría
+  // igual, pero a mitad de la transacción y en idioma de sistema.
+  if (items.length > 0 && input.fecha > diaDelComercio()) {
+    throw new ExpenseError(
+      'fecha_futura',
+      'Una compra de mercadería no puede tener fecha futura: la mercadería entra al stock hoy'
     );
   }
 
@@ -334,6 +347,10 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
             type: 'purchase',
             qty: qty.toFixed(4),
             related_expense_id: fila.id,
+            // La fecha del comprobante, no la de carga: es cuándo entró la
+            // mercadería, y es la misma que usa el lote en el inventario al
+            // cierre. Con dos relojes, la cantidad y el lote no cerraban.
+            fecha: input.fecha,
             // El catálogo de EVENT-TAXONOMY está cerrado y sólo cubre
             // `stock.adjusted_manually`: una compra no es un ajuste manual, así
             // que no emite audit propio. Mismo criterio que `finalizeSale`.
@@ -578,6 +595,14 @@ export async function annulExpense(input: AnulacionGasto): Promise<Expense> {
             direction: 'out',
             qty: linea.qty,
             reason: `Anulación de compra · ${original.comprobante_numero ?? original.payee_name ?? 'sin comprobante'}`,
+            // La fecha del comprobante ORIGINAL, igual que la fila de anulación
+            // en `expenses`. Con la de hoy, anular en septiembre una compra de
+            // julio sacaría el lote de julio pero dejaría la cantidad de julio
+            // con esa mercadería adentro.
+            fecha: original.fecha,
+            // A qué compra revierte. Antes no se guardaba, y la migration 0037
+            // tuvo que abortar-si-existían en vez de poder fecharlas.
+            related_expense_id: original.id,
             // No es un ajuste manual del comerciante: es la contracara de una
             // anulación. Auditarlo como `stock.adjusted_manually` haría que el
             // audit log mintiera sobre quién movió el stock y por qué.

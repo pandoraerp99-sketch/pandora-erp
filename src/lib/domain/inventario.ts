@@ -28,15 +28,10 @@
  * Todo con Decimal: es plata (CLAUDE.md §9.8).
  */
 import Decimal from 'decimal.js';
+import { diaDelComercio } from './fecha-comercio.js';
 
 /** El supuesto bajo el que se valoriza. Va en la pantalla y en el CSV. */
 export const METODO_VALUACION = 'PEPS' as const;
-
-/**
- * La zona del comercio. Duplicada a propósito de `panel.report.ts`: este
- * módulo es puro y no importa nada de la capa de lectura.
- */
-const TZ_COMERCIO = 'America/Argentina/Ushuaia';
 
 /**
  * El día al que se saca la foto del inventario: el último del período, pero
@@ -60,10 +55,7 @@ const TZ_COMERCIO = 'America/Argentina/Ushuaia';
 export function fechaDeLaFoto(hasta: Date, ahora: Date = new Date()): string {
   const finPeriodo = new Date(hasta.getTime() - 86_400_000);
   const diaFin = finPeriodo.toISOString().slice(0, 10);
-  // 'en-CA' formatea como AAAA-MM-DD, que es lo que la query espera.
-  const diaHoy = new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ_COMERCIO,
-  }).format(ahora);
+  const diaHoy = diaDelComercio(ahora);
   // Comparar los strings alcanza: AAAA-MM-DD ordena lexicográficamente.
   return diaFin < diaHoy ? diaFin : diaHoy;
 }

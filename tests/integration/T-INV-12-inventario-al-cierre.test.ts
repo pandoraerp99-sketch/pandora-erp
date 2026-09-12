@@ -38,6 +38,7 @@ describe('T-INV-12 — Inventario valorizado al cierre', () => {
   const yerba = crypto.randomUUID();
   const azucar = crypto.randomUUID();
   const bolsas = crypto.randomUUID();
+  const fideos = crypto.randomUUID();
   const CIERRE = '2026-07-31';
 
   const conCtx = <T>(fn: () => Promise<T>) =>
@@ -52,21 +53,11 @@ describe('T-INV-12 — Inventario valorizado al cierre', () => {
       fn
     );
 
-  /**
-   * Mueve un movimiento en el tiempo. `stock_movements` es append-only, así
-   * que hace falta desactivar los triggers — y sólo se puede a nivel superior
-   * dentro de una transacción explícita (adentro de un DO da permission
-   * denied). Es para el test: en la vida real la fecha es cuándo pasó.
-   */
-  const fecharMovimientos = async (productId: string, cuando: string) => {
-    await db.transaction(async (tx) => {
-      await tx.execute(sql`SET LOCAL session_replication_role = 'replica'`);
-      await tx.execute(sql`
-        UPDATE stock_movements SET created_at = ${cuando}::timestamptz
-         WHERE tenant_id = ${tenant}::uuid AND product_id = ${productId}::uuid
-      `);
-    });
-  };
+  // Acá había un helper que reescribía `created_at` de los movimientos para
+  // "moverlos en el tiempo". Forzaba a que la fecha de carga coincidiera con la
+  // del comprobante, y por eso ningún test vio que la cantidad y los lotes
+  // miraban relojes distintos. Desde la migration 0037 la fecha de un
+  // movimiento es un DATO (`fecha`) y los tests la pasan como tal.
 
   beforeAll(async () => {
     await db.insert(companies).values({
@@ -103,6 +94,9 @@ describe('T-INV-12 — Inventario valorizado al cierre', () => {
     await db.insert(products).values([
       { ...base, id: yerba, name: 'Yerba 1kg', cost: '2000.0000' },
       { ...base, id: azucar, name: 'Azúcar 1kg', cost: null },
+      // Para el comprobante cargado tarde: sin ningún otro movimiento que
+      // pueda tapar la diferencia entre los dos relojes.
+      { ...base, id: fideos, name: 'Fideos 500g', cost: '900.0000' },
       // Sin control de stock: no tiene libro que reconstruir.
       {
         ...base,
@@ -139,8 +133,10 @@ describe('T-INV-12 — Inventario valorizado al cierre', () => {
         direction: 'in',
         qty: '10',
         reason: 'stock inicial del test',
+        fecha: '2026-06-10',
       })
     );
+    // La compra NO lleva fecha del movimiento a mano: la toma del comprobante.
     await conCtx(() =>
       registerExpense({
         fecha: '2026-06-10',
@@ -150,7 +146,6 @@ describe('T-INV-12 — Inventario valorizado al cierre', () => {
         items: [{ product_id: yerba, qty: '5', unit_cost: '2200' }],
       })
     );
-    await fecharMovimientos(yerba, '2026-06-10T12:00:00-03:00');
 
     // Y DESPUÉS del cierre entran 100 más: el stock de hoy es 115, pero al
     // 31/07 había 15. Si el reporte leyera `stock_current`, diría 115.
@@ -202,9 +197,9 @@ describe('T-INV-12 — Inventario valorizado al cierre', () => {
         direction: 'in',
         qty: '7',
         reason: 'stock inicial sin costo',
+        fecha: '2026-05-02',
       })
     );
-    await fecharMovimientos(azucar, '2026-05-02T10:00:00-03:00');
 
     const inv = await conCtx(() => getInventarioAlCierre(CIERRE));
     const fila = inv.filas.find((f) => f.product_id === azucar);
@@ -217,6 +212,11 @@ describe('T-INV-12 — Inventario valorizado al cierre', () => {
     expect(fila?.sin_valorizar_qty).toBe('7.0000');
     expect(inv.sin_valorizar_qty).toBe('7.0000');
     expect(inv.sin_valorizar_productos).toBe(1);
+    // La pantalla dice "los otros $X son unidades sin compra asociada en N
+    // productos". N tiene que ser de los productos que están EN ese $X: la
+    // yerba sí, el azúcar no — sus unidades no tienen costo y ya las declara
+    // el aviso de "no incluidas en el total". Contarlo dos veces infla N.
+    expect(inv.con_unidades_sin_compra).toBe(1);
     // Y lo que sí se puede afirmar sigue estando, completo.
     expect(inv.con_compra_total).toBe('11000.0000');
     expect(inv.total).toBe('33000.0000');
@@ -234,10 +234,14 @@ describe('T-INV-12 — Inventario valorizado al cierre', () => {
     await conCtx(() =>
       annulExpense({ expense_id: gasto!.id, motivo: 'era de otro comercio' })
     );
-    await fecharMovimientos(yerba, '2026-06-10T12:00:00-03:00');
 
     const inv = await conCtx(() => getInventarioAlCierre(CIERRE));
     const fila = inv.filas.find((f) => f.product_id === yerba);
+
+    // El comentario de arriba siempre lo dijo y ningún expect lo miraba: la
+    // reversa hereda la fecha del comprobante (10/06), así que al 31/07 quedan
+    // las 10 del stock inicial. Las 100 de después del cierre siguen afuera.
+    expect(fila?.cantidad).toBe('10.0000');
 
     expect(fila?.lotes).toHaveLength(0);
     expect(fila?.con_compra_total).toBe('0.0000');
@@ -290,5 +294,55 @@ describe('T-INV-12 — Inventario valorizado al cierre', () => {
     expect(inv.filas.some((f) => f.product_id === bolsas)).toBe(false);
     // No se esconden: el reporte declara que hay 1 producto que no entra.
     expect(inv.sin_tracking).toBe(1);
+  });
+
+  // ── Un solo reloj ──────────────────────────────────────────────────────────
+  //
+  // Los tests de arriba se escribieron reescribiendo `created_at` para que
+  // coincidiera con la fecha del comprobante, y por eso nunca vieron que la
+  // cantidad y los lotes miraban relojes distintos. Estos dos NO tocan ninguna
+  // fecha: cargan hoy un comprobante de julio, que es el caso de todos los días.
+
+  it('🔴 un comprobante anterior al cierre cargado DESPUÉS cuenta en la cantidad', async () => {
+    await conCtx(() =>
+      registerExpense({
+        fecha: '2026-07-20',
+        categoria: 'mercaderia',
+        total: '7200',
+        medio_pago: 'transferencia',
+        items: [{ product_id: fideos, qty: '8', unit_cost: '900' }],
+      })
+    );
+
+    const inv = await conCtx(() => getInventarioAlCierre(CIERRE));
+    const fila = inv.filas.find((f) => f.product_id === fideos);
+
+    // La mercadería de ese comprobante estaba en el local el 31/07. Si la
+    // cantidad mirara cuándo se cargó, la fila no existiría al cierre y el lote
+    // respaldaría unidades que no están.
+    expect(fila?.cantidad).toBe('8.0000');
+    expect(fila?.lotes).toHaveLength(1);
+    expect(fila?.lotes[0]?.qty).toBe('8.0000');
+    expect(fila?.sin_compra_qty).toBe('0.0000');
+  });
+
+  it('🔴 anularlo hoy también lo saca de la cantidad al cierre, no sólo del lote', async () => {
+    const [gasto] = await db
+      .select()
+      .from(expenses)
+      .where(eq(expenses.tenant_id, tenant))
+      .orderBy(sql`created_at DESC`)
+      .limit(1);
+    expect(gasto?.fecha).toBe('2026-07-20');
+
+    await conCtx(() =>
+      annulExpense({ expense_id: gasto!.id, motivo: 'se cargó dos veces' })
+    );
+
+    // La anulación del gasto hereda la fecha del original; la reversa de la
+    // mercadería tiene que heredarla también. Si llevara la de hoy, julio se
+    // quedaría con 8 fideos sin ningún comprobante que los respalde.
+    const inv = await conCtx(() => getInventarioAlCierre(CIERRE));
+    expect(inv.filas.find((f) => f.product_id === fideos)).toBeUndefined();
   });
 });

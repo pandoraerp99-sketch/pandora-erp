@@ -450,6 +450,24 @@ describe('T-COMPRAS-01 — Compra de mercadería', () => {
     ).rejects.toThrow(ExpenseError);
   });
 
+  it('🔴 una compra de mercadería con comprobante de fecha futura se rechaza', async () => {
+    // La mercadería entra al stock HOY, pero el movimiento lleva la fecha del
+    // comprobante. Con una fecha futura `stock_current` ya la contaría y
+    // ninguna reconstrucción del libro hasta hoy, y el invariante de la
+    // migration 0035 dejaría de valer sin que nadie haya roto nada.
+    await expect(
+      conCtx(() =>
+        registerExpense({
+          fecha: '2099-01-01',
+          categoria: 'mercaderia',
+          total: '1800',
+          medio_pago: 'transferencia',
+          items: [{ product_id: yerba, qty: '2', unit_cost: '900' }],
+        })
+      )
+    ).rejects.toMatchObject({ code: 'fecha_futura' });
+  });
+
   it('sólo mercadería lleva detalle', async () => {
     await expect(
       conCtx(() =>

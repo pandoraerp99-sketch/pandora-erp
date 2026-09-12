@@ -195,6 +195,46 @@ describe('prepareStockMovementValues — happy path', () => {
   });
 });
 
+/**
+ * La fecha del movimiento (migration 0037): el día en que PASÓ, no cuándo se
+ * cargó. Si el caller no la da, la pone la DB (el día del comercio).
+ */
+describe('prepareStockMovementValues — fecha del movimiento', () => {
+  const purchase: RecordMovementInput = {
+    product_id: VALID_PRODUCT_ID,
+    type: 'purchase',
+    qty: 3,
+    skip_audit: true,
+  };
+
+  it('sin fecha no se manda nada: la pone el default de la columna', () => {
+    const result = prepareStockMovementValues(purchase, makeCtx());
+    expect(result.fecha).toBeUndefined();
+  });
+
+  it('con la fecha del comprobante, viaja tal cual', () => {
+    const result = prepareStockMovementValues(
+      { ...purchase, fecha: '2026-07-20' },
+      makeCtx()
+    );
+    expect(result.fecha).toBe('2026-07-20');
+  });
+
+  it('una fecha que no es AAAA-MM-DD → invalid_fecha', () => {
+    expect(() =>
+      prepareStockMovementValues({ ...purchase, fecha: '20/07/2026' }, makeCtx())
+    ).toThrow(expect.objectContaining({ code: 'invalid_fecha' }));
+  });
+
+  it('🔴 una fecha futura → invalid_fecha (el stock ya cambió HOY)', () => {
+    // `stock_current` se mueve en el momento; un movimiento fechado en el
+    // futuro haría que el libro hasta hoy no reconstruya el stock de hoy.
+    expect(() =>
+      prepareStockMovementValues({ ...purchase, fecha: '2099-01-01' }, makeCtx())
+    ).toThrow(expect.objectContaining({ code: 'invalid_fecha' }));
+  });
+});
+
 describe('prepareStockMovementValues — validaciones input', () => {
   it('product_id no UUID → throw invalid_product_id', () => {
     expect(() =>

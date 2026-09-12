@@ -53,6 +53,7 @@ import { CrossTenantAccessError } from '../multi_tenant/errors.js';
 import { isValidUuid } from '../tracing/ids.js';
 import { writeAuditLog } from '../audit/audit-writer.js';
 import { normalizeDecimal, ProductValidationError } from './products.js';
+import { diaDelComercio } from '../domain/fecha-comercio.js';
 
 // ──── Errors tipados ────────────────────────────────────────────
 
@@ -65,7 +66,8 @@ export class StockValidationError extends Error {
       | 'invalid_direction'
       | 'missing_reason_for_adjustment'
       | 'missing_related_sale_for_sale_type'
-      | 'related_exclusive_violation',
+      | 'related_exclusive_violation'
+      | 'invalid_fecha',
     message: string
   ) {
     super(message);
@@ -172,6 +174,13 @@ export interface RecordMovementInput {
   related_sale_id?: string | null; // obligatorio si type='sale'
   /** El gasto (comprobante de compra) que originó el movimiento. */
   related_expense_id?: string | null;
+  /**
+   * 'AAAA-MM-DD' — el día en que el movimiento PASÓ (migration 0037). Lo dan
+   * la compra (fecha del comprobante) y la reversa de una anulación (la del
+   * comprobante original). Sin fecha, la columna toma el día del comercio en
+   * que se carga. Nunca futura: el stock cambia en el momento.
+   */
+  fecha?: string;
   /**
    * Sólo requerido para type='adjustment'. Para otros types se infiere.
    */
@@ -338,6 +347,25 @@ export function prepareStockMovementValues(
     );
   }
 
+  // ──── fecha: formato, y nunca futura (migration 0037) ─────────────
+  // El movimiento cambia `stock_current` AHORA. Fechado en el futuro, el libro
+  // sumado hasta hoy dejaría de dar el stock de hoy — el invariante que
+  // estableció la migration 0035 — sin que nada se haya roto.
+  if (input.fecha !== undefined) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.fecha)) {
+      throw new StockValidationError(
+        'invalid_fecha',
+        `fecha tiene que ser AAAA-MM-DD (recibido "${input.fecha}")`
+      );
+    }
+    if (input.fecha > diaDelComercio()) {
+      throw new StockValidationError(
+        'invalid_fecha',
+        `fecha ${input.fecha} es futura: un movimiento de stock no puede pasar después de hoy`
+      );
+    }
+  }
+
   // ──── skip_audit contract guard (advisor 2026-06-03) ───────
   // Caller que pasa type != 'adjustment' DEBE setear skip_audit=true (porque
   // emite su evento de negocio propio — ej: Sales emite 'sale.completed').
@@ -393,6 +421,9 @@ export function prepareStockMovementValues(
     reason: input.reason?.trim() || null,
     related_sale_id: input.related_sale_id ?? null,
     related_expense_id: input.related_expense_id ?? null,
+    // Sin fecha no se manda la clave: la pone el default de la columna, que la
+    // calcula en la zona del comercio.
+    ...(input.fecha !== undefined ? { fecha: input.fecha } : {}),
     created_by: ctx.actor_user_id ?? null,
     correlation_id: ctx.correlation_id ?? null,
   };

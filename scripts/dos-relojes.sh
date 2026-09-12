@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # ¿La cantidad al cierre y los lotes del inventario usan el MISMO reloj?
 #
-# getInventarioAlCierre filtra:
-#   - la CANTIDAD por stock_movements.created_at  (cuándo se registró)
-#   - los LOTES   por expenses.fecha              (la del comprobante)
+# Hasta la migration 0037, getInventarioAlCierre filtraba la CANTIDAD por
+# stock_movements.created_at (cuándo se cargó) y los LOTES por expenses.fecha
+# (la del comprobante). Con un comprobante cargado tarde —el caso normal— caían
+# de lados distintos del cierre: en dev, 2 de 3 compras discrepaban al 31/07.
 #
-# Para un comprobante cargado después de su fecha — que es el caso normal,
-# y el caso para el que se construyó recalcularCostoUltimaCompra — esas dos
-# fechas NO son la misma. Este script imprime, para cada movimiento de compra,
-# de qué lado del cierre cae según CADA reloj.
+# Desde 0037 la cantidad lee stock_movements.fecha. Este script compara esa
+# fecha contra la del comprobante para cada movimiento vinculado a un gasto
+# (la compra y, si la hubo, su reversa por anulación). Tiene que dar 0.
+#
+# Imprime también la comparación con created_at, para que se vea que el
+# problema era real y no que el chequeo mira mal.
 set -euo pipefail
 
 CIERRE="${CIERRE:-2026-07-31}"
@@ -16,35 +19,35 @@ CONTENEDOR="${CONTENEDOR:-supabase_db_pandora-erp}"
 
 docker exec -i "$CONTENEDOR" psql -U postgres -d postgres -v ON_ERROR_STOP=1 <<SQL
 \pset border 2
-\echo '=== Movimientos de compra vs cierre ${CIERRE} ==='
-SELECT p.name AS producto,
+\echo '=== Movimientos vinculados a un gasto vs cierre ${CIERRE} ==='
+SELECT c.name AS tenant,
+       p.name AS producto,
+       m.type,
+       m.direction,
        m.qty::text AS unidades,
-       (m.created_at AT TIME ZONE 'America/Argentina/Ushuaia')::date::text AS registrado,
+       (m.created_at AT TIME ZONE 'America/Argentina/Ushuaia')::date::text AS cargado,
+       m.fecha::text AS fecha_mov,
        e.fecha::text AS comprobante,
-       CASE WHEN (m.created_at AT TIME ZONE 'America/Argentina/Ushuaia')::date <= DATE '${CIERRE}'
-            THEN 'cuenta' ELSE 'NO cuenta' END AS en_la_cantidad,
-       CASE WHEN e.fecha IS NULL THEN '-'
-            WHEN e.fecha <= DATE '${CIERRE}' THEN 'SI respalda'
-            ELSE 'no respalda' END AS en_los_lotes,
-       CASE WHEN e.fecha IS NULL THEN 'sin gasto'
-            WHEN ((m.created_at AT TIME ZONE 'America/Argentina/Ushuaia')::date <= DATE '${CIERRE}')
-                 = (e.fecha <= DATE '${CIERRE}')
-            THEN 'coinciden' ELSE '>>> DISCREPAN <<<' END AS veredicto
+       CASE WHEN m.fecha = e.fecha THEN 'coinciden' ELSE '>>> DISCREPAN <<<' END AS fecha_vs_comprobante
   FROM stock_movements m
+  JOIN companies c ON c.id = m.tenant_id
   JOIN products p ON p.id = m.product_id
-  LEFT JOIN expenses e ON e.id = m.related_expense_id
- WHERE m.type = 'purchase'
- ORDER BY p.name, m.created_at;
+  JOIN expenses e ON e.id = m.related_expense_id
+ ORDER BY c.name, p.name, m.created_at;
 
 \echo ''
-\echo '=== Cuántos movimientos de compra discrepan ==='
-SELECT count(*) FILTER (
-         WHERE e.fecha IS NOT NULL
-           AND ((m.created_at AT TIME ZONE 'America/Argentina/Ushuaia')::date <= DATE '${CIERRE}')
+\echo '=== Resumen: cuántos discrepan con cada reloj ==='
+SELECT c.name AS tenant,
+       count(*) AS movimientos,
+       count(*) FILTER (
+         WHERE ((m.created_at AT TIME ZONE 'America/Argentina/Ushuaia')::date <= DATE '${CIERRE}')
                <> (e.fecha <= DATE '${CIERRE}')
-       ) AS discrepan,
-       count(*) AS total_compras
+       ) AS discrepan_con_created_at,
+       count(*) FILTER (
+         WHERE (m.fecha <= DATE '${CIERRE}') <> (e.fecha <= DATE '${CIERRE}')
+       ) AS discrepan_con_fecha
   FROM stock_movements m
-  LEFT JOIN expenses e ON e.id = m.related_expense_id
- WHERE m.type = 'purchase';
+  JOIN companies c ON c.id = m.tenant_id
+  JOIN expenses e ON e.id = m.related_expense_id
+ GROUP BY c.name;
 SQL

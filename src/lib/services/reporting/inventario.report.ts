@@ -15,10 +15,13 @@
  * 0032) hasta ese día. Que esa cuenta dé bien es lo que arregló la migration
  * 0035: antes, de 7 productos con movimientos, 7 no reconstruían.
  *
- * ── EL DÍA ES EL DEL COMERCIO ─────────────────────────────────────────────
- * La base corre en UTC: un movimiento de las 23:30 del 31/07 en Ushuaia es el
- * 01/08 en UTC y se caería del inventario del cierre. Misma regla que
- * `panel.report.ts`: toda frontera de tiempo pasa por `AT TIME ZONE`.
+ * ── UN SOLO RELOJ: EL DÍA EN QUE PASÓ ─────────────────────────────────────
+ * La cantidad y los lotes se filtran por la MISMA fecha de negocio:
+ * `stock_movements.fecha` y `expenses.fecha` (migration 0037). Antes la
+ * cantidad miraba `created_at` —cuándo se cargó— y un comprobante de julio
+ * cargado en septiembre quedaba de un lado del cierre para la cantidad y del
+ * otro para el lote. La fecha de un movimiento ya viene en el día del comercio
+ * (la calcula la columna en esa zona), así que acá no hace falta `AT TIME ZONE`.
  *
  * La aritmética vive en `domain/inventario.ts` (pura, testeada aparte). Acá
  * sólo se lee y se arma.
@@ -29,7 +32,6 @@ import { db } from '../../db/client.js';
 import { GASTO_VIGENTE_SQL } from '../../db/schema/expenses.js';
 import { requireTracingContext } from '../../tracing/context.js';
 import { CrossTenantAccessError } from '../../multi_tenant/errors.js';
-import { TZ_COMERCIO } from './panel.report.js';
 import { csvArmar, csvNum, csvTxt } from './csv.js';
 import {
   valorizarProducto,
@@ -95,7 +97,11 @@ export interface InventarioAlCierre {
   sin_valorizar_productos: number;
   /** Productos con stock que quedaron fuera por no llevar control de stock. */
   sin_tracking: number;
-  /** Productos con unidades sin compra asociada. Siempre va a haber algunos. */
+  /**
+   * Productos con unidades sin compra asociada QUE SÍ se valorizaron al costo
+   * declarado — los que componen `sin_compra_total`. Los sin costo van aparte,
+   * en `sin_valorizar_productos`.
+   */
   con_unidades_sin_compra: number;
 }
 
@@ -194,7 +200,9 @@ export async function getInventarioAlCierre(
       LEFT JOIN stock_movements m
              ON m.product_id = p.id
             AND m.tenant_id = p.tenant_id
-            AND (m.created_at AT TIME ZONE ${TZ_COMERCIO})::date <= ${fechaCierre}::date
+            -- El dia en que el movimiento PASO (migration 0037), no cuando se
+            -- cargo: es el mismo reloj que usan los lotes (expenses.fecha).
+            AND m.fecha <= ${fechaCierre}::date
      WHERE p.tenant_id = ${tenantId}
        AND p.stock_tracking_enabled
      GROUP BY p.id, p.name, p.sku, p.cost
@@ -289,7 +297,12 @@ export async function getInventarioAlCierre(
 
     conCompra = conCompra.plus(v.con_compra_total);
     sinCompra = sinCompra.plus(v.sin_compra_total ?? 0);
-    if (new Decimal(v.sin_compra_qty).gt(0)) conSinCompra += 1;
+    // Sólo los que están DENTRO de `sin_compra_total`: un producto sin costo
+    // tiene unidades sin compra pero no suma a ese monto, y ya lo cuenta
+    // `sin_valorizar_productos`. La pantalla pone este N al lado de ese $.
+    if (new Decimal(v.sin_compra_qty).gt(0) && v.sin_compra_total !== null) {
+      conSinCompra += 1;
+    }
     if (v.sin_costo || v.anomalia) {
       sinValorizar = sinValorizar.plus(v.sin_valorizar_qty);
       sinValorizarProductos += 1;

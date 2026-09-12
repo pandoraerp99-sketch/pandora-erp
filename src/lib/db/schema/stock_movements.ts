@@ -20,6 +20,7 @@ import { sql } from 'drizzle-orm';
 import {
   bigserial,
   check,
+  date,
   index,
   numeric,
   pgTable,
@@ -81,7 +82,9 @@ export const stock_movements = pgTable(
 
     // FK opcionales — uno O el otro, no ambos (CHECK constraint).
     // related_sale_id: SOLO cuando type='sale' (o 'return' de venta previa)
-    // related_expense_id: cuando type='purchase' — el comprobante de compra.
+    // related_expense_id: el comprobante de compra — en el `purchase` que lo
+    //   entró y, desde la migration 0037, también en el `adjustment`/out que lo
+    //   revierte al anularlo. Para saber si una fila ES la compra, mirar `type`.
     //
     // Hasta la migration 0034 esto era `related_purchase_id`, un uuid sin FK
     // que esperaba una tabla `purchases` que no va a existir: la compra ES un
@@ -102,9 +105,27 @@ export const stock_movements = pgTable(
     // Tracing — heredado del context cuando aplica.
     correlation_id: uuid('correlation_id'),
 
+    // El día en que el movimiento PASÓ (migration 0037) — lo que leen los
+    // reportes. `created_at` es cuándo se escribió la fila, y no es lo mismo:
+    // un comprobante de julio se carga en septiembre.
+    //
+    //  * purchase                 → la fecha del comprobante.
+    //  * reversa de una anulación → la del comprobante original.
+    //  * todo lo demás            → el día del comercio en que se cargó (default).
+    fecha: date('fecha', { mode: 'string' })
+      .notNull()
+      .default(sql`(now() AT TIME ZONE 'America/Argentina/Ushuaia')::date`),
+
     created_at: createdAt(),
   },
   (table) => ({
+    // El inventario al cierre suma el libro hasta una fecha (migration 0037).
+    tenantProductFechaIdx: index('stock_movements_tenant_product_fecha_idx').on(
+      table.tenant_id,
+      table.product_id,
+      table.fecha
+    ),
+
     // Index para query "movimientos de este producto en este tenant" (típico
     // en reportes de kardex + cálculo de stock actual via SUM).
     tenantProductIdx: index('stock_movements_tenant_product_idx').on(
