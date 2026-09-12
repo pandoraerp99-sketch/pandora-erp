@@ -13,7 +13,7 @@
  *
  * Todo con Decimal: es plata (CLAUDE.md §9.8, prohibido Number en ese camino).
  */
-import { and, eq, gt, gte, inArray, lt, sql } from 'drizzle-orm';
+import { and, eq, gte, lt, sql } from 'drizzle-orm';
 import Decimal from 'decimal.js';
 import { db } from '../../db/client.js';
 import {
@@ -26,7 +26,7 @@ import {
   type ExpenseCategory,
   type ExpensePaymentMethod,
 } from '../../db/schema/expenses.js';
-import { expense_items } from '../../db/schema/expense_items.js';
+import { expense_items, type ExpenseItem } from '../../db/schema/expense_items.js';
 import { products } from '../../db/schema/products.js';
 import { terceros } from '../../db/schema/terceros.js';
 import { cash_movements } from '../../db/schema/cash_movements.js';
@@ -296,13 +296,9 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
     // Si el gasto se guardara y los movimientos no, el comercio tendría el
     // comprobante cargado y la mercadería invisible — que es exactamente el
     // agujero que este módulo vino a cerrar.
-    // Costo candidato por producto. Si el mismo producto aparece en DOS líneas
-    // del comprobante (bonificación por cantidad: 10 a 800 y 5 a 780), gana la
-    // última línea cargada — dentro de un mismo comprobante no hay otra fecha
-    // que las distinga.
-    const costoCandidato = new Map<string, Decimal>();
+    const tocados = new Set<string>();
 
-    for (const linea of items) {
+    for (const [indice, linea] of items.entries()) {
       const [producto] = await tx
         .select({ id: products.id, name: products.name })
         .from(products)
@@ -321,6 +317,10 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
       await tx.insert(expense_items).values({
         tenant_id: tenantId,
         expense_id: fila.id,
+        // El renglón del papel, en el orden en que se cargó (migration 0036).
+        // Es lo que hace que el detalle se relea siempre igual y que anular
+        // pueda decidir qué línea fija el costo.
+        linea: indice + 1,
         product_id: linea.product_id,
         qty: qty.toFixed(4),
         unit_cost: costo.toFixed(4),
@@ -351,50 +351,10 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
         throw e;
       }
 
-      costoCandidato.set(linea.product_id, costo);
+      tocados.add(linea.product_id);
     }
 
-    // ── `products.cost` = costo de la ÚLTIMA COMPRA, por FECHA ──────────────
-    //
-    // Sin esto, `cost` queda a mantenimiento manual y el margen se calcula
-    // contra un número que nadie actualiza. Con esto, Rentabilidad mide contra
-    // lo que realmente se pagó la última vez — y `unit_cost_snapshot` congela
-    // ese valor en cada venta, así que el margen histórico no se reescribe
-    // cuando el proveedor aumenta.
-    //
-    // 🔴 "Última compra" es por **fecha del comprobante**, no por orden de
-    // carga. Cargar en septiembre una factura de marzo que quedó traspapelada
-    // es normal, y escribir el costo de marzo encima del de septiembre haría
-    // que el margen de todas las ventas siguientes se calcule contra un precio
-    // viejo. El número resultante parece razonable: nada avisa.
-    //
-    // Empate de fecha → gana este comprobante, que es el que se está cargando
-    // ahora (mismo criterio que "la última línea gana" arriba).
-    const tocados = [...costoCandidato.keys()];
-    if (tocados.length > 0) {
-      const conCompraPosterior = await tx
-        .selectDistinct({ product_id: expense_items.product_id })
-        .from(expense_items)
-        .innerJoin(expenses, eq(expense_items.expense_id, expenses.id))
-        .where(
-          and(
-            eq(expense_items.tenant_id, tenantId),
-            inArray(expense_items.product_id, tocados),
-            gt(expenses.fecha, fila.fecha),
-            // Una compra anulada no manda el costo de nada.
-            GASTO_VIGENTE
-          )
-        );
-      const pisados = new Set(conCompraPosterior.map((r) => r.product_id));
-
-      for (const [productId, costo] of costoCandidato) {
-        if (pisados.has(productId)) continue;
-        await tx
-          .update(products)
-          .set({ cost: costo.toFixed(4), updated_at: new Date() })
-          .where(and(eq(products.tenant_id, tenantId), eq(products.id, productId)));
-      }
-    }
+    await recalcularCostoUltimaCompra(tx, tenantId, [...tocados]);
 
     logger.info(
       {
@@ -411,6 +371,73 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
 
     return fila;
   });
+}
+
+/**
+ * Deja `products.cost` en el costo de la **última compra vigente** de cada
+ * producto, o en NULL si no le queda ninguna.
+ *
+ * ── LA REGLA, EN UN SOLO LUGAR ────────────────────────────────────────────
+ * "Última" se resuelve por, en este orden: fecha del comprobante, cuándo se
+ * cargó, y número de renglón. Las tres hacen falta:
+ *
+ *  - **Fecha del comprobante**, no orden de carga: cargar en septiembre una
+ *    factura de marzo que quedó traspapelada es normal, y escribir el costo de
+ *    marzo encima del de septiembre haría que el margen de todas las ventas
+ *    siguientes se calcule contra un precio viejo, con un número que parece
+ *    perfectamente razonable.
+ *  - **Cuándo se cargó**, para desempatar dos comprobantes de la misma fecha.
+ *  - **Renglón** (migration 0036), para el mismo producto dos veces en un
+ *    comprobante — la bonificación por cantidad: 10 a 800 y 5 a 780. Sin esta
+ *    columna las dos filas comparten `created_at` y el desempate sería azar.
+ *
+ * 🔴 Si no queda NINGUNA compra vigente (se anuló la única), el costo va a
+ * **NULL, no al valor anterior**: la única fuente de costo que el sistema tiene
+ * es una compra, y la que lo había fijado acaba de dejar de existir. Dejar el
+ * número sería afirmar el costo de un comprobante anulado; NULL es "no sé", que
+ * el bloque de Rentabilidad ya sabe mostrar como hueco en vez de rellenarlo.
+ * Cuesta: si el costo había sido tipeado a mano en el alta, se pierde. Se
+ * prefiere perder un dato declarado antes que conservar uno desmentido.
+ */
+async function recalcularCostoUltimaCompra(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  tenantId: string,
+  productIds: string[]
+): Promise<void> {
+  if (productIds.length === 0) return;
+
+  // Sin alias en `expenses`: `GASTO_VIGENTE_SQL` nombra la tabla, que es lo que
+  // permite que la regla de "vigente" viva escrita una sola vez.
+  const ultimas = await tx.execute<{ product_id: string; unit_cost: string }>(sql`
+    SELECT DISTINCT ON (expense_items.product_id)
+           expense_items.product_id,
+           expense_items.unit_cost::text AS unit_cost
+      FROM expense_items
+      JOIN expenses ON expenses.id = expense_items.expense_id
+     WHERE expense_items.tenant_id = ${tenantId}
+       AND expense_items.product_id IN (${sql.join(
+         productIds.map((id) => sql`${id}::uuid`),
+         sql`, `
+       )})
+       AND ${GASTO_VIGENTE_SQL}
+     ORDER BY expense_items.product_id,
+              expenses.fecha DESC,
+              expenses.created_at DESC,
+              expense_items.linea DESC
+  `);
+
+  const costoDe = new Map(ultimas.map((f) => [f.product_id, f.unit_cost]));
+
+  for (const productId of productIds) {
+    const costo = costoDe.get(productId) ?? null;
+    await tx
+      .update(products)
+      .set({
+        cost: costo === null ? null : new Decimal(costo).toFixed(4),
+        updated_at: new Date(),
+      })
+      .where(and(eq(products.tenant_id, tenantId), eq(products.id, productId)));
+  }
 }
 
 export interface AnulacionGasto {
@@ -632,6 +659,15 @@ export async function annulExpense(input: AnulacionGasto): Promise<Expense> {
 
     if (!fila) throw new Error('Insert de anulacion no devolvio fila');
 
+    // Recién ACÁ, con la fila de anulación ya insertada, el original dejó de
+    // estar vigente — así que el recálculo ya no lo ve. Antes de este insert
+    // habría vuelto a elegir el costo del comprobante que se está anulando.
+    await recalcularCostoUltimaCompra(
+      tx,
+      tenantId,
+      [...new Set(lineas.map((l) => l.product_id))]
+    );
+
     logger.info(
       {
         expense_id: original.id,
@@ -645,6 +681,81 @@ export async function annulExpense(input: AnulacionGasto): Promise<Expense> {
 
     return fila;
   });
+}
+
+/**
+ * El detalle de una compra: los renglones tal como se cargaron.
+ *
+ * Ordenado por `linea` (migration 0036) y no por `created_at`, porque las
+ * líneas de un mismo comprobante se insertan en una sola transacción y
+ * comparten el timestamp: sin el renglón, el mismo detalle se releería hoy en
+ * un orden y mañana en otro, y no se podría cotejar contra el papel.
+ *
+ * Devuelve el nombre **snapshot**, no el actual del producto: si mañana lo
+ * renombran, el comprobante viejo tiene que seguir diciendo lo que decía.
+ */
+export async function getExpenseItems(expenseId: string): Promise<ExpenseItem[]> {
+  const { tenantId } = ctx();
+  return db
+    .select()
+    .from(expense_items)
+    .where(
+      and(
+        eq(expense_items.tenant_id, tenantId),
+        eq(expense_items.expense_id, expenseId)
+      )
+    )
+    .orderBy(expense_items.linea);
+}
+
+/**
+ * Los gastos ANULADOS del rango: el original con su anulación al lado.
+ *
+ * 🔴 Existe porque anular hace desaparecer el gasto de todas las demás
+ * lecturas: el original deja de estar vigente (alguien lo apunta) y la fila de
+ * anulación vale 0. Para el CSV del estudio eso es exactamente lo correcto —
+ * un comprobante anulado no se informa — pero en la pantalla el comerciante ve
+ * que el gasto se evapora, y no tiene forma de distinguir "lo anulé" de
+ * "apreté mal y borré algo".
+ *
+ * Mismo criterio que los medios de pago corregidos en el cierre de caja
+ * (ADR-0026): no se esconden, se muestran donde corresponde y no suman.
+ */
+export interface GastoAnulado {
+  [k: string]: string | null;
+  id: string;
+  fecha: string;
+  categoria: string;
+  payee_name: string | null;
+  comprobante_numero: string | null;
+  total: string;
+  motivo: string | null;
+  anulado_el: string;
+}
+
+export async function listAnnulledExpenses(
+  desde: string,
+  hasta: string
+): Promise<GastoAnulado[]> {
+  const { tenantId } = ctx();
+  return db.execute<GastoAnulado>(sql`
+    SELECT o.id::text          AS id,
+           o.fecha::text       AS fecha,
+           o.categoria,
+           o.payee_name,
+           o.comprobante_numero,
+           o.total::text       AS total,
+           -- El motivo se guarda como "ANULADO: <motivo>" en la descripción de
+           -- la fila de anulación; se devuelve limpio para la pantalla.
+           regexp_replace(a.descripcion, '^ANULADO: ', '') AS motivo,
+           a.created_at::text  AS anulado_el
+      FROM expenses a
+      JOIN expenses o ON o.id = a.corrects_id
+     WHERE a.tenant_id = ${tenantId}
+       AND o.fecha >= ${desde}
+       AND o.fecha <  ${hasta}
+     ORDER BY a.created_at DESC
+  `);
 }
 
 /** Gastos de un rango, del más nuevo al más viejo. */

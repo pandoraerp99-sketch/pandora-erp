@@ -24,7 +24,17 @@
  * a cargarlo. La anulación por supersede asume que las líneas del comprobante
  * anulado quedan congeladas tal como se cargaron.
  */
-import { index, numeric, pgTable, text, timestamp, uuid, check } from 'drizzle-orm/pg-core';
+import {
+  index,
+  integer,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uuid,
+  check,
+} from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { companies } from './companies.js';
 import { expenses } from './expenses.js';
@@ -46,6 +56,17 @@ export const expense_items = pgTable(
     product_id: uuid('product_id')
       .notNull()
       .references(() => products.id, { onDelete: 'restrict' }),
+
+    /**
+     * El renglón del papel (1, 2, 3…). Columna de ORDEN, no de negocio.
+     *
+     * Dos líneas del mismo comprobante se insertan en la misma transacción y
+     * comparten `created_at` al milisegundo (en Postgres `now()` es el arranque
+     * de la transacción), así que sin esto el detalle se relee en orden
+     * arbitrario — y anular no puede decidir determinísticamente qué línea fija
+     * `products.cost`. Migration 0036.
+     */
+    linea: integer('linea').notNull(),
 
     /** Unidades que entraron. Decimal por los productos que se venden por kg/m/l. */
     qty: numeric('qty', { precision: 19, scale: 4 }).notNull(),
@@ -83,6 +104,10 @@ export const expense_items = pgTable(
       'expense_items_cost_no_negativo',
       sql`${table.unit_cost} >= 0`
     ),
+    lineaPositivaCheck: check('expense_items_linea_positiva', sql`${table.linea} > 0`),
+    // Dos renglones no pueden ser el mismo renglón. Además de la integridad, es
+    // lo que hace determinístico el desempate al recalcular el costo.
+    lineaUq: unique('expense_items_linea_uq').on(table.expense_id, table.linea),
   })
 );
 

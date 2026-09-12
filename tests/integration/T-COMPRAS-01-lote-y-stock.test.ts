@@ -30,6 +30,7 @@ import { generateCorrelationId, generateRequestId } from '@/lib/tracing/ids';
 import {
   registerExpense,
   annulExpense,
+  getExpenseItems,
   ExpenseError,
 } from '@/lib/services/expenses/expense.service';
 import { recordStockMovement } from '@/lib/inventory';
@@ -333,6 +334,106 @@ describe('T-COMPRAS-01 — Compra de mercadería', () => {
     expect((await stockDe(bizcochos))?.cost).toBe('90.0000');
     // El stock sí entra igual: la mercadería llegó, sin importar la fecha.
     expect((await stockDe(bizcochos))?.stock_current).toBe('25.0000');
+  });
+
+  it('🔴 anular la última compra devuelve el costo al de la compra anterior', async () => {
+    const te = crypto.randomUUID();
+    await db.insert(products).values({
+      id: te,
+      tenant_id: tenant,
+      name: 'Té en saquitos',
+      unit_type: 'unidad',
+      price: '400.0000',
+      tax_rate: '21.00',
+      stock_current: '0.0000',
+      stock_tracking_enabled: true,
+      is_active: true,
+      cost: null,
+    });
+
+    const vieja = await conCtx(() =>
+      registerExpense({
+        fecha: '2026-02-01',
+        categoria: 'mercaderia',
+        total: '1000',
+        medio_pago: 'transferencia',
+        items: [{ product_id: te, qty: '10', unit_cost: '100' }],
+      })
+    );
+    const nueva = await conCtx(() =>
+      registerExpense({
+        fecha: '2026-05-01',
+        categoria: 'mercaderia',
+        total: '1300',
+        medio_pago: 'transferencia',
+        items: [{ product_id: te, qty: '10', unit_cost: '130' }],
+      })
+    );
+    expect((await stockDe(te))?.cost).toBe('130.0000');
+
+    // Se anula la de mayo: la última compra que queda es la de febrero.
+    await conCtx(() =>
+      annulExpense({ expense_id: nueva.id, motivo: 'la cargué dos veces' })
+    );
+    // Dejar 130 sería afirmar el costo de un comprobante anulado, y el margen
+    // de cada venta siguiente se calcularía contra él sin que nada avise.
+    expect((await stockDe(te))?.cost).toBe('100.0000');
+    expect((await stockDe(te))?.stock_current).toBe('10.0000');
+
+    // Y si se anula TAMBIÉN la única que quedaba, el costo pasa a NULL: la
+    // única fuente de costo que el sistema tiene es una compra, y ya no hay.
+    // NULL es "no sé", que Rentabilidad muestra como hueco; un número viejo
+    // sería una afirmación desmentida.
+    await conCtx(() =>
+      annulExpense({ expense_id: vieja.id, motivo: 'era de otro comercio' })
+    );
+    expect((await stockDe(te))?.cost).toBeNull();
+    expect((await stockDe(te))?.stock_current).toBe('0.0000');
+  });
+
+  it('🔴 el detalle se relee en el orden en que se cargó', async () => {
+    const galletitas = crypto.randomUUID();
+    const fideos = crypto.randomUUID();
+    const aceite = crypto.randomUUID();
+    const comun = {
+      tenant_id: tenant,
+      unit_type: 'unidad' as const,
+      price: '900.0000',
+      tax_rate: '21.00',
+      stock_current: '0.0000',
+      stock_tracking_enabled: true,
+      is_active: true,
+    };
+    await db.insert(products).values([
+      { ...comun, id: galletitas, name: 'Galletitas' },
+      { ...comun, id: fideos, name: 'Fideos' },
+      { ...comun, id: aceite, name: 'Aceite' },
+    ]);
+
+    const gasto = await conCtx(() =>
+      registerExpense({
+        fecha: '2026-06-01',
+        categoria: 'mercaderia',
+        total: '3000',
+        medio_pago: 'transferencia',
+        items: [
+          { product_id: galletitas, qty: '10', unit_cost: '100' },
+          { product_id: fideos, qty: '10', unit_cost: '100' },
+          { product_id: aceite, qty: '10', unit_cost: '100' },
+        ],
+      })
+    );
+
+    // Las 3 filas se insertan en la MISMA transacción y comparten `created_at`
+    // al milisegundo: sin `linea` (migration 0036) este orden sería azar, y una
+    // factura de 8 renglones no se podría cotejar contra el papel.
+    const detalle = await conCtx(() => getExpenseItems(gasto.id));
+    expect(detalle.map((d) => d.linea)).toEqual([1, 2, 3]);
+    expect(detalle.map((d) => d.product_name_snapshot)).toEqual([
+      'Galletitas',
+      'Fideos',
+      'Aceite',
+    ]);
   });
 
   it('el detalle tiene que cerrar contra el comprobante', async () => {

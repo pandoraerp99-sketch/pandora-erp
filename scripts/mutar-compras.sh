@@ -39,8 +39,8 @@ echo "=== MUTACIONES ==="
 python3 - <<'PY'
 p = 'src/lib/services/expenses/expense.service.ts'
 s = open(p, encoding='utf-8').read()
-s = s.replace(".set({ cost: costo.toFixed(4), updated_at: new Date() })",
-              ".set({ cost: costo.times('1.21').toFixed(4), updated_at: new Date() })", 1)
+s = s.replace("cost: costo === null ? null : new Decimal(costo).toFixed(4),",
+              "cost: costo === null ? null : new Decimal(costo).times('1.21').toFixed(4),", 1)
 open(p, 'w', encoding='utf-8').write(s)
 PY
 probar "M1 costo en BRUTO (margenes ~21% subestimados)"
@@ -101,6 +101,47 @@ open(p, 'w', encoding='utf-8').write(s)
 PY
 probar "M6 reconcilia contra el TOTAL (ignora que el IVA se recupera)"
 
+# M7: anular no recalcula el costo (queda el de un comprobante anulado).
+python3 - <<'PY'
+p = 'src/lib/services/expenses/expense.service.ts'
+s = open(p, encoding='utf-8').read()
+s = s.replace("""    await recalcularCostoUltimaCompra(
+      tx,
+      tenantId,
+      [...new Set(lineas.map((l) => l.product_id))]
+    );""", "", 1)
+open(p, 'w', encoding='utf-8').write(s)
+PY
+probar "M7 anular deja el costo del comprobante anulado"
+
+# M8: sin compras vigentes el costo se deja como esta, en vez de ir a NULL.
+python3 - <<'PY'
+p = 'src/lib/services/expenses/expense.service.ts'
+s = open(p, encoding='utf-8').read()
+s = s.replace("    const costo = costoDe.get(productId) ?? null;",
+              "    const costo = costoDe.get(productId);\n    if (costo === undefined) continue;", 1)
+open(p, 'w', encoding='utf-8').write(s)
+PY
+probar "M8 sin compras vigentes el costo queda en el valor desmentido"
+
+# M9: el desempate dentro del comprobante toma el PRIMER renglon.
+python3 - <<'PY'
+p = 'src/lib/services/expenses/expense.service.ts'
+s = open(p, encoding='utf-8').read()
+s = s.replace("              expense_items.linea DESC", "              expense_items.linea ASC", 1)
+open(p, 'w', encoding='utf-8').write(s)
+PY
+probar "M9 el costo lo fija el primer renglon y no el ultimo"
+
+# M10: todas las lineas se numeran igual (el orden del papel se pierde).
+python3 - <<'PY'
+p = 'src/lib/services/expenses/expense.service.ts'
+s = open(p, encoding='utf-8').read()
+s = s.replace("        linea: indice + 1,", "        linea: 1,", 1)
+open(p, 'w', encoding='utf-8').write(s)
+PY
+probar "M10 todas las lineas con el mismo numero de renglon"
+
 echo
 echo "=== CONTROL: restaurado tiene que pasar ==="
 restaurar
@@ -111,4 +152,4 @@ else
   echo "  FALLA — restaurado NO pasa"
   tail -25 /tmp/mut-compras.txt
 fi
-echo "TOTAL de mutaciones probadas: 6"
+echo "TOTAL de mutaciones probadas: 10"
