@@ -147,3 +147,38 @@ describe('T-PER-01 — el grano nuevo entra sin romper los otros', () => {
     }
   });
 });
+
+/**
+ * El período se elige con el calendario del COMERCIO.
+ *
+ * Ushuaia está tres horas atrás de UTC. Entre las 21:00 y la medianoche del
+ * último día de un mes, el reloj UTC ya está en el mes siguiente: sin esto, a
+ * esa hora la pantalla de la contadora mostraba el mes que todavía no empezó.
+ */
+describe('T-PER-01 — el calendario es el del comercio, no el de UTC', () => {
+  // 31/07/2026 22:00 en Ushuaia = 01/08/2026 01:00 UTC.
+  const nocheDel31deJulio = new Date('2026-08-01T01:00:00.000Z');
+
+  it('a las 22:00 del 31/07 el mes sigue siendo julio', () => {
+    const p = periodoDe('mes', nocheDel31deJulio);
+    expect(iso(p.desde)).toBe('2026-07-01');
+    expect(iso(p.hasta)).toBe('2026-08-01');
+  });
+
+  it('a las 22:00 del 30/06 el trimestre sigue siendo el segundo', () => {
+    const p = periodoDe('trimestre', new Date('2026-07-01T01:00:00.000Z'));
+    expect(iso(p.desde)).toBe('2026-04-01');
+  });
+
+  it('a las 22:00 del 31/12 el año sigue siendo el que termina', () => {
+    const p = periodoDe('anio', new Date('2027-01-01T01:00:00.000Z'));
+    expect(iso(p.desde)).toBe('2026-01-01');
+  });
+
+  it('EL BORDE DEL EJERCICIO: a las 22:00 del día de cierre, ese ejercicio todavía no cerró', () => {
+    // Cierra el 31/07. A las 22:00 de ese día el ejercicio 2025-2026 está en
+    // su última hora: el último CERRADO sigue siendo el anterior.
+    const p = periodoDeEjercicio(7, nocheDel31deJulio);
+    expect(iso(p.hasta)).toBe('2025-08-01');
+  });
+});

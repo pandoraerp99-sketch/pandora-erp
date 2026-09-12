@@ -16,6 +16,7 @@ import { companies } from '@/lib/db/schema/companies';
 import { users, company_users } from '@/lib/db/schema/users';
 import { sales } from '@/lib/db/schema/sales';
 import { sale_payments } from '@/lib/db/schema/sale_payments';
+import { cash_sessions } from '@/lib/db/schema/cash_sessions';
 import { withTracingContext } from '@/lib/tracing/context';
 import { generateCorrelationId, generateRequestId } from '@/lib/tracing/ids';
 import {
@@ -128,6 +129,7 @@ describe('T-CONT-02 — resumen contable', () => {
         );
       }
       await tx.delete(sales).where(inArray(sales.tenant_id, ids));
+      await tx.delete(cash_sessions).where(inArray(cash_sessions.tenant_id, ids));
       await tx.delete(company_users).where(eq(company_users.company_id, tenantId));
       await tx.delete(users).where(eq(users.id, userId));
       await tx.delete(companies).where(inArray(companies.id, ids));
@@ -208,6 +210,68 @@ describe('T-CONT-02 — resumen contable', () => {
 
     const filas = await withCtx(() => getVentasParaExport(periodo));
     expect(filas.length).toBe(2);
+  });
+
+  // ── El mes es el del COMERCIO, no el de UTC ────────────────────────────────
+  //
+  // `periodo.desde` es la medianoche UTC del día 1. En Ushuaia (UTC-3) el mes
+  // arranca tres horas DESPUÉS. Una venta de las 22:30 del último día del mes
+  // anterior es, en UTC, la 01:30 del día 1: si el corte se hace en UTC, esa
+  // venta se muda de mes. El test de borde de arriba no lo ve porque su
+  // "justo antes" (23:59:59 UTC) es las 20:59 en Ushuaia: lejos del corte real.
+
+  /** 22:30 en Ushuaia del último día del mes ANTERIOR (= 01:30 UTC del día 1). */
+  const nocheDelMesAnterior = new Date(periodo.desde.getTime() + 90 * 60_000);
+
+  it('🔴 una venta de las 22:30 del último día del mes anterior NO entra al mes', async () => {
+    const saleId = await venta({ cuando: nocheDelMesAnterior, neto: '5000.00' });
+    await db.insert(sale_payments).values({
+      tenant_id: tenantId,
+      sale_id: saleId,
+      method: 'efectivo',
+      amount: '6050.00',
+    });
+    await venta({ cuando: dentro, neto: '1000.00' });
+
+    const r = await withCtx(() => getResumenContable(periodo));
+    expect(r.ventas.cantidad).toBe(1);
+    expect(Number(r.ventas.neto)).toBe(1000);
+    // Los cobros tienen su propia consulta: tienen que cortar igual.
+    expect(r.medios).toHaveLength(0);
+
+    const filas = await withCtx(() => getVentasParaExport(periodo));
+    expect(filas).toHaveLength(1);
+  });
+
+  it('🔴 un cierre de caja de las 22:30 del último día del mes anterior NO entra al mes', async () => {
+    await db.insert(cash_sessions).values({
+      tenant_id: tenantId,
+      sale_point: 1,
+      initial_amount: '1000.0000',
+      opened_by: userId,
+      opened_at: new Date(nocheDelMesAnterior.getTime() - 8 * 3_600_000),
+      closed_at: nocheDelMesAnterior,
+      closed_by: userId,
+      final_amount: '900.0000',
+      expected_amount: '1000.0000',
+      descuadre: '-100.0000',
+      discrepancy_reason: 'faltante del test',
+    });
+
+    const r = await withCtx(() => getResumenContable(periodo));
+    expect(r.caja.cierres).toBe(0);
+  });
+
+  it('🔴 el CSV fecha cada venta con el día del comercio, no el de UTC', async () => {
+    // 22:30 del día 14 en Ushuaia = 01:30 UTC del día 15.
+    const nocheDel14 = new Date(periodo.desde.getTime() + 13 * 86_400_000 + 25.5 * 3_600_000);
+    await venta({ cuando: nocheDel14 });
+
+    const filas = await withCtx(() => getVentasParaExport(periodo));
+    const dia14 = new Date(periodo.desde.getTime() + 13 * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    expect(filas[0]?.fecha).toBe(dia14);
   });
 });
 

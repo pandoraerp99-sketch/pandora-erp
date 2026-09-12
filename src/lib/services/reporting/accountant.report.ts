@@ -22,6 +22,8 @@ import { GASTO_VIGENTE_SQL } from '../../db/schema/expenses.js';
 import { requireTracingContext } from '../../tracing/context.js';
 import { CrossTenantAccessError } from '../../multi_tenant/errors.js';
 import { csvArmar, csvNum, csvTxt } from './csv.js';
+import { TZ_COMERCIO } from './panel.report.js';
+import { diaDelComercio } from '../../domain/fecha-comercio.js';
 
 function requireTenantId(): string {
   const ctx = requireTracingContext();
@@ -60,12 +62,41 @@ export async function getMesCierreEjercicio(): Promise<number> {
   return c?.mes ?? 12;
 }
 
+/**
+ * Un rango de DÍAS DEL CALENDARIO DEL COMERCIO.
+ *
+ * ── `desde` Y `hasta` SON DÍAS, NO INSTANTES ──────────────────────────────
+ * Cada uno es la medianoche UTC del día que representa: `hasta` = 01/08 quiere
+ * decir "el 1 de agosto", no "el 1 de agosto a las 00:00 UTC". Así se leen
+ * igual en cualquier zona con `toISOString().slice(0, 10)`.
+ *
+ * Contra una columna `date` (`expenses.fecha`) se comparan directo. Contra un
+ * `timestamptz` (`created_at`, `closed_at`) NO: el día del comercio arranca a
+ * las 03:00 UTC, y comparar contra la medianoche UTC muda de mes todo lo que
+ * pasó entre las 21:00 y la medianoche del último día. Para eso está
+ * `inicioDelDia`.
+ */
 export interface Periodo {
   /** Primer día, inclusive. */
   desde: Date;
   /** Primer día del mes siguiente, EXCLUSIVE. */
   hasta: Date;
   etiqueta: string;
+}
+
+/** Año y mes (0-11) del calendario del comercio en un instante. */
+function calendarioDelComercio(fecha: Date): { y: number; m: number } {
+  const [y, m] = diaDelComercio(fecha).split('-').map(Number);
+  return { y: y!, m: m! - 1 };
+}
+
+/**
+ * El instante en que empieza, en Ushuaia, el día que representa `d` — para
+ * comparar contra `timestamptz` sin mudar de mes lo que pasó a la noche.
+ * Sigue siendo un rango sobre la columna cruda, así que usa el índice.
+ */
+function inicioDelDia(d: Date) {
+  return sql`(${d.toISOString().slice(0, 10)}::date::timestamp AT TIME ZONE ${TZ_COMERCIO})`;
 }
 
 /**
@@ -99,7 +130,9 @@ export function periodoDe(
   if (grano === 'mes') return mesDe(fecha);
   if (grano === 'ejercicio') return periodoDeEjercicio(mesCierreEjercicio, fecha);
 
-  const y = fecha.getUTCFullYear();
+  // El año y el mes de HOY son los del comercio: a las 22:00 del 31/12 en
+  // Ushuaia, UTC ya está en el año siguiente.
+  const { y, m } = calendarioDelComercio(fecha);
   if (grano === 'anio') {
     return {
       desde: new Date(Date.UTC(y, 0, 1)),
@@ -108,7 +141,7 @@ export function periodoDe(
     };
   }
 
-  const primerMes = Math.floor(fecha.getUTCMonth() / 3) * 3;
+  const primerMes = Math.floor(m / 3) * 3;
   const trimestre = primerMes / 3 + 1;
   return {
     desde: new Date(Date.UTC(y, primerMes, 1)),
@@ -152,8 +185,10 @@ export function periodoDeEjercicio(
   // del año pasado.
   //   mesCierre=7, hoy sep-2026  -> cerró el 31/07/2026 (ya pasó)
   //   mesCierre=7, hoy may-2026  -> cerró el 31/07/2025 (todavía no llegó)
-  const y = fecha.getUTCFullYear();
-  const mesActual = fecha.getUTCMonth() + 1; // 1-12
+  // En el calendario del comercio: a las 22:00 del día de cierre, UTC ya está
+  // en el mes siguiente y daría por cerrado un ejercicio en su última hora.
+  const { y, m } = calendarioDelComercio(fecha);
+  const mesActual = m + 1; // 1-12
   const anioDeCierre = mesActual > mesCierre ? y : y - 1;
 
   // Fin EXCLUSIVE = el día 1 del mes SIGUIENTE al de cierre. `Date.UTC` con
@@ -173,14 +208,11 @@ export function periodoDeEjercicio(
   };
 }
 
-/** El mes calendario de una fecha. Por defecto, el corriente. */
+/** El mes calendario (del comercio) de una fecha. Por defecto, el corriente. */
 export function mesDe(fecha: Date = new Date()): Periodo {
-  const desde = new Date(
-    Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth(), 1)
-  );
-  const hasta = new Date(
-    Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth() + 1, 1)
-  );
+  const { y, m } = calendarioDelComercio(fecha);
+  const desde = new Date(Date.UTC(y, m, 1));
+  const hasta = new Date(Date.UTC(y, m + 1, 1));
   return {
     desde,
     hasta,
@@ -264,8 +296,8 @@ export async function getResumenContable(
         FROM sales
         WHERE tenant_id = ${tenantId}
           AND commercial_status IN ('cobrada', 'terminada')
-          AND created_at >= ${desde}::timestamptz
-          AND created_at <  ${hasta}::timestamptz`
+          AND created_at >= ${inicioDelDia(periodo.desde)}
+          AND created_at <  ${inicioDelDia(periodo.hasta)}`
   );
 
   const medios = await db.execute<{
@@ -280,8 +312,8 @@ export async function getResumenContable(
         JOIN sales s ON s.id = sp.sale_id
         WHERE s.tenant_id = ${tenantId}
           AND s.commercial_status IN ('cobrada', 'terminada')
-          AND s.created_at >= ${desde}::timestamptz
-          AND s.created_at <  ${hasta}::timestamptz
+          AND s.created_at >= ${inicioDelDia(periodo.desde)}
+          AND s.created_at <  ${inicioDelDia(periodo.hasta)}
           -- Activo = fila que nadie apunta con su corrects_id. Es el mismo
           -- criterio que usa el cierre de caja: si se contaran las dos, un
           -- medio reclasificado aparecerian DOS veces.
@@ -323,8 +355,8 @@ export async function getResumenContable(
         FROM cash_sessions
         WHERE tenant_id = ${tenantId}
           AND closed_at IS NOT NULL
-          AND closed_at >= ${desde}::timestamptz
-          AND closed_at <  ${hasta}::timestamptz`
+          AND closed_at >= ${inicioDelDia(periodo.desde)}
+          AND closed_at <  ${inicioDelDia(periodo.hasta)}`
   );
 
   const [gastos] = await db.execute<{
@@ -407,7 +439,9 @@ export async function getVentasParaExport(
 ): Promise<FilaExport[]> {
   const tenantId = requireTenantId();
   return db.execute<FilaExport>(
-    sql`SELECT to_char(s.created_at, 'YYYY-MM-DD')       AS fecha,
+    // La fecha que ve la contadora es el día del comercio: con `to_char` sobre
+    // el timestamptz crudo, una venta de las 22:30 salía con la del día siguiente.
+    sql`SELECT to_char(s.created_at AT TIME ZONE ${TZ_COMERCIO}, 'YYYY-MM-DD') AS fecha,
                coalesce(s.customer_name_snapshot, '')    AS cliente,
                coalesce(s.customer_doc_number, '')       AS doc,
                coalesce(s.customer_tax_condition_snapshot, '') AS condicion,
@@ -419,8 +453,8 @@ export async function getVentasParaExport(
         FROM sales s
         WHERE s.tenant_id = ${tenantId}
           AND s.commercial_status IN ('cobrada', 'terminada')
-          AND s.created_at >= ${periodo.desde.toISOString()}::timestamptz
-          AND s.created_at <  ${periodo.hasta.toISOString()}::timestamptz
+          AND s.created_at >= ${inicioDelDia(periodo.desde)}
+          AND s.created_at <  ${inicioDelDia(periodo.hasta)}
         ORDER BY s.created_at`
   );
 }
