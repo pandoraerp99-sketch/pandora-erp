@@ -19,6 +19,10 @@ import {
   GRANOS,
   type Grano,
 } from '@/lib/services/reporting/accountant.report';
+import {
+  armarCsvInventario,
+  getInventarioAlCierre,
+} from '@/lib/services/reporting/inventario.report';
 
 /**
  * Cambia la empresa que está mirando el contador.
@@ -95,6 +99,37 @@ export async function exportarVentasCsvAction(
       .toISOString()
       .slice(0, 10);
     return { ok: true, csv, nombre: `ventas-${desde}_a_${hasta}.csv` };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : 'No se pudo exportar',
+    };
+  }
+}
+
+/**
+ * CSV del inventario valorizado — ítem 8 del pedido de la contadora.
+ *
+ * Una fila por LOTE, que es lo que el ítem pide: fecha de adquisición, detalle
+ * e importe de compra. Las unidades sin compra van en su propia fila, marcadas
+ * y con la fecha vacía — inventarle una fecha de adquisición a algo que no tiene
+ * comprobante detrás es justo lo que este reporte vino a evitar.
+ *
+ * La fecha la manda la pantalla porque es la que ya está mostrando: el archivo
+ * y lo que se ve tienen que ser el mismo inventario.
+ */
+export async function exportarInventarioCsvAction(
+  fecha: string
+): Promise<{ ok: true; csv: string; nombre: string } | { ok: false; error: string }> {
+  try {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      return { ok: false, error: 'Fecha inválida' };
+    }
+    const csv = await withServerActionTracing(
+      async () => armarCsvInventario(await getInventarioAlCierre(fecha)),
+      { requireAuth: true }
+    );
+    return { ok: true, csv, nombre: `inventario-valorizado-al-${fecha}.csv` };
   } catch (e) {
     return {
       ok: false,

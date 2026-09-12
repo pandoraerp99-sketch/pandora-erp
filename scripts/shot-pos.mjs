@@ -189,11 +189,21 @@ if (ACCION === 'gasto') {
     el.dispatchEvent(new Event('change', { bubbles: true }));
     return true;
   }`;
+  // Parametrizable para poder CARGAR compras de verdad por la pantalla, que es
+  // la unica forma de sembrar data que no miente: pasa por el service, deja el
+  // lote y mueve el stock. Env: PROD (que buscar), QTY, COSTO, FECHA, TOTAL,
+  // GUARDAR=1 para confirmar.
+  const PROD = process.env.PROD || 'a';
+  const QTY = process.env.QTY || '10';
+  const COSTO = process.env.COSTO || '1000';
+  const TOTAL = process.env.TOTAL || '12100';
   await evaluar(`[...document.querySelectorAll('button')].find(b=>/Nuevo gasto/i.test(b.textContent||''))?.click(), true`);
   await dormir(900);
-  await evaluar(`((set) => { set('#gCat','mercaderia'); set('#gTotal','12100'); return true; })(${set})`);
+  await evaluar(`((set) => { set('#gCat','mercaderia'); set('#gTotal',${JSON.stringify(TOTAL)});
+    ${process.env.FECHA ? `set('#gFecha', ${JSON.stringify(process.env.FECHA)});` : ''}
+    return true; })(${set})`);
   await dormir(500);
-  await evaluar(`((set) => set('.det-busc input','a'))(${set})`);
+  await evaluar(`((set) => set('.det-busc input', ${JSON.stringify(PROD)}))(${set})`);
   await dormir(1500);
   console.log('OPCIONES>>>', await evaluar(`JSON.stringify([...document.querySelectorAll('.det-opi .det-opn')].map(e=>e.textContent))`));
   await evaluar(`document.querySelector('.det-opi')?.click(), true`);
@@ -203,8 +213,8 @@ if (ACCION === 'gasto') {
     const poner = (el, v) => { const p = Object.getPrototypeOf(el);
       Object.getOwnPropertyDescriptor(p,'value').set.call(el, v);
       el.dispatchEvent(new Event('input',{bubbles:true})); };
-    if (ins[0]) poner(ins[0], '10');
-    if (ins[1]) poner(ins[1], '1000');
+    if (ins[0]) poner(ins[0], ${JSON.stringify(QTY)});
+    if (ins[1]) poner(ins[1], ${JSON.stringify(COSTO)});
     return ins.length;
   })(${set})`);
   await dormir(700);
@@ -230,6 +240,36 @@ if (ACCION === 'gasto') {
       ' top=' + Math.round(r.top);
   })()`));
   await dormir(400);
+
+  if (process.env.GUARDAR) {
+    await evaluar(`(()=>{const b=[...document.querySelectorAll('.pm-btn.primary')].pop();
+      if(!b || b.disabled) return 'no se puede guardar';
+      b.click(); return 'guardado';})()`);
+    await dormir(2600);
+    console.log('GUARDADO>>>', await evaluar(`JSON.stringify({
+      modalAbierto: !!document.querySelector('.pmod'),
+      error: document.querySelector('.card.glass div[style*="c0384a"]')?.textContent ?? null,
+      filas: document.querySelectorAll('.cl-list .clrow').length,
+    })`));
+  }
+}
+
+if (ACCION === 'inventario') {
+  // /contador: leer el bloque del item 8 y dejarlo a la vista para la captura.
+  // Se leen los NUMEROS, no se mira la foto: una captura linda con la cuenta
+  // mal se ve igual de linda.
+  await evaluar(`(()=>{const t=document.querySelector('.inv-tab'); t && t.scrollIntoView({block:'center'}); return !!t;})()`);
+  await dormir(800);
+  console.log('INVENTARIO>>>', await evaluar(`JSON.stringify({
+    titulo: [...document.querySelectorAll('.card-title h3')].map(h=>h.textContent).find(t=>/Valorizado/.test(t)) ?? null,
+    fecha: [...document.querySelectorAll('.card-title .upper-mini')].map(e=>e.textContent).find(t=>/^al /.test(t)) ?? null,
+    kpis: (()=>{ const t=document.querySelector('.inv-tab'); if(!t) return null;
+      const sec=t.closest('section'); return [...sec.querySelectorAll('.conc-stats > div')].map(d=>
+        d.querySelector('.cs-k').textContent + ': ' + d.querySelector('.cs-v').textContent); })(),
+    filas: [...document.querySelectorAll('.inv-tr')].map(r=>[...r.children].map(c=>c.textContent.replace(/\\s+/g,' ').trim()).join(' | ')),
+    avisos: (()=>{ const t=document.querySelector('.inv-tab'); if(!t) return null;
+      return [...t.closest('section').querySelectorAll('.label-sm')].map(p=>p.textContent.replace(/\\s+/g,' ').trim().slice(0,150)); })(),
+  })`));
 }
 
 if (ACCION === 'anular') {
@@ -483,6 +523,31 @@ const diag = await evaluar(process.env.RUTA === '/clientes' ? `JSON.stringify({
   confirmVisible: (()=>{const b=[...document.querySelectorAll('.paysheet button.cobrar')][0];if(!b)return null;const r=b.getBoundingClientRect();return {top:Math.round(r.top),dentro:r.bottom<=window.innerHeight};})(),
 })`);
 console.log('DIAG', diag);
+
+// Las mediciones de arriba dejan el scroll en 0 (el bloque EVOLUCION lo
+// resetea a propósito). Si lo que se está mirando está más abajo, hay que
+// volver a traerlo ANTES de la foto, o se captura el encabezado.
+if (ACCION === 'inventario') {
+  // El atributo, además del localStorage: si la pantalla lo lee en el boot y
+  // la navegación pasó por otro lado, la captura sale en claro y la variante
+  // oscura queda sin verificar — que es justo donde este proyecto se equivocó
+  // tres veces.
+  if (process.env.TEMA) {
+    await evaluar(`document.documentElement.setAttribute('data-theme', ${JSON.stringify(process.env.TEMA)}), true`);
+    await dormir(400);
+  }
+  await evaluar(`(()=>{const t=document.querySelector('.inv-tab'); t && t.scrollIntoView({block:'center'}); return !!t;})()`);
+  await dormir(700);
+  console.log('CONTRASTE>>>', await evaluar(`JSON.stringify((()=>{
+    const tema = document.documentElement.getAttribute('data-theme');
+    const falta = document.querySelector('.inv-falta');
+    const alerta = document.querySelector('.label-sm.alerta');
+    const fila = document.querySelector('.inv-tr');
+    const col = (e) => e ? getComputedStyle(e).color : null;
+    return { tema, sinCosto: col(falta), alerta: col(alerta), fila: col(fila),
+             fondoTabla: fila ? getComputedStyle(fila.parentElement).backgroundColor : null };
+  })())`));
+}
 
 const shot = await cmd('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
 writeFileSync(OUT, Buffer.from(shot.data, 'base64'));

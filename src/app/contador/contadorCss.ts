@@ -296,4 +296,33 @@ body{ font-family:'Inter',ui-sans-serif,system-ui,sans-serif; -webkit-font-smoot
 /* Los chips de empresa y las filas son <button> de verdad; reset acotado, con
    font-FAMILY y no font, para no pisar los font-size de cada clase. */
 button.emp-chip{ font-family:inherit; border:none; outline:none; cursor:pointer; }
+
+/* ── INVENTARIO VALORIZADO (item 8) ──────────────────────────────────────
+   Tabla compacta: son pocas filas y lo que importa es poder leer una columna
+   de numeros de un saque contra la de al lado. */
+.inv-tab{ margin:14px 0 12px; border:1px solid rgba(13,20,36,0.09); border-radius:12px; overflow:hidden; }
+.inv-th{ display:flex; gap:10px; align-items:center; padding:8px 12px;
+  font-size:10.5px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase;
+  color:var(--ink-3); background:rgba(13,20,36,0.04); }
+.inv-tr{ display:flex; gap:10px; align-items:center; padding:9px 12px;
+  font-size:12.5px; color:var(--ink-1); border-top:1px solid rgba(13,20,36,0.06); }
+.inv-fecha{ display:block; font-style:normal; font-size:10.5px; color:var(--ink-3); margin-top:2px; }
+/* Por CLASE y no por style inline: un hex inline no puede tener variante de
+   tema, y en este proyecto eso ya rompio el modo oscuro dos veces.
+
+   ⚠️ MEDIDO: /contador HOY NO TIENE MODO OSCURO. Forzando data-theme=dark, las
+   variables (--ink-1 y companía) no cambian: este archivo y shellCss las
+   definen una sola vez, y las unicas reglas data-theme del archivo son las de
+   abajo. O sea que estas cinco lineas no hacen nada todavia — se dejan porque
+   son la convencion del resto de las pantallas (gastos tiene 33, clientes 51)
+   y porque el dia que esta pantalla tenga su paleta oscura, el bloque nuevo ya
+   va a estar bien. Lo que NO hay que hacer es dar por verificado el modo
+   oscuro de /contador: no existe. */
+.inv-falta{ color:var(--red); font-weight:600; font-size:11.5px; }
+.label-sm.alerta{ color:var(--red); }
+html[data-theme="dark"] .inv-tab{ border-color:rgba(255,255,255,0.10); }
+html[data-theme="dark"] .inv-th{ background:rgba(255,255,255,0.05); }
+html[data-theme="dark"] .inv-tr{ border-top-color:rgba(255,255,255,0.07); }
+html[data-theme="dark"] .inv-falta,
+html[data-theme="dark"] .label-sm.alerta{ color:#ff9aa9; }
 ` + RESET_CARD_POS;

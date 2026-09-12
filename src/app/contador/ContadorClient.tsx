@@ -22,7 +22,11 @@ import { useRouter } from 'next/navigation';
 import Decimal from 'decimal.js';
 import { AppShell } from '@/components/shell/AppShell';
 import { CONTADOR_CSS } from './contadorCss';
-import { cambiarEmpresaAction, exportarVentasCsvAction } from './actions';
+import {
+  cambiarEmpresaAction,
+  exportarInventarioCsvAction,
+  exportarVentasCsvAction,
+} from './actions';
 
 export type Grano = 'mes' | 'trimestre' | 'anio' | 'ejercicio';
 
@@ -49,7 +53,39 @@ interface Props {
   grano: Grano;
   resumen: ResumenDTO;
   deudores: Array<{ nombre: string; saldo: string }>;
+  inventario: InventarioDTO;
   usuario: string;
+}
+
+/**
+ * Ítem 8 del pedido de la contadora.
+ *
+ * Es una FOTO a una fecha, no un flujo como el resto de la pantalla: por eso
+ * trae su propia `fecha` y el encabezado la muestra. Y trae el `metodo`, porque
+ * un inventario valorizado sin decir con qué criterio se valorizó no se puede
+ * auditar — y ese criterio lo elige el estudio, no nosotros.
+ */
+export interface InventarioDTO {
+  fecha: string;
+  metodo: string;
+  total: string;
+  con_compra_total: string;
+  sin_compra_total: string;
+  sin_valorizar_qty: string;
+  sin_valorizar_productos: number;
+  sin_tracking: number;
+  con_unidades_sin_compra: number;
+  productos: number;
+  filas: Array<{
+    name: string;
+    cantidad: string;
+    con_compra_qty: string;
+    sin_compra_qty: string;
+    total: string;
+    sin_costo: boolean;
+    anomalia: boolean;
+    ultima_compra: string | null;
+  }>;
 }
 
 const PESOS = new Intl.NumberFormat('es-AR', {
@@ -58,6 +94,28 @@ const PESOS = new Intl.NumberFormat('es-AR', {
   maximumFractionDigits: 0,
 });
 const plata = (v: string) => PESOS.format(Number(v));
+
+/**
+ * 'AAAA-MM-DD' → '31 de julio de 2026'.
+ *
+ * Sin `new Date(iso)`: parsear una fecha suelta la interpreta como UTC y la
+ * corre un día para atrás en cualquier huso al oeste, que es el nuestro. Un
+ * inventario "al 30 de julio" cuando dice 31 es un error que nadie nota.
+ */
+const MESES_LARGOS = [
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+];
+function fechaLarga(iso: string): string {
+  const [a, m, d] = iso.split('-');
+  return `${Number(d)} de ${MESES_LARGOS[Number(m) - 1] ?? ''} de ${a}`;
+}
+
+/** Cantidades: sin decimales cuando son enteras, que es el caso normal. */
+function enteroCorto(v: string): string {
+  const n = new Decimal(v);
+  return n.decimalPlaces() === 0 ? n.toFixed(0) : n.toFixed(2).replace('.', ',');
+}
 
 /** Las cifras de la banda superior, con los valores de la maqueta. */
 const CIFRA: React.CSSProperties = {
@@ -157,6 +215,7 @@ export function ContadorClient({
   grano,
   resumen,
   deudores,
+  inventario,
   usuario,
 }: Props) {
   const router = useRouter();
@@ -185,10 +244,15 @@ export function ContadorClient({
     });
   };
 
-  const exportar = () => {
+  /** Baja lo que devuelva la acción. La descarga la arma el navegador. */
+  const bajar = (
+    pedir: () => Promise<
+      { ok: true; csv: string; nombre: string } | { ok: false; error: string }
+    >
+  ) => {
     setError(null);
     startTransition(async () => {
-      const res = await exportarVentasCsvAction(resumen.periodo.desde, grano);
+      const res = await pedir();
       if (!res.ok) {
         setError(res.error);
         return;
@@ -202,6 +266,9 @@ export function ContadorClient({
       URL.revokeObjectURL(url);
     });
   };
+
+  const exportar = () =>
+    bajar(() => exportarVentasCsvAction(resumen.periodo.desde, grano));
 
   // Selector de período, en la topbar como la maqueta.
   const topbarIzq = (
@@ -604,6 +671,136 @@ export function ContadorClient({
                 </b>{' '}
                 son los que hay que mandarle.
               </p>
+            </>
+          )}
+        </section>
+
+        <div className="sec-h2">{H2_ICONO}Inventario de bienes de cambio</div>
+        <section className="card glass">
+          <div className="card-title">
+            <h3>Valorizado al cierre</h3>
+            {/* La FECHA, no el período: esto es un saldo a un día. El resto de
+                la pantalla son flujos, y mezclarlos sin decirlo es cómo se
+                termina mandando al estudio un inventario que no es el del
+                cierre. */}
+            <span className="upper-mini">al {fechaLarga(inventario.fecha)}</span>
+          </div>
+
+          {inventario.productos === 0 ? (
+            <p className="label-sm">
+              No había mercadería en stock a esa fecha, o todavía no hay
+              movimientos cargados.
+            </p>
+          ) : (
+            <>
+              <div className="conc-stats">
+                <div>
+                  <div className="cs-k">Total valorizado</div>
+                  <div className="cs-v tnum">{plata(inventario.total)}</div>
+                </div>
+                <div>
+                  <div className="cs-k">Con compra registrada</div>
+                  <div className="cs-v tnum">{plata(inventario.con_compra_total)}</div>
+                </div>
+                <div>
+                  <div className="cs-k">Al costo declarado</div>
+                  <div className="cs-v tnum">{plata(inventario.sin_compra_total)}</div>
+                </div>
+              </div>
+
+              {/* Los tres estados a la vista. Mezclar el segundo dentro del
+                  primero daría un número prolijo que la contadora no puede
+                  cotejar contra ningún papel. */}
+              <p className="label-sm">
+                <b>{plata(inventario.con_compra_total)}</b> salen de comprobantes
+                de compra, con su fecha de adquisición e importe.{' '}
+                {inventario.con_unidades_sin_compra > 0 ? (
+                  <>
+                    Los otros <b>{plata(inventario.sin_compra_total)}</b> son
+                    unidades <b>sin compra asociada</b> en{' '}
+                    {inventario.con_unidades_sin_compra} producto
+                    {inventario.con_unidades_sin_compra === 1 ? '' : 's'}:
+                    valorizadas al <b>costo declarado</b>, que no está respaldado
+                    por un comprobante. Es lo normal en lo que ya estaba en el
+                    local antes de empezar a registrar compras.
+                  </>
+                ) : (
+                  <>Todo el inventario tiene comprobante detrás.</>
+                )}
+              </p>
+
+              {Number(inventario.sin_valorizar_qty) > 0 ? (
+                <p className="label-sm alerta">
+                  ⚠️ <b>{enteroCorto(inventario.sin_valorizar_qty)}</b> unidades en{' '}
+                  {inventario.sin_valorizar_productos} producto
+                  {inventario.sin_valorizar_productos === 1 ? '' : 's'}{' '}
+                  <b>no están incluidas</b> en el total: no tienen compra
+                  registrada ni costo cargado. El total de arriba queda corto en
+                  lo que valgan.
+                </p>
+              ) : null}
+
+              {inventario.sin_tracking > 0 ? (
+                <p className="label-sm">
+                  {inventario.sin_tracking} producto
+                  {inventario.sin_tracking === 1 ? '' : 's'} con stock quedan
+                  afuera por no llevar control de stock: sin movimientos no se
+                  puede reconstruir cuánto había a esa fecha.
+                </p>
+              ) : null}
+
+              <div className="inv-tab">
+                <div className="inv-th">
+                  <span style={{ flex: 1 }}>Producto</span>
+                  <span style={{ width: 78, textAlign: 'right' }}>Cantidad</span>
+                  <span style={{ width: 96, textAlign: 'right' }}>Con compra</span>
+                  <span style={{ width: 104, textAlign: 'right' }}>Declarado</span>
+                  <span style={{ width: 112, textAlign: 'right' }}>Valorizado</span>
+                </div>
+                {inventario.filas.map((f) => (
+                  <div key={f.name} className="inv-tr">
+                    <span style={{ flex: 1 }}>
+                      {f.name}
+                      {f.ultima_compra !== null ? (
+                        <i className="inv-fecha">últ. compra {f.ultima_compra}</i>
+                      ) : null}
+                    </span>
+                    <span style={{ width: 78, textAlign: 'right' }} className="tnum">
+                      {enteroCorto(f.cantidad)}
+                    </span>
+                    <span style={{ width: 96, textAlign: 'right' }} className="tnum">
+                      {enteroCorto(f.con_compra_qty)}
+                    </span>
+                    <span style={{ width: 104, textAlign: 'right' }} className="tnum">
+                      {f.sin_costo ? '—' : enteroCorto(f.sin_compra_qty)}
+                    </span>
+                    <span style={{ width: 112, textAlign: 'right' }} className="tnum">
+                      {f.sin_costo ? (
+                        <b className="inv-falta">sin costo</b>
+                      ) : (
+                        plata(f.total)
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <p className="label-sm">
+                Valorizado por <b>{inventario.metodo}</b> (lo que queda en stock
+                son las compras más recientes). <b>El método lo define el
+                estudio</b>: Pandora aplica uno y lo declara.
+              </p>
+
+              <button
+                type="button"
+                className="exp-btn"
+                onClick={() =>
+                  bajar(() => exportarInventarioCsvAction(inventario.fecha))
+                }
+                disabled={pending}
+              >
+                {pending ? 'Generando…' : 'Exportar inventario (CSV)'}
+              </button>
             </>
           )}
         </section>

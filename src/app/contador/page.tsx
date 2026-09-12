@@ -20,6 +20,7 @@ import {
   GRANOS,
   type Grano,
 } from '@/lib/services/reporting/accountant.report';
+import { getInventarioAlCierre } from '@/lib/services/reporting/inventario.report';
 import { ContadorClient } from './ContadorClient';
 
 export default async function ContadorPage({
@@ -49,9 +50,26 @@ export default async function ContadorPage({
 
   const periodo = periodoDe(grano, new Date(), empresa?.mesCierre ?? 12);
 
-  const [resumen, deudores] = await withServerActionTracing(
+  // ── La fecha del inventario ──────────────────────────────────────────────
+  //
+  // El inventario es una FOTO, no un flujo: se valoriza a un día, no a un
+  // rango. Se usa el último día del período **acotado a hoy**, porque valorizar
+  // el futuro sería mostrar el stock de hoy con la etiqueta del 30 de
+  // septiembre. Para el grano "ejercicio" —el que le importa al estudio— ese
+  // día ya pasó, y ahí la foto es exactamente la del cierre.
+  const finPeriodo = new Date(periodo.hasta.getTime() - 86400000);
+  const hoy = new Date();
+  const fechaInventario = (finPeriodo < hoy ? finPeriodo : hoy)
+    .toISOString()
+    .slice(0, 10);
+
+  const [resumen, deudores, inventario] = await withServerActionTracing(
     async () =>
-      Promise.all([getResumenContable(periodo), getDeudores()]),
+      Promise.all([
+        getResumenContable(periodo),
+        getDeudores(),
+        getInventarioAlCierre(fechaInventario),
+      ]),
     { requireAuth: true }
   );
 
@@ -66,6 +84,28 @@ export default async function ContadorPage({
       esContador={session.app_role === 'accountant'}
       grano={grano}
       deudores={deudores}
+      inventario={{
+        fecha: inventario.fecha,
+        metodo: inventario.metodo,
+        total: inventario.total,
+        con_compra_total: inventario.con_compra_total,
+        sin_compra_total: inventario.sin_compra_total,
+        sin_valorizar_qty: inventario.sin_valorizar_qty,
+        sin_valorizar_productos: inventario.sin_valorizar_productos,
+        sin_tracking: inventario.sin_tracking,
+        con_unidades_sin_compra: inventario.con_unidades_sin_compra,
+        productos: inventario.filas.length,
+        filas: inventario.filas.map((f) => ({
+          name: f.name,
+          cantidad: f.cantidad,
+          con_compra_qty: f.con_compra_qty,
+          sin_compra_qty: f.sin_compra_qty,
+          total: f.total,
+          sin_costo: f.sin_costo,
+          anomalia: f.anomalia,
+          ultima_compra: f.lotes[0]?.fecha ?? null,
+        })),
+      }}
       resumen={{
         ...resumen,
         periodo: {
