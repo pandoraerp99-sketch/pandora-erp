@@ -764,6 +764,10 @@ export async function getItemCountsByExpense(
  *
  * Mismo criterio que los medios de pago corregidos en el cierre de caja
  * (ADR-0026): no se esconden, se muestran donde corresponde y no suman.
+ *
+ * ⚠️ El rango filtra por **cuándo se anuló**, no por la fecha del comprobante
+ * (ver el comentario en el WHERE). Es la única lectura de este módulo que no
+ * usa `expenses.fecha`, y es deliberado.
  */
 export interface GastoAnulado {
   [k: string]: string | null;
@@ -796,8 +800,19 @@ export async function listAnnulledExpenses(
       FROM expenses a
       JOIN expenses o ON o.id = a.corrects_id
      WHERE a.tenant_id = ${tenantId}
-       AND o.fecha >= ${desde}
-       AND o.fecha <  ${hasta}
+       -- 🔴 Por CUANDO SE ANULO, no por la fecha del comprobante.
+       --
+       -- La anulacion hereda la fecha del original a proposito, para que la
+       -- plata no cambie de periodo (es lo que hace que los totales cierren).
+       -- Pero esta pestania no contesta "que gastos hay en marzo": contesta
+       -- "que anule". Anular hoy un comprobante de marzo es algo que paso HOY.
+       --
+       -- Y no es cosmetico: al anular, la pantalla salta a esta pestania. Con
+       -- el filtro por la fecha del original, anular un gasto viejo dejaba al
+       -- comerciante mirando "No anulaste ningun gasto en este periodo" un
+       -- segundo despues de anular uno.
+       AND a.created_at >= ${desde}::date
+       AND a.created_at <  ${hasta}::date
      ORDER BY a.created_at DESC
   `);
 }

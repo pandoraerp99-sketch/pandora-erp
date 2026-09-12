@@ -551,7 +551,13 @@ export function GastosClient({
                       <button
                         type="button"
                         className="gact danger"
-                        onClick={() => setAnulando(g)}
+                        // Cierra el detalle si estaba abierto: los dos modales
+                        // comparten z-index, así que apilados el de atrás queda
+                        // inalcanzable (CLAUDE.md §14.13).
+                        onClick={() => {
+                          setViendo(null);
+                          setAnulando(g);
+                        }}
                         title="Anular este gasto"
                       >
                         Anular

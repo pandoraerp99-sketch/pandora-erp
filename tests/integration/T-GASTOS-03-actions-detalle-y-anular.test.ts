@@ -296,12 +296,55 @@ describe('T-GASTOS-03 — actions de gastos', () => {
     expect(despues.some((g) => g.id === gasto.id)).toBe(false);
 
     // Pero NO se borró: está en la pestaña de anulados, con su motivo.
-    const anulados = await conCtx(() => listAnnulledExpenses('2026-03-01', '2026-04-01'));
+    //
+    // Se busca en el rango de HOY y no en el del gasto: la pestaña lista por
+    // cuándo se anuló. Ver el test de abajo, que es el que prueba por qué.
+    const hoy = new Date().toISOString().slice(0, 10);
+    const manana = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    const anulados = await conCtx(() => listAnnulledExpenses(hoy, manana));
     const suyo = anulados.find((a) => a.id === gasto.id);
     expect(suyo).toBeDefined();
     expect(suyo?.motivo).toBe('lo cargué dos veces');
     // El importe se muestra tachado, no en cero: esconderlo taparía de cuánto
     // era el comprobante dado de baja.
     expect(suyo?.total).toBe('3000.0000');
+  });
+
+  it('🔴 anular un gasto VIEJO lo muestra en el período en que se anuló', async () => {
+    // El caso real: en septiembre aparece una factura de marzo cargada de más.
+    const [viejo] = await db
+      .insert(expenses)
+      .values({
+        tenant_id: tenant,
+        fecha: '2026-03-02',
+        categoria: 'servicios',
+        total: '4500.0000',
+        payee_name: 'Seguro viejo',
+        medio_pago: 'transferencia',
+        created_by: user,
+      })
+      .returning();
+
+    const res = await anularGastoAction(viejo!.id, 'duplicado del de marzo');
+    expect(res.ok).toBe(true);
+
+    const hoy = new Date().toISOString().slice(0, 10);
+    const manana = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+
+    // La anulación PASÓ HOY, así que se ve hoy. Con el filtro por la fecha del
+    // comprobante, la pantalla saltaba a la pestaña de anulados y mostraba
+    // "no anulaste ningún gasto" un segundo después de anular uno.
+    const deHoy = await conCtx(() => listAnnulledExpenses(hoy, manana));
+    expect(deHoy.some((a) => a.id === viejo!.id)).toBe(true);
+
+    // Y NO aparece en marzo, que es cuando fue el gasto: la plata sigue siendo
+    // de marzo (los totales no se movieron), pero la anulación no es de marzo.
+    const deMarzo = await conCtx(() => listAnnulledExpenses('2026-03-01', '2026-03-15'));
+    expect(deMarzo.some((a) => a.id === viejo!.id)).toBe(false);
+
+    // Lo que sí tiene que seguir pasando: el gasto salió de las lecturas que
+    // suman, en SU período. Anular no le cambia el período a la plata.
+    const vigentesMarzo = await conCtx(() => listExpenses('2026-03-01', '2026-03-15'));
+    expect(vigentesMarzo.some((g) => g.id === viejo!.id)).toBe(false);
   });
 });
