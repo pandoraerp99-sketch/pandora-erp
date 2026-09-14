@@ -31,6 +31,7 @@ import { expenses } from '@/lib/db/schema/expenses';
 import { terceros } from '@/lib/db/schema/terceros';
 import { cash_movements } from '@/lib/db/schema/cash_movements';
 import { cash_sessions } from '@/lib/db/schema/cash_sessions';
+import { audit_log } from '@/lib/db/schema/audit';
 import { withTracingContext } from '@/lib/tracing/context';
 import { generateCorrelationId, generateRequestId } from '@/lib/tracing/ids';
 import { diaDelComercio } from '@/lib/domain/fecha-comercio';
@@ -104,6 +105,8 @@ describe('T-GASTOS-02 — Anular un gasto', () => {
     await db.transaction(async (tx) => {
       await tx.execute(sql`SET LOCAL session_replication_role = 'replica'`);
       await tx.delete(expenses).where(eq(expenses.tenant_id, tenant));
+      // Desde EVENT-TAXONOMY v2.1.0 cargar y anular gastos deja expense.*
+      await tx.delete(audit_log).where(eq(audit_log.tenant_id, tenant));
       await tx.execute(
         sql`DELETE FROM cash_movements WHERE cash_session_id IN
             (SELECT id FROM cash_sessions WHERE tenant_id = ${tenant})`

@@ -37,6 +37,7 @@ import {
 } from '../../inventory/stock.js';
 import { withinTolerance } from '../../money/decimal.js';
 import { requireTracingContext } from '../../tracing/context.js';
+import { writeAuditLog } from '../../audit/audit-writer.js';
 import { CrossTenantAccessError, DomainError } from '../../multi_tenant/errors.js';
 import { logger } from '../../observability/logger.js';
 import { csvArmar, csvNum, csvTxt } from '../reporting/csv.js';
@@ -310,6 +311,7 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
     // comprobante cargado y la mercadería invisible — que es exactamente el
     // agujero que este módulo vino a cerrar.
     const tocados = new Set<string>();
+    const stockMovementIds: string[] = [];
 
     for (const [indice, linea] of items.entries()) {
       const [producto] = await tx
@@ -341,7 +343,7 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
       });
 
       try {
-        await recordStockMovement(
+        const { movement } = await recordStockMovement(
           {
             product_id: linea.product_id,
             type: 'purchase',
@@ -351,13 +353,16 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
             // mercadería, y es la misma que usa el lote en el inventario al
             // cierre. Con dos relojes, la cantidad y el lote no cerraban.
             fecha: input.fecha,
-            // El catálogo de EVENT-TAXONOMY está cerrado y sólo cubre
-            // `stock.adjusted_manually`: una compra no es un ajuste manual, así
-            // que no emite audit propio. Mismo criterio que `finalizeSale`.
+            // Una compra no es un ajuste manual: el movimiento no emite
+            // `stock.adjusted_manually`. Lo audita `expense.registered` más
+            // abajo con los ids de estos movimientos — mismo patrón que
+            // `finalizeSale` con `sale.completed`. Sin ese evento, la
+            // mercadería entraría al stock sin rastro de auditoría.
             skip_audit: true,
           },
           tx
         );
+        stockMovementIds.push(String(movement.id));
       } catch (e) {
         if (e instanceof ProductInactiveError) {
           throw new ExpenseError(
@@ -372,6 +377,38 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
     }
 
     await recalcularCostoUltimaCompra(tx, tenantId, [...tocados]);
+
+    // EVENT-TAXONOMY v2.1.0. En la MISMA transacción: si el evento no se
+    // escribe, el gasto tampoco (CLAUDE.md §15.2). Sólo ids e importes; el
+    // nombre y el CUIT del proveedor ya viven en la fila de `expenses`.
+    await writeAuditLog(
+      {
+        event_name: 'expense.registered',
+        payload: {
+          expense_id: fila.id,
+          fecha: fila.fecha,
+          categoria: fila.categoria,
+          total: fila.total,
+          neto: fila.neto,
+          iva: fila.iva,
+          medio_pago: fila.medio_pago,
+          en_iva_compras: fila.en_iva_compras,
+          tercero_id: fila.tercero_id,
+          comprobante_tipo: fila.comprobante_tipo,
+          comprobante_numero: fila.comprobante_numero,
+          cash_movement_id: cashMovementId === null ? null : String(cashMovementId),
+          items: items.map((l) => ({
+            product_id: l.product_id,
+            qty: new Decimal(l.qty).toFixed(4),
+            unit_cost: new Decimal(l.unit_cost).toFixed(4),
+          })),
+          stock_movement_ids: stockMovementIds,
+        },
+        pii_level: 'internal',
+        severity: 'info',
+      },
+      tx
+    );
 
     logger.info(
       {
@@ -557,6 +594,9 @@ export async function annulExpense(input: AnulacionGasto): Promise<Expense> {
         )
       );
 
+    const salidasDeStock: string[] = [];
+    let depositoId: bigint | null = null;
+
     if (lineas.length > 0) {
       const sinStock: string[] = [];
       for (const linea of lineas) {
@@ -583,7 +623,7 @@ export async function annulExpense(input: AnulacionGasto): Promise<Expense> {
       }
 
       for (const linea of lineas) {
-        await recordStockMovement(
+        const { movement } = await recordStockMovement(
           {
             product_id: linea.product_id,
             // `adjustment` con dirección explícita, NO `return`: el catálogo
@@ -605,11 +645,13 @@ export async function annulExpense(input: AnulacionGasto): Promise<Expense> {
             related_expense_id: original.id,
             // No es un ajuste manual del comerciante: es la contracara de una
             // anulación. Auditarlo como `stock.adjusted_manually` haría que el
-            // audit log mintiera sobre quién movió el stock y por qué.
+            // audit log mintiera sobre quién movió el stock y por qué. Lo
+            // audita `expense.annulled`, con estos ids.
             skip_audit: true,
           },
           tx
         );
+        salidasDeStock.push(String(movement.id));
       }
     }
 
@@ -645,16 +687,20 @@ export async function annulExpense(input: AnulacionGasto): Promise<Expense> {
         );
       }
 
-      await tx.insert(cash_movements).values({
-        cash_session_id: input.cash_session_id,
-        type: 'deposit',
-        amount: new Decimal(original.total).toFixed(4),
-        // El deposit NO se linkea a la fila de anulación: `cash_movement_id` es
-        // el 1:1 gasto→egreso, y un ingreso no es el pago de un gasto. El
-        // vínculo queda acá, en texto, que es donde lo va a leer una persona.
-        reason: `Anulación de gasto · ${original.payee_name ?? original.categoria}`,
-        created_by: userId,
-      });
+      const [deposito] = await tx
+        .insert(cash_movements)
+        .values({
+          cash_session_id: input.cash_session_id,
+          type: 'deposit',
+          amount: new Decimal(original.total).toFixed(4),
+          // El deposit NO se linkea a la fila de anulación: `cash_movement_id` es
+          // el 1:1 gasto→egreso, y un ingreso no es el pago de un gasto. El
+          // vínculo queda acá, en texto, y en el evento `expense.annulled`.
+          reason: `Anulación de gasto · ${original.payee_name ?? original.categoria}`,
+          created_by: userId,
+        })
+        .returning({ id: cash_movements.id });
+      depositoId = deposito?.id ?? null;
     }
 
     const [fila] = await tx
@@ -691,6 +737,29 @@ export async function annulExpense(input: AnulacionGasto): Promise<Expense> {
       tx,
       tenantId,
       [...new Set(lineas.map((l) => l.product_id))]
+    );
+
+    // EVENT-TAXONOMY v2.1.0 — warning: deshace un hecho ya registrado (devuelve
+    // plata, saca stock). Es la operación que la contadora o un inspector van a
+    // preguntar, y la fila `ANULADO: <motivo>` dice qué pero no quién ni cuándo.
+    await writeAuditLog(
+      {
+        event_name: 'expense.annulled',
+        payload: {
+          expense_id: original.id,
+          annulment_id: fila.id,
+          fecha_original: original.fecha,
+          total_anulado: original.total,
+          motivo,
+          devolvio_a_caja: original.cash_movement_id !== null,
+          cash_session_id: original.cash_movement_id !== null ? input.cash_session_id! : null,
+          deposit_cash_movement_id: depositoId === null ? null : String(depositoId),
+          stock_movement_ids: salidasDeStock,
+        },
+        pii_level: 'internal',
+        severity: 'warning',
+      },
+      tx
     );
 
     logger.info(

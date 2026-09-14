@@ -20,6 +20,7 @@ import { customers } from '../../db/schema/customers.js';
 import { cash_movements } from '../../db/schema/cash_movements.js';
 import { cash_sessions } from '../../db/schema/cash_sessions.js';
 import { requireTracingContext } from '../../tracing/context.js';
+import { writeAuditLog } from '../../audit/audit-writer.js';
 import { CrossTenantAccessError, DomainError } from '../../multi_tenant/errors.js';
 import { logger } from '../../observability/logger.js';
 
@@ -333,6 +334,27 @@ export async function settleAccount(
 
     if (!fila) throw new Error('Insert de cobro no devolvio fila');
 
+    // EVENT-TAXONOMY v2.1.0. Un cobro en efectivo es plata que entra al cajón
+    // FUERA de una venta: si el arqueo no cierra, este es el movimiento a
+    // mirar. El `cash_movement_id` es lo que lo cruza con la caja.
+    await writeAuditLog(
+      {
+        event_name: 'customer.account.settled',
+        payload: {
+          movement_id: fila.id,
+          customer_id: input.customer_id,
+          amount: monto.toFixed(4),
+          method: input.method,
+          saldo_antes: saldo.toFixed(4),
+          cash_session_id: input.method === 'efectivo' ? input.cash_session_id! : null,
+          cash_movement_id: cashMovementId === null ? null : String(cashMovementId),
+        },
+        pii_level: 'internal',
+        severity: 'info',
+      },
+      tx
+    );
+
     logger.info(
       {
         customer_id: input.customer_id,
@@ -376,20 +398,60 @@ export async function adjustAccount(input: {
     );
   }
 
-  const [fila] = await db
-    .insert(customer_account_movements)
-    .values({
-      tenant_id: tenantId,
-      customer_id: input.customer_id,
-      type: 'adjustment',
-      amount: monto.toFixed(4),
-      reason: input.reason.trim(),
-      created_by: userId,
-    })
-    .returning();
+  return db.transaction(async (tx) => {
+    // El cliente tiene que ser de ESTE comercio. La FK `customer_id →
+    // customers(id)` no ata el tenant: sin este chequeo, un id ajeno entraba
+    // con el tenant de uno y el cliente del otro. Mismo filtro que
+    // `registerChargeFromSale`.
+    const [cliente] = await tx
+      .select({ id: customers.id })
+      .from(customers)
+      .where(and(eq(customers.tenant_id, tenantId), eq(customers.id, input.customer_id)))
+      .limit(1);
+    if (!cliente) {
+      throw new AccountError(
+        'customer_not_found',
+        'No existe ese cliente en este comercio'
+      );
+    }
 
-  if (!fila) throw new Error('Insert de ajuste no devolvio fila');
-  return fila;
+    const saldoAntes = await getAccountBalance(input.customer_id, tx);
+
+    const [fila] = await tx
+      .insert(customer_account_movements)
+      .values({
+        tenant_id: tenantId,
+        customer_id: input.customer_id,
+        type: 'adjustment',
+        amount: monto.toFixed(4),
+        reason: input.reason.trim(),
+        created_by: userId,
+      })
+      .returning();
+
+    if (!fila) throw new Error('Insert de ajuste no devolvio fila');
+
+    // EVENT-TAXONOMY v2.1.0 — warning: le suma deuda a un cliente A MANO. Es
+    // lo que se discute cuando alguien dice "yo no debía eso"; el saldo previo
+    // deja ver de dónde a dónde se lo llevó.
+    await writeAuditLog(
+      {
+        event_name: 'customer.account.adjusted',
+        payload: {
+          movement_id: fila.id,
+          customer_id: input.customer_id,
+          amount: monto.toFixed(4),
+          reason: fila.reason,
+          saldo_antes: saldoAntes.toFixed(4),
+        },
+        pii_level: 'internal',
+        severity: 'warning',
+      },
+      tx
+    );
+
+    return fila;
+  });
 }
 
 /** Movimientos del cliente, del mas nuevo al mas viejo. */

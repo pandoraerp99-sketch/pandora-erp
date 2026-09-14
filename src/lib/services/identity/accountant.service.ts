@@ -30,6 +30,7 @@ import { users, company_users } from '../../db/schema/users.js';
 import { companies } from '../../db/schema/companies.js';
 import { createSupabaseServiceRoleClient } from '../../auth/supabase-server.js';
 import { requireTracingContext } from '../../tracing/context.js';
+import { writeAuditLog } from '../../audit/audit-writer.js';
 import { CrossTenantAccessError, DomainError } from '../../multi_tenant/errors.js';
 import { logger } from '../../observability/logger.js';
 
@@ -119,6 +120,7 @@ export async function inviteAccountant(input: {
     userId: authUserId,
     email,
     fullName: input.fullName ?? null,
+    via: yaRegistrado ? 'usuario_existente' : 'invitacion',
   });
 
   return { contador: { ...contador, activo: confirmado }, mailEnviado, yaEstaba };
@@ -138,49 +140,73 @@ export async function linkAccountant(input: {
   userId: string;
   email: string;
   fullName?: string | null;
+  /** Cómo llegó: se le mandó el mail de alta, o ya tenía cuenta. Va al audit. */
+  via?: 'invitacion' | 'usuario_existente';
 }): Promise<{ contador: ContadorVinculado; yaEstaba: boolean }> {
   const tenantId = requireTenantId();
   const email = input.email.trim().toLowerCase();
 
-  // Espejo en public.users: el hook del JWT y las FKs leen de acá, no de
-  // auth.users.
-  await db
-    .insert(users)
-    .values({
-      id: input.userId,
-      email,
-      full_name: input.fullName?.trim() || null,
-      is_support: false,
-    })
-    .onConflictDoNothing();
+  const yaVinculado = await db.transaction(async (tx) => {
+    // Espejo en public.users: el hook del JWT y las FKs leen de acá, no de
+    // auth.users.
+    await tx
+      .insert(users)
+      .values({
+        id: input.userId,
+        email,
+        full_name: input.fullName?.trim() || null,
+        is_support: false,
+      })
+      .onConflictDoNothing();
 
-  const [yaVinculado] = await db
-    .select({ id: company_users.id, role: company_users.role })
-    .from(company_users)
-    .where(
-      and(
-        eq(company_users.company_id, tenantId),
-        eq(company_users.user_id, input.userId)
+    const [existente] = await tx
+      .select({ id: company_users.id, role: company_users.role })
+      .from(company_users)
+      .where(
+        and(
+          eq(company_users.company_id, tenantId),
+          eq(company_users.user_id, input.userId)
+        )
       )
-    )
-    .limit(1);
+      .limit(1);
 
-  // Si ya estaba con OTRO rol (es el dueño, por ejemplo), no se lo degrada a
-  // contador: eso le sacaria permisos sin que nadie lo pida.
-  if (yaVinculado && yaVinculado.role !== 'accountant') {
-    throw new AccountantInviteError(
-      'ya_es_de_la_empresa',
-      'Ese usuario ya trabaja en este comercio con otro rol. No se lo puede invitar como contador.'
-    );
-  }
+    // Si ya estaba con OTRO rol (es el dueño, por ejemplo), no se lo degrada a
+    // contador: eso le sacaria permisos sin que nadie lo pida.
+    if (existente && existente.role !== 'accountant') {
+      throw new AccountantInviteError(
+        'ya_es_de_la_empresa',
+        'Ese usuario ya trabaja en este comercio con otro rol. No se lo puede invitar como contador.'
+      );
+    }
 
-  if (!yaVinculado) {
-    await db.insert(company_users).values({
-      company_id: tenantId,
-      user_id: input.userId,
-      role: 'accountant',
-    });
-  }
+    if (!existente) {
+      await tx.insert(company_users).values({
+        company_id: tenantId,
+        user_id: input.userId,
+        role: 'accountant',
+      });
+
+      // EVENT-TAXONOMY v2.1.0 — warning: un TERCERO pasa a ver los datos
+      // fiscales y comerciales del comercio (misma familia que CLAUDE.md §7.8
+      // exige para soporte). Sólo cuando el vínculo se CREA: reinvitar a quien
+      // ya estaba no cambia nada. Sólo ids: el email no se copia a un log de
+      // 10 años.
+      await writeAuditLog(
+        {
+          event_name: 'auth.accountant.granted',
+          payload: {
+            accountant_user_id: input.userId,
+            via: input.via ?? 'usuario_existente',
+          },
+          pii_level: 'internal',
+          severity: 'warning',
+        },
+        tx
+      );
+    }
+
+    return existente;
+  });
 
   logger.info(
     { tenant_id: tenantId, accountant_user_id: input.userId, ya_estaba: !!yaVinculado },
@@ -246,17 +272,36 @@ export async function listAccountants(): Promise<ContadorVinculado[]> {
  */
 export async function revokeAccountant(userId: string): Promise<void> {
   const tenantId = requireTenantId();
-  await db
-    .delete(company_users)
-    .where(
-      and(
-        eq(company_users.company_id, tenantId),
-        eq(company_users.user_id, userId),
-        eq(company_users.role, 'accountant')
+  const borrados = await db.transaction(async (tx) => {
+    const filas = await tx
+      .delete(company_users)
+      .where(
+        and(
+          eq(company_users.company_id, tenantId),
+          eq(company_users.user_id, userId),
+          eq(company_users.role, 'accountant')
+        )
       )
-    );
+      .returning({ id: company_users.id });
+
+    // EVENT-TAXONOMY v2.1.0. El vínculo se BORRA: sin este evento no quedaría
+    // en ningún lado que alguna vez tuvo acceso, ni hasta cuándo. Sólo si
+    // efectivamente se borró algo — revocar a quien no estaba no es un hecho.
+    if (filas.length > 0) {
+      await writeAuditLog(
+        {
+          event_name: 'auth.accountant.revoked',
+          payload: { accountant_user_id: userId },
+          pii_level: 'internal',
+          severity: 'warning',
+        },
+        tx
+      );
+    }
+    return filas.length;
+  });
   logger.info(
-    { tenant_id: tenantId, accountant_user_id: userId },
+    { tenant_id: tenantId, accountant_user_id: userId, revocado: borrados > 0 },
     'accountant.revoked'
   );
 }

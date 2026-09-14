@@ -16,6 +16,7 @@ import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/lib/db/client';
 import { companies } from '@/lib/db/schema/companies';
 import { users, company_users } from '@/lib/db/schema/users';
+import { audit_log } from '@/lib/db/schema/audit';
 import { withTracingContext } from '@/lib/tracing/context';
 import { generateCorrelationId, generateRequestId } from '@/lib/tracing/ids';
 import {
@@ -91,6 +92,8 @@ describe('T-CONT-01 — contador multi-empresa', () => {
     const ids = [kiosco, ferreteria, ajena];
     await db.transaction(async (tx) => {
       await tx.execute(sql`SET LOCAL session_replication_role = 'replica'`);
+      // Desde EVENT-TAXONOMY v2.1.0 dar y sacar acceso deja auth.accountant.*
+      await tx.delete(audit_log).where(inArray(audit_log.tenant_id, ids));
       await tx.delete(company_users).where(inArray(company_users.company_id, ids));
       await tx.delete(users).where(inArray(users.id, [duenoKiosco, contadora]));
       await tx.delete(companies).where(inArray(companies.id, ids));

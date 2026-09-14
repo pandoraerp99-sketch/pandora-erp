@@ -5,10 +5,27 @@ import {
   isAuditEventName,
 } from '@/lib/audit/event-names';
 
-describe('Catalogo canonico audit event names (EVENT-TAXONOMY §5 v2.0.2)', () => {
-  it('total 43 eventos auditables F0', () => {
-    expect(TOTAL_AUDIT_EVENTS_F0).toBe(43);
-    expect(AUDIT_EVENT_NAMES).toHaveLength(43);
+describe('Catalogo canonico audit event names (EVENT-TAXONOMY §5 v2.1.0)', () => {
+  it('total 49 eventos auditables F0', () => {
+    expect(TOTAL_AUDIT_EVENTS_F0).toBe(49);
+    expect(AUDIT_EVENT_NAMES).toHaveLength(49);
+  });
+
+  it('v2.1.0: plata y acceso (aprobados por el owner 2026-09-14)', () => {
+    for (const nombre of [
+      'expense.registered',
+      'expense.annulled',
+      'customer.account.settled',
+      'customer.account.adjusted',
+      'auth.accountant.granted',
+      'auth.accountant.revoked',
+    ]) {
+      expect(isAuditEventName(nombre)).toBe(true);
+    }
+    // Excluidos a propósito (PROPUESTA-EVENTOS-AUDITORIA §3): un pendiente es
+    // intención, y el fiado ya viaja en sale.completed.
+    expect(isAuditEventName('task.created')).toBe(false);
+    expect(isAuditEventName('customer.account.charged')).toBe(false);
   });
 
   it('isAuditEventName acepta eventos canonicos', () => {
@@ -65,6 +82,7 @@ describe('Catalogo canonico audit event names (EVENT-TAXONOMY §5 v2.0.2)', () =
       'product',
       'cash_session',
       'customer',
+      'expense',
       'subscription',
       'system',
       'security',

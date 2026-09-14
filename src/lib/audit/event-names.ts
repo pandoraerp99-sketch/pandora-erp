@@ -1,5 +1,5 @@
 /**
- * Catalogo canonico de event_names F0 — EVENT-TAXONOMY.md §5 v2.0.2.
+ * Catalogo canonico de event_names F0 — EVENT-TAXONOMY.md §5 v2.1.0.
  *
  * REGLA J1 (catalogo CERRADO): agregar evento aqui = agregar a EVENT-TAXONOMY +
  * PR review + actualizar DECISION-LEDGER. No agregar event names "on the fly".
@@ -15,11 +15,14 @@
  * Ordenado por dominio segun EVENT-TAXONOMY §5.
  */
 export const AUDIT_EVENT_NAMES = [
-  // Domain: auth (4)
+  // Domain: auth (6)
   'auth.login.success',
   'auth.login.failed',
   'auth.password.changed',
   'auth.role.changed',
+  // v2.1.0 — un tercero gana o pierde acceso a los datos del comercio
+  'auth.accountant.granted',
+  'auth.accountant.revoked',
 
   // Domain: sale (4)
   'sale.completed',
@@ -60,9 +63,16 @@ export const AUDIT_EVENT_NAMES = [
   'cash_session.closed',
   'cash_session.closed_with_difference',
 
-  // Domain: customer (2)
+  // Domain: customer (4)
   'customer.created',
   'customer.deletion_requested',
+  // v2.1.0 — cuenta corriente (ADR-0027): cobro y ajuste manual de deuda
+  'customer.account.settled',
+  'customer.account.adjusted',
+
+  // Domain: expense (2) — v2.1.0. Plata que sale; en mercadería, stock que entra
+  'expense.registered',
+  'expense.annulled',
 
   // Domain: subscription (2)
   'subscription.activated',
@@ -92,7 +102,8 @@ export function isAuditEventName(value: string): value is AuditEventName {
 }
 
 /**
- * Total: 43 eventos auditables F0.
+ * Total: 49 eventos auditables F0 (43 hasta v2.0.3 + 6 de v2.1.0, aprobados por
+ * el owner el 2026-09-14).
  *
  * Lo que va a Pino log (NO audit_log):
  * - sale.draft.* (lifecycle items, customer set durante draft)
