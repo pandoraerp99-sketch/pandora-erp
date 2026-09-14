@@ -494,6 +494,14 @@ describe('T-AUDIT-02 — plata y acceso dejan evento en audit_log', () => {
       ).toHaveLength(1);
     });
 
+    it('si no se sabe cómo llegó, el evento dice null — no inventa "ya tenía cuenta"', async () => {
+      const c = nuevaContadora();
+      await conCtx(() => linkAccountant(c));
+      const filas = await eventos('auth.accountant.granted', 'accountant_user_id', c.userId);
+      expect(filas).toHaveLength(1);
+      expect(filas[0]?.payload).toEqual({ accountant_user_id: c.userId, via: null });
+    });
+
     it('invitar como contador a alguien que ya trabaja en el comercio no deja evento', async () => {
       await expect(
         conCtx(() =>

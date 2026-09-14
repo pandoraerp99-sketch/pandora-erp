@@ -140,8 +140,12 @@ export async function linkAccountant(input: {
   userId: string;
   email: string;
   fullName?: string | null;
-  /** Cómo llegó: se le mandó el mail de alta, o ya tenía cuenta. Va al audit. */
-  via?: 'invitacion' | 'usuario_existente';
+  /**
+   * Cómo llegó: se le mandó el mail de alta, o ya tenía cuenta. Va al audit.
+   * Si quien llama no lo sabe, queda `null`: el log es inmutable por 10 años y
+   * "no sé" es un dato honesto; "ya tenía cuenta" sería una afirmación.
+   */
+  via?: 'invitacion' | 'usuario_existente' | null;
 }): Promise<{ contador: ContadorVinculado; yaEstaba: boolean }> {
   const tenantId = requireTenantId();
   const email = input.email.trim().toLowerCase();
@@ -196,7 +200,7 @@ export async function linkAccountant(input: {
           event_name: 'auth.accountant.granted',
           payload: {
             accountant_user_id: input.userId,
-            via: input.via ?? 'usuario_existente',
+            via: input.via ?? null,
           },
           pii_level: 'internal',
           severity: 'warning',
