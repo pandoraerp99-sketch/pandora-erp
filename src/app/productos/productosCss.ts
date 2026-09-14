@@ -469,4 +469,38 @@ button.stock-row:hover{ background:rgba(107,95,255,0.04); }
    Va acotado a .main a proposito: la barra lateral la pinta shellCss con los
    valores del POS y tiene que seguir viendose igual en todas las pantallas. */
 .main{ line-height:normal; gap:0; }
+
+/* ===== AJUSTE DE STOCK (AjusteStockModal) =====
+   No hay maqueta: se compone con el modal de producto (.pmod/.pm-*) y estas
+   piezas. Prefijo .aj- verificado sin colisiones (grep en src, 2026-09-12).
+   Colores de texto: los mismos rojo/verde oscuros que .pm-prev (#c93545,
+   #13734a) — el verde de .mgok (#1a8e5a) da ~4.2:1 sobre fondo claro y no
+   llega a AA en texto chico. */
+.aj-grupo{ font-size:10.5px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.05em; margin:2px 0 6px; }
+.aj-motivos{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+button.aj-motivo{ font-family:inherit; font-size:12.5px; font-weight:500; padding:7px 13px; border-radius:999px; background:#fff; border:1px solid rgba(13,20,36,0.12); color:var(--ink-2); cursor:pointer; transition:all 140ms; }
+button.aj-motivo:hover{ border-color:rgba(107,95,255,0.45); }
+button.aj-motivo.on{ border-color:var(--purple); background:rgba(107,95,255,0.10); color:var(--ink); font-weight:600; }
+.aj-seg{ display:flex; gap:6px; margin-bottom:8px; }
+.aj-seg button{ flex:1; font-family:inherit; padding:9px; border-radius:10px; font-size:13px; font-weight:600; color:var(--ink-2); background:rgba(13,20,36,0.05); border:1px solid transparent; cursor:pointer; }
+.aj-seg button.on{ background:var(--ink); color:#fff; }
+.aj-seg button:disabled{ opacity:0.45; cursor:not-allowed; }
+.aj-err{ font-size:11.5px; color:#c93545; margin-top:5px; font-weight:500; }
+
+/* ===== HISTORIAL (HistorialModal) ===== */
+.pmod.hs-mod{ max-width:620px; }
+.hs-lista{ margin-bottom:12px; }
+.hs-row{ display:grid; grid-template-columns:86px 1fr auto; gap:12px; align-items:start; padding:10px 0; border-top:1px solid rgba(13,20,36,0.06); font-size:12.5px; color:var(--ink); line-height:1.35; }
+.hs-row:first-child{ border-top:none; }
+.hs-fecha{ font-variant-numeric:tabular-nums; color:var(--ink-2); font-size:12px; }
+.hs-fecha small{ display:block; font-size:10.5px; color:var(--ink-3); margin-top:2px; }
+.hs-tag{ display:inline-block; font-size:10px; font-weight:700; padding:2px 7px; border-radius:6px; margin-right:7px; background:rgba(13,20,36,0.06); color:var(--ink-2); vertical-align:1px; }
+.hs-tag.loss{ background:rgba(239,93,106,0.12); color:#c93545; }
+.hs-tag.purchase{ background:rgba(52,199,125,0.14); color:#13734a; }
+/* Dos líneas y el resto en el title: hay textos de ajuste largos (el de la
+   regularización de la migration 0035 ocupa cinco). */
+.hs-que{ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.hs-quien{ display:block; font-size:11px; color:var(--ink-3); margin-top:2px; }
+.hs-q{ font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.hs-q.in{ color:#13734a; } .hs-q.out{ color:#c93545; }
 ` + RESET_CARD_POS;

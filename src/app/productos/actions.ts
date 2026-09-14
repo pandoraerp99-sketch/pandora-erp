@@ -26,6 +26,10 @@ import {
   softDeleteProduct,
 } from '@/lib/services/products/product.service';
 import type { Product } from '@/lib/db/schema/products';
+import {
+  listProductMovements,
+  type HistorialDelProducto,
+} from '@/lib/inventory/queries';
 
 export type ActionResult<T> =
   | { ok: true; data: T }
@@ -92,40 +96,50 @@ export async function updateProductAction(
 }
 
 /**
- * Ajuste manual de stock.
+ * Ajuste manual de stock — lo llama `AjusteStockModal`.
  *
  * **`delta`, no valor absoluto.** Se manda cuánto SUMAR o RESTAR (`"-3"`,
  * `"10"`), no el stock final. Es a propósito: si dos personas ajustan casi al
  * mismo tiempo, dos deltas se acumulan bien y dos absolutos se pisan. Además
  * el service toma un lock sobre el producto, así que ni siquiera se solapan.
  *
- * El motivo es OBLIGATORIO (mínimo 3 caracteres) y el service deja el
- * movimiento en `stock_movements`, que es append-only.
+ * **Motivo de una lista cerrada** (`domain/ajuste-stock.ts`, migration 0038):
+ * merma (rotura / vencimiento / robo) queda como `loss` y sólo resta;
+ * corrección (recuento / error de carga / otro) como `adjustment`. El detalle
+ * es opcional salvo en "otro". El movimiento queda en `stock_movements`
+ * (append-only) y se audita con `stock.adjusted_manually`.
  *
- * ⚠️ Esto último era FALSO hasta la migration 0032: este comentario afirmaba
- * que el movimiento quedaba registrado y `adjustStock` no escribía una sola
- * fila en esa tabla. Se deja anotado porque es el tipo de comentario que hace
- * invisible un agujero: describía el diseño correcto, no lo que el código
- * hacía.
- *
- * ⚠️ Esta action todavía NO la llama ningún componente — la pantalla de
- * Productos no tiene flujo de ajuste. Por eso el agujero no llegó a perder
- * datos, y por eso se arregló antes de cablearla.
+ * Historia: hasta la migration 0032 este comentario afirmaba que el
+ * movimiento quedaba registrado y `adjustStock` no escribía una sola fila. Se
+ * deja dicho porque es el tipo de comentario que hace invisible un agujero.
  */
-export async function adjustStockAction(
-  productId: string,
-  delta: string,
-  reason: string
-): Promise<ActionResult<Product>> {
+export async function adjustStockAction(input: {
+  productId: string;
+  delta: string;
+  motivo: string;
+  detalle?: string;
+}): Promise<ActionResult<Product>> {
   return runAction(async () => {
     const ajustado = await adjustStock({
-      product_id: productId,
-      delta,
-      reason,
+      product_id: input.productId,
+      delta: input.delta,
+      motivo: input.motivo,
+      detalle: input.detalle,
     });
     revalidatePath('/productos');
     return ajustado;
   });
+}
+
+/**
+ * Historial de movimientos de un producto — lo pide `HistorialModal` al
+ * abrirse. Ordenado por el día en que pasó cada movimiento (no el de carga), y
+ * con los dos cuando difieren. Ver `listProductMovements`.
+ */
+export async function getHistorialAction(
+  productId: string
+): Promise<ActionResult<HistorialDelProducto>> {
+  return runAction(() => listProductMovements(productId));
 }
 
 /**

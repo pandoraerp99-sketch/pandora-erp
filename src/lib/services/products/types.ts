@@ -77,12 +77,18 @@ export const SearchProductsInputSchema = z.object({
 
 export type SearchProductsInput = z.infer<typeof SearchProductsInputSchema>;
 
+/**
+ * Ajuste manual. Desde la migration 0038 no se manda un texto libre: se manda
+ * un MOTIVO de la lista cerrada (`domain/ajuste-stock.ts`) y un detalle
+ * opcional. El texto que queda en el libro lo arma `planDeAjuste`. Acá sólo se
+ * valida la FORMA; la regla (merma sólo resta, "otro" pide detalle, el motivo
+ * existe) vive en el dominio, que es lo que también usa la pantalla.
+ */
 export const StockAdjustmentInputSchema = z.object({
   product_id: z.string().uuid(),
-  delta: z
-    .string()
-    .regex(/^-?\d+(\.\d{1,4})?$/, 'Delta debe ser numero (puede ser negativo)'),
-  reason: z.string().min(3).max(500),
+  delta: z.string(),
+  motivo: z.string(),
+  detalle: z.string().optional(),
 });
 
 export type StockAdjustmentInput = z.infer<typeof StockAdjustmentInputSchema>;

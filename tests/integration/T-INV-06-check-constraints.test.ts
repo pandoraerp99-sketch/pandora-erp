@@ -126,12 +126,13 @@ describe('T-INV-06 — CHECK constraints SQL stock_movements (defense layered)',
     reason?: string | null;
     related_sale_id?: string | null;
     related_expense_id?: string | null;
+    motivo?: string | null;
   }): Promise<{ ok: true } | { ok: false; error: ReturnType<typeof unwrapPgError> }> {
     try {
       await db.execute(sql`
         INSERT INTO stock_movements (
           tenant_id, product_id, type, qty, direction, reason,
-          related_sale_id, related_expense_id
+          related_sale_id, related_expense_id, motivo
         ) VALUES (
           ${values.tenant_id ?? tenantId}::uuid,
           ${values.product_id ?? productId}::uuid,
@@ -140,7 +141,8 @@ describe('T-INV-06 — CHECK constraints SQL stock_movements (defense layered)',
           ${'direction' in values ? values.direction : 'out'},
           ${values.reason ?? null},
           ${values.related_sale_id ?? null}::uuid,
-          ${values.related_expense_id ?? null}::uuid
+          ${values.related_expense_id ?? null}::uuid,
+          ${values.motivo ?? null}
         )
       `);
       return { ok: true };
@@ -275,6 +277,60 @@ describe('T-INV-06 — CHECK constraints SQL stock_movements (defense layered)',
       type: 'sale',
       qty: '2',
       related_sale_id: saleId,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  // ── Motivo del ajuste (migration 0038) ────────────────────────────────────
+  // El service valida lo mismo antes del lock. Esto es la red para quien
+  // escriba por fuera del service.
+
+  it('🔴 loss sin motivo → stock_movements_motivo_check', async () => {
+    const result = await rawInsert({ type: 'loss', qty: '1', reason: 'se rompió' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.constraint).toBe('stock_movements_motivo_check');
+  });
+
+  it('🔴 un motivo de merma en un adjustment → stock_movements_motivo_check', async () => {
+    const result = await rawInsert({
+      type: 'adjustment',
+      qty: '1',
+      reason: 'Rotura',
+      motivo: 'rotura',
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.constraint).toBe('stock_movements_motivo_check');
+  });
+
+  it('🔴 un motivo en una venta → stock_movements_motivo_check', async () => {
+    const result = await rawInsert({
+      type: 'sale',
+      qty: '1',
+      related_sale_id: saleId,
+      motivo: 'recuento',
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.constraint).toBe('stock_movements_motivo_check');
+  });
+
+  it('🔴 una merma que entra → stock_movements_loss_out_check', async () => {
+    const result = await rawInsert({
+      type: 'loss',
+      qty: '1',
+      direction: 'in',
+      reason: 'Robo',
+      motivo: 'robo',
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.constraint).toBe('stock_movements_loss_out_check');
+  });
+
+  it('loss con motivo de merma que sale → OK', async () => {
+    const result = await rawInsert({
+      type: 'loss',
+      qty: '1',
+      reason: 'Vencimiento',
+      motivo: 'vencimiento',
     });
     expect(result.ok).toBe(true);
   });

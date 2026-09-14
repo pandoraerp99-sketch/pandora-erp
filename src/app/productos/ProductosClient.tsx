@@ -28,10 +28,14 @@ import Decimal from 'decimal.js';
 import { AppShell } from '@/components/shell/AppShell';
 import { PRODUCTOS_CSS } from './productosCss';
 import {
+  adjustStockAction,
   createProductAction,
+  getHistorialAction,
   updateProductAction,
   type ProductFormInput,
 } from './actions';
+import { AjusteStockModal, type ErrorDeAjuste } from './AjusteStockModal';
+import { HistorialModal, type EstadoHistorial } from './HistorialModal';
 
 export interface ProductoDTO {
   id: string;
@@ -44,6 +48,9 @@ export interface ProductoDTO {
   stock_current: string;
   stock_minimum: string | null;
   tdf_exempt: boolean;
+  /** Sin control de stock no se ajusta: el número no se movería. */
+  stock_tracking_enabled: boolean;
+  unit_type: string;
 }
 
 interface Props {
@@ -101,6 +108,10 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
   const [editando, setEditando] = useState<ProductoDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [ajustando, setAjustando] = useState<ProductoDTO | null>(null);
+  const [errorAjuste, setErrorAjuste] = useState<ErrorDeAjuste | null>(null);
+  const [historialDe, setHistorialDe] = useState<ProductoDTO | null>(null);
+  const [historial, setHistorial] = useState<EstadoHistorial>({ estado: 'cargando' });
 
   /** Rubros que existen de verdad en el catálogo (no una lista inventada). */
   const rubros = useMemo(() => {
@@ -221,6 +232,8 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
         stock_current: guardado.stock_current,
         stock_minimum: guardado.stock_minimum,
         tdf_exempt: guardado.tdf_exempt,
+        stock_tracking_enabled: guardado.stock_tracking_enabled,
+        unit_type: guardado.unit_type,
       };
       setLista((prev) =>
         editando ? prev.map((p) => (p.id === dto.id ? dto : p)) : [dto, ...prev]
@@ -228,6 +241,41 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
       setSelId(dto.id);
       setModalAbierto(false);
       setEditando(null);
+    });
+  }
+
+  function ajustar(input: { delta: string; motivo: string; detalle?: string }) {
+    if (!ajustando) return;
+    const producto = ajustando;
+    setErrorAjuste(null);
+    startTransition(async () => {
+      const res = await adjustStockAction({ productId: producto.id, ...input });
+      if (!res.ok) {
+        // Los errores de campo van debajo del campo; los otros (no alcanza el
+        // stock, producto dado de baja) como aviso del modal.
+        setErrorAjuste({ mensaje: res.error, campos: res.fieldErrors });
+        return;
+      }
+      setLista((prev) =>
+        prev.map((p) =>
+          p.id === producto.id ? { ...p, stock_current: res.data.stock_current } : p
+        )
+      );
+      setAjustando(null);
+    });
+  }
+
+  // Se pide al abrir, desde el click: no en un efecto (setState sincrónico
+  // dentro de un efecto es la regla de lint que ya se rompió en /gastos).
+  function abrirHistorial(producto: ProductoDTO) {
+    setHistorialDe(producto);
+    setHistorial({ estado: 'cargando' });
+    void getHistorialAction(producto.id).then((res) => {
+      setHistorial(
+        res.ok
+          ? { estado: 'listo', data: res.data }
+          : { estado: 'error', mensaje: res.error }
+      );
     });
   }
 
@@ -574,22 +622,36 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
                   </svg>
                   Editar
                 </button>
-                {/* Historial: las VENTAS dejan su movimiento en
-                    stock_movements, y desde la migration 0032 los ajustes
-                    manuales tambien (con su motivo, su signo y quien lo hizo).
-                    Falta la pantalla que los muestre, asi que el boton queda
-                    visible y apagado en vez de llevar a ningun lado.
-
-                    Ojo: esta pantalla todavia no ajusta stock — no hay flujo
-                    de ajuste cableado. Antes de 0032 este comentario afirmaba
-                    que cada ajuste quedaba guardado, y adjustStock no escribia
-                    ninguno. */}
+                {/* Ajustar: sin control de stock no se ofrece, porque el
+                    movimiento se registraría y el número no se movería — el
+                    modal diría "28 → 26" y mentiría. Se dice por qué. */}
                 <button
                   type="button"
                   className="hbtn"
                   style={{ flex: 1, justifyContent: 'center' }}
-                  disabled
-                  title="Los movimientos se registran, falta la pantalla que los muestre"
+                  onClick={() => {
+                    setErrorAjuste(null);
+                    setAjustando(sel);
+                  }}
+                  disabled={pending || !sel.stock_tracking_enabled}
+                  // "Ajustar", no "Ajustar stock": en la columna lateral el
+                  // texto largo se partía en dos líneas y desparejaba los tres
+                  // botones (medido en la captura). La barra de stock está
+                  // justo arriba, así que el contexto no se pierde.
+                  aria-label="Ajustar stock"
+                  title={
+                    sel.stock_tracking_enabled
+                      ? 'Ajustar stock'
+                      : 'Este producto no lleva control de stock'
+                  }
+                >
+                  Ajustar
+                </button>
+                <button
+                  type="button"
+                  className="hbtn"
+                  style={{ flex: 1, justifyContent: 'center' }}
+                  onClick={() => abrirHistorial(sel)}
                 >
                   Historial
                 </button>
@@ -713,6 +775,24 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
             setEditando(null);
           }}
           onGuardar={guardar}
+        />
+      ) : null}
+
+      {ajustando ? (
+        <AjusteStockModal
+          producto={ajustando}
+          pending={pending}
+          error={errorAjuste}
+          onCancelar={() => setAjustando(null)}
+          onConfirmar={ajustar}
+        />
+      ) : null}
+
+      {historialDe ? (
+        <HistorialModal
+          productoNombre={historialDe.name}
+          historial={historial}
+          onCerrar={() => setHistorialDe(null)}
         />
       ) : null}
     </>

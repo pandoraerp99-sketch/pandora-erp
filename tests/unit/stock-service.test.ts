@@ -347,15 +347,99 @@ describe('prepareStockMovementValues — validaciones input', () => {
     expect(result.type).toBe('sale');
   });
 
-  it('type loss SIN skip_audit → throw (mismo principio, esperando F1+ resolución)', () => {
+  // Hasta el ajuste desde la pantalla, `loss` sin skip_audit tiraba siempre
+  // (TODO de la opción A/B). Se eligió la A: una merma cargada a mano se audita
+  // con `stock.adjusted_manually`, y por eso tiene que traer su motivo.
+  it('type loss SIN motivo → throw invalid_motivo (una merma sin motivo no se audita)', () => {
     expect(() =>
       prepareStockMovementValues(
         { product_id: VALID_PRODUCT_ID, type: 'loss', qty: 1 },
         makeCtx()
       )
-    ).toThrow(StockValidationError);
+    ).toThrow(expect.objectContaining({ code: 'invalid_motivo' }));
+  });
+});
+
+/**
+ * El motivo del ajuste (migration 0038). Merma ⇔ `loss`; corrección ⇒
+ * `adjustment`; los movimientos del sistema no llevan motivo. La DB tiene la
+ * misma regla en una CHECK: esto la falla antes de tomar el lock.
+ */
+describe('prepareStockMovementValues — motivo del ajuste', () => {
+  it('🔴 una rotura (loss + motivo de merma) pasa sin skip_audit y lleva su motivo', () => {
+    const result = prepareStockMovementValues(
+      {
+        product_id: VALID_PRODUCT_ID,
+        type: 'loss',
+        qty: 2,
+        motivo: 'rotura',
+        reason: 'Rotura',
+      },
+      makeCtx()
+    );
+    expect(result.type).toBe('loss');
+    expect(result.direction).toBe('out');
+    expect(result.motivo).toBe('rotura');
   });
 
+  it('un recuento (adjustment + motivo de corrección) lleva su motivo', () => {
+    const result = prepareStockMovementValues(
+      { ...validAdjustmentInput, motivo: 'recuento' },
+      makeCtx()
+    );
+    expect(result.motivo).toBe('recuento');
+  });
+
+  it('un adjustment del sistema (anulación, stock inicial) sigue sin motivo', () => {
+    const result = prepareStockMovementValues(validAdjustmentInput, makeCtx());
+    expect(result.motivo ?? null).toBeNull();
+  });
+
+  it('🔴 un motivo de merma en un adjustment → invalid_motivo', () => {
+    expect(() =>
+      prepareStockMovementValues(
+        { ...validAdjustmentInput, motivo: 'robo' },
+        makeCtx()
+      )
+    ).toThrow(expect.objectContaining({ code: 'invalid_motivo' }));
+  });
+
+  it('🔴 un motivo de corrección en un loss → invalid_motivo', () => {
+    expect(() =>
+      prepareStockMovementValues(
+        { product_id: VALID_PRODUCT_ID, type: 'loss', qty: 1, motivo: 'recuento', reason: 'Recuento' },
+        makeCtx()
+      )
+    ).toThrow(expect.objectContaining({ code: 'invalid_motivo' }));
+  });
+
+  it('una venta con motivo → invalid_motivo (el motivo es de los ajustes)', () => {
+    expect(() =>
+      prepareStockMovementValues(
+        {
+          product_id: VALID_PRODUCT_ID,
+          type: 'sale',
+          qty: 1,
+          related_sale_id: VALID_SALE_ID,
+          skip_audit: true,
+          motivo: 'rotura',
+        },
+        makeCtx()
+      )
+    ).toThrow(expect.objectContaining({ code: 'invalid_motivo' }));
+  });
+
+  it('sale / purchase / return sin skip_audit siguen obligados a su propio evento', () => {
+    expect(() =>
+      prepareStockMovementValues(
+        { product_id: VALID_PRODUCT_ID, type: 'return', qty: 1 },
+        makeCtx()
+      )
+    ).toThrow(expect.objectContaining({ code: 'invalid_type' }));
+  });
+});
+
+describe('prepareStockMovementValues — validaciones input (vínculos)', () => {
   it('related_sale_id + related_expense_id ambos seteados → throw related_exclusive_violation', () => {
     // Un movimiento nace de UNA cosa: una venta o una compra. Los dos juntos
     // significaría que no sabemos de dónde salió.

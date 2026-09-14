@@ -45,6 +45,8 @@ export default async function ProductosPage() {
     stock_current: p.stock_current,
     stock_minimum: p.stock_minimum,
     tdf_exempt: p.tdf_exempt,
+    stock_tracking_enabled: p.stock_tracking_enabled,
+    unit_type: p.unit_type,
   }));
 
   return (

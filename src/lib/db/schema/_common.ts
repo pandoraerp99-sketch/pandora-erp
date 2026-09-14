@@ -168,6 +168,20 @@ export type StockMovementType = (typeof STOCK_MOVEMENT_TYPES)[number];
 export const MOVEMENT_DIRECTIONS = ['in', 'out'] as const;
 export type MovementDirection = (typeof MOVEMENT_DIRECTIONS)[number];
 
+// Motivo de un ajuste manual de stock (migration 0038). Merma ⇔ type 'loss';
+// corrección ⇒ 'adjustment'.
+//
+// La MISMA lista vive en `src/lib/domain/ajuste-stock.ts`, que es la que usa la
+// pantalla. No se importa de allá porque el schema no importa fuera de su
+// carpeta (drizzle-kit), y no se importa de acá en el dominio porque este
+// archivo trae drizzle y el dominio va al bundle del cliente. Las dos copias
+// las ata `tests/unit/ajuste-stock.test.ts`: si difieren, falla.
+export const MOTIVOS_AJUSTE_MERMA_DB = ['rotura', 'vencimiento', 'robo'] as const;
+export const MOTIVOS_AJUSTE_CORRECCION_DB = ['recuento', 'error_carga', 'otro'] as const;
+export type MotivoAjusteDb =
+  | (typeof MOTIVOS_AJUSTE_MERMA_DB)[number]
+  | (typeof MOTIVOS_AJUSTE_CORRECCION_DB)[number];
+
 // Cash movement types — Sprint 4 ROADMAP Cash context (C-OPS-01).
 // Movimientos MANUALES de caja (no ventas — esos van a sales/sale_payments).
 // - withdraw: comerciante retira efectivo de caja (gastos del día, transferir al banco)

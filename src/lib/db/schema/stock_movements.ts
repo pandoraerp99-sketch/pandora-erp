@@ -34,6 +34,9 @@ import { sales } from './sales.js';
 import { users } from './users.js';
 import {
   createdAt,
+  MOTIVOS_AJUSTE_CORRECCION_DB,
+  MOTIVOS_AJUSTE_MERMA_DB,
+  type MotivoAjusteDb,
   MOVEMENT_DIRECTIONS,
   STOCK_MOVEMENT_TYPES,
   type MovementDirection,
@@ -74,6 +77,12 @@ export const stock_movements = pgTable(
     // reconstruir después. Antes de 0032 no se guardaba, y dos ajustes de la
     // misma cantidad en sentidos opuestos quedaban como filas idénticas.
     direction: text('direction').$type<MovementDirection>().notNull(),
+
+    // Por qué se ajustó a mano (migration 0038), de la lista cerrada de
+    // `domain/ajuste-stock.ts`. Merma (rotura/vencimiento/robo) ⇔ type 'loss';
+    // corrección (recuento/error_carga/otro) ⇒ 'adjustment'. NULL en los
+    // movimientos del sistema, cuyo origen está en su vínculo.
+    motivo: text('motivo').$type<MotivoAjusteDb>(),
 
     // Para adjustment: motivo obligatorio (CHECK constraint abajo).
     // Para sale: opcional (puede heredar de sales.notes).
@@ -155,6 +164,22 @@ export const stock_movements = pgTable(
     directionCheck: check(
       'stock_movements_direction_check',
       sql`${table.direction} IN (${sql.raw(MOVEMENT_DIRECTIONS.map((d) => `'${d}'`).join(','))})`
+    ),
+
+    // Motivo coherente con el type (migration 0038). El `IS NOT NULL` de cada
+    // rama no es redundante: sin él, `NULL IN (...)` da NULL y la CHECK se
+    // considera cumplida (una merma sin motivo entraba).
+    motivoCheck: check(
+      'stock_movements_motivo_check',
+      sql`(${table.motivo} IS NULL AND ${table.type} <> 'loss')
+        OR (${table.motivo} IS NOT NULL AND ${table.motivo} IN (${sql.raw(MOTIVOS_AJUSTE_MERMA_DB.map((m) => `'${m}'`).join(','))}) AND ${table.type} = 'loss')
+        OR (${table.motivo} IS NOT NULL AND ${table.motivo} IN (${sql.raw(MOTIVOS_AJUSTE_CORRECCION_DB.map((m) => `'${m}'`).join(','))}) AND ${table.type} = 'adjustment')`
+    ),
+
+    // Una merma siempre sale (migration 0038).
+    lossOutCheck: check(
+      'stock_movements_loss_out_check',
+      sql`${table.type} <> 'loss' OR ${table.direction} = 'out'`
     ),
 
     // qty siempre positiva — el signo va por `direction`.

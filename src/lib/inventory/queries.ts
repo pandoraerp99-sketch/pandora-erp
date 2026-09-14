@@ -25,6 +25,8 @@ import { db } from '../db/client.js';
 import { products, type Product } from '../db/schema/products.js';
 import { requireTracingContext } from '../tracing/context.js';
 import { CrossTenantAccessError } from '../multi_tenant/errors.js';
+import type { MovementDirection, StockMovementType } from '../db/schema/_common.js';
+import { ZONA_COMERCIO } from '../domain/fecha-comercio.js';
 
 // ──── Errors tipados ────────────────────────────────────────────
 
@@ -334,4 +336,117 @@ export async function listProductsPaginated(
     .offset(offset);
 
   return rows;
+}
+
+// ──── Historial de movimientos de un producto ─────────────────────
+
+export interface MovimientoDelHistorial {
+  id: string;
+  /** 'AAAA-MM-DD' — el día en que el movimiento PASÓ (migration 0037). */
+  fecha: string;
+  /** 'AAAA-MM-DD' — el día del comercio en que se CARGÓ. Distinto de `fecha` en un comprobante cargado tarde. */
+  cargado: string;
+  /** 'HH:MM' de la carga, en la zona del comercio. */
+  hora: string;
+  type: StockMovementType;
+  direction: MovementDirection;
+  qty: string;
+  motivo: string | null;
+  /**
+   * Lo que se sabe además del tipo: el cliente de la venta, el comprobante y
+   * proveedor de la compra ("sin comprobante" si no hay), el texto del ajuste.
+   * NULL cuando no hay nada que agregar (una venta sin cliente).
+   */
+  origen: string | null;
+  /** Quién lo cargó. NULL si no hay usuario (movimiento del sistema). */
+  quien: string | null;
+}
+
+export interface HistorialDelProducto {
+  movimientos: MovimientoDelHistorial[];
+  /** Cuántos hay en total. La pantalla dice "mostrando N de total". */
+  total: number;
+}
+
+/**
+ * Los movimientos de un producto, del más nuevo al más viejo.
+ *
+ * ── ORDEN Y FECHA: EL DÍA EN QUE PASÓ ─────────────────────────────────────
+ * Se ordena por `fecha`, no por `created_at`: es el mismo reloj del inventario
+ * al cierre. Y se devuelven las dos, porque donde difieren —un comprobante de
+ * julio cargado en septiembre— una fila "de julio" que el comerciante sabe que
+ * tipeó ayer lo haría desconfiar de la pantalla.
+ *
+ * ── EL ORIGEN, EN PALABRAS ────────────────────────────────────────────────
+ * La maqueta (`stock-v2.html`) muestra "Ajuste por rotura · Agus",
+ * "OC #311 · Distrib. Austral". Acá: la venta (y a quién, si se sabe), el
+ * comprobante y el proveedor, o el texto del ajuste. Las ventas no tienen
+ * número correlativo, así que no se inventa uno.
+ *
+ * Multi-tenant: filtra por el tenant del context en el `where`; un producto de
+ * otro comercio devuelve cero filas.
+ */
+export async function listProductMovements(
+  productId: string,
+  options: { limit?: number } = {},
+  txOrDb: DbOrTransaction = db
+): Promise<HistorialDelProducto> {
+  const tenant_id = requireTenantId();
+  const limit = normalizeLimit(options.limit, 100, 500);
+
+  const filas = await txOrDb.execute<{
+    id: string;
+    fecha: string;
+    cargado: string;
+    hora: string;
+    type: StockMovementType;
+    direction: MovementDirection;
+    qty: string;
+    motivo: string | null;
+    origen: string | null;
+    quien: string | null;
+    total: number;
+  }>(sql`
+    SELECT m.id::text                                                     AS id,
+           m.fecha::text                                                  AS fecha,
+           (m.created_at AT TIME ZONE ${ZONA_COMERCIO})::date::text       AS cargado,
+           to_char(m.created_at AT TIME ZONE ${ZONA_COMERCIO}, 'HH24:MI') AS hora,
+           m.type,
+           m.direction,
+           m.qty::text                                                    AS qty,
+           m.motivo,
+           -- El TIPO ya lo dice la etiqueta de la fila: acá va lo que se sabe
+           -- ademas. Repetirlo daba "Venta Venta" / "Compra Compra" (visto en
+           -- la pantalla).
+           CASE
+             WHEN m.type = 'sale' THEN
+               NULLIF(TRIM(s.customer_name_snapshot), '')
+             WHEN m.type = 'purchase' THEN
+               -- payee_name es el snapshot del proveedor (del catalogo o
+               -- escrito a mano). Que falte el papel SI es un dato.
+               COALESCE(
+                 NULLIF(CONCAT_WS(' · ',
+                   NULLIF(TRIM(CONCAT_WS(' ', e.comprobante_tipo, e.comprobante_numero)), ''),
+                   NULLIF(TRIM(e.payee_name), '')
+                 ), ''),
+                 'sin comprobante'
+               )
+             ELSE NULLIF(TRIM(m.reason), '')
+           END                                                            AS origen,
+           u.full_name                                                    AS quien,
+           count(*) OVER ()::int                                          AS total
+      FROM stock_movements m
+      LEFT JOIN sales s    ON s.id = m.related_sale_id
+      LEFT JOIN expenses e ON e.id = m.related_expense_id
+      LEFT JOIN users u    ON u.id = m.created_by
+     WHERE m.tenant_id = ${tenant_id}
+       AND m.product_id = ${productId}
+     ORDER BY m.fecha DESC, m.created_at DESC, m.id DESC
+     LIMIT ${limit}
+  `);
+
+  return {
+    movimientos: filas.map(({ total: _total, ...m }) => m),
+    total: filas[0]?.total ?? 0,
+  };
 }

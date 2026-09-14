@@ -289,6 +289,70 @@ if (ACCION === 'anular') {
   })`));
 }
 
+if (ACCION === 'ajuste' || ACCION === 'historial') {
+  // /productos: seleccionar el producto PROD (por nombre) en la lista.
+  const PROD = process.env.PROD || 'Yerba';
+  const elegido = await evaluar(`(() => {
+    const fila = [...document.querySelectorAll('.prow')].find(r => r.textContent.includes(${JSON.stringify(PROD)}));
+    fila && fila.click();
+    return fila ? fila.textContent.replace(/\\s+/g,' ').slice(0,60) : null;
+  })()`);
+  console.log('PRODUCTO>>>', elegido);
+  await dormir(600);
+}
+
+if (ACCION === 'ajuste') {
+  // Abrir el ajuste, elegir motivo (MOTIVO = texto del botón), sentido
+  // (SENTIDO=sumar|restar) y cantidad (QTY). GUARDAR=1 lo registra de verdad,
+  // por la pantalla — la única forma de sembrar un ajuste que no miente.
+  const set = `(sel, v) => {
+    const el = document.querySelector(sel); if (!el) return false;
+    const proto = Object.getPrototypeOf(el);
+    Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  }`;
+  const clickTexto = (sel, texto) =>
+    `[...document.querySelectorAll(${JSON.stringify(sel)})].find(b => (b.textContent||'').includes(${JSON.stringify(texto)}))?.click(), true`;
+  await evaluar(clickTexto('.cd-btns button', 'Ajustar'));
+  await dormir(700);
+  if (process.env.MOTIVO) await evaluar(clickTexto('.aj-motivo', process.env.MOTIVO));
+  await dormir(300);
+  if (process.env.SENTIDO === 'sumar') await evaluar(clickTexto('.aj-seg button', 'Sumar'));
+  await evaluar(`((set) => set('#ajCant', ${JSON.stringify(process.env.QTY || '2')}))(${set})`);
+  if (process.env.DETALLE) await evaluar(`((set) => set('#ajDet', ${JSON.stringify(process.env.DETALLE)}))(${set})`);
+  await dormir(500);
+  const leerModal = `JSON.stringify({
+    abierto: !!document.querySelector('.pmod'),
+    sub: document.querySelector('.pmod .pm-sub')?.textContent ?? null,
+    motivo: document.querySelector('.aj-motivo.on')?.textContent ?? null,
+    sumarDeshabilitado: [...document.querySelectorAll('.aj-seg button')].find(b=>/Sumar/.test(b.textContent))?.disabled ?? null,
+    preview: [...document.querySelectorAll('.pmod .pm-prev .pv')].map(e=>e.textContent),
+    errores: [...document.querySelectorAll('.pmod .aj-err, .pmod .pm-warn.show')].map(e=>e.textContent.replace(/\\s+/g,' ').slice(0,140)),
+    registrar: (()=>{const b=document.querySelector('.pmod .pm-btn.primary'); return b ? (b.disabled ? 'DESHABILITADO' : 'habilitado') : null;})(),
+  })`;
+  console.log('AJUSTE>>>', await evaluar(leerModal));
+  if (process.env.GUARDAR === '1') {
+    await evaluar(`document.querySelector('.pmod .pm-btn.primary')?.click(), true`);
+    await dormir(2500);
+    console.log('DESPUES>>>', await evaluar(`JSON.stringify({
+      modalSigueAbierto: !!document.querySelector('.pmod'),
+      errores: [...document.querySelectorAll('.pmod .aj-err, .pmod .pm-warn.show')].map(e=>e.textContent.slice(0,140)),
+      stockDetalle: [...document.querySelectorAll('.kv b.tnum')].map(e=>e.textContent)[0] ?? null,
+    })`));
+  }
+}
+
+if (ACCION === 'historial') {
+  await evaluar(`[...document.querySelectorAll('.cd-btns button')].find(b => /Historial/.test(b.textContent||''))?.click(), true`);
+  await dormir(2000);
+  console.log('HISTORIAL>>>', await evaluar(`JSON.stringify({
+    sub: document.querySelector('.pmod .pm-sub')?.textContent ?? null,
+    filas: [...document.querySelectorAll('.hs-row')].map(r => [...r.children].map(c => c.textContent.replace(/\\s+/g,' ').trim()).join(' | ')),
+    pie: [...document.querySelectorAll('.pmod .pm-note, .pmod .pm-warn.show')].map(e=>e.textContent.replace(/\\s+/g,' ').slice(0,120)),
+  })`));
+}
+
 if (ACCION === 'modal') {
   // Abrir el alta y cargar precio/costo para ver el calculo en vivo.
   await evaluar(`[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Nuevo producto'))?.click(), true`);

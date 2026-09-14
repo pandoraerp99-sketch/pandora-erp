@@ -43,6 +43,9 @@ import {
   type StockMovement,
 } from '../db/schema/stock_movements.js';
 import {
+  MOTIVOS_AJUSTE_CORRECCION_DB,
+  MOTIVOS_AJUSTE_MERMA_DB,
+  type MotivoAjusteDb,
   STOCK_MOVEMENT_TYPES,
   type StockMovementType,
   type MovementDirection as SchemaMovementDirection,
@@ -67,7 +70,8 @@ export class StockValidationError extends Error {
       | 'missing_reason_for_adjustment'
       | 'missing_related_sale_for_sale_type'
       | 'related_exclusive_violation'
-      | 'invalid_fecha',
+      | 'invalid_fecha'
+      | 'invalid_motivo',
     message: string
   ) {
     super(message);
@@ -182,6 +186,12 @@ export interface RecordMovementInput {
    */
   fecha?: string;
   /**
+   * Por qué se ajustó a mano (migration 0038). Obligatorio en un `loss`
+   * cargado a mano (motivo de merma); opcional en un `adjustment` (los del
+   * sistema —anulación, stock inicial— no llevan). Prohibido en el resto.
+   */
+  motivo?: MotivoAjusteDb;
+  /**
    * Sólo requerido para type='adjustment'. Para otros types se infiere.
    */
   direction?: MovementDirection;
@@ -199,8 +209,10 @@ export interface RecordMovementInput {
    * no agregar 'stock.sale_decremented' etc — el audit del negocio lo lleva
    * el dominio de la venta/compra/devolución).
    *
-   * **F0:** se emite `stock.adjusted_manually` SOLO para type='adjustment'.
-   * Para otros types sin skip_audit → throw (forzamos al caller a manejarlo).
+   * **F0:** se emite `stock.adjusted_manually` para type='adjustment' y para
+   * type='loss' (una merma cargada a mano ES un ajuste manual; decisión del
+   * 2026-09-12, opción A del TODO). Para sale/purchase/return sin skip_audit →
+   * throw (forzamos al caller a emitir su evento de negocio).
    */
   skip_audit?: boolean;
 }
@@ -366,19 +378,49 @@ export function prepareStockMovementValues(
     }
   }
 
+  // ──── motivo coherente con el type (migration 0038) ───────
+  // Misma regla que la CHECK `stock_movements_motivo_check`, validada antes de
+  // tomar el lock: merma ⇔ loss; corrección ⇒ adjustment; nada en el resto.
+  const esMerma = (MOTIVOS_AJUSTE_MERMA_DB as readonly string[]).includes(input.motivo ?? '');
+  const esCorreccion = (MOTIVOS_AJUSTE_CORRECCION_DB as readonly string[]).includes(
+    input.motivo ?? ''
+  );
+  if (input.motivo !== undefined && !esMerma && !esCorreccion) {
+    throw new StockValidationError('invalid_motivo', `motivo "${input.motivo}" no existe`);
+  }
+  if (input.type === 'loss' && !esMerma) {
+    throw new StockValidationError(
+      'invalid_motivo',
+      `type='loss' requiere un motivo de merma (${MOTIVOS_AJUSTE_MERMA_DB.join(', ')})`
+    );
+  }
+  if (input.type === 'adjustment' && esMerma) {
+    throw new StockValidationError(
+      'invalid_motivo',
+      `motivo "${input.motivo}" es merma: va como type='loss', no 'adjustment'`
+    );
+  }
+  if (input.type !== 'loss' && input.type !== 'adjustment' && input.motivo !== undefined) {
+    throw new StockValidationError(
+      'invalid_motivo',
+      `type='${input.type}' no lleva motivo: su origen está en su vínculo`
+    );
+  }
+
   // ──── skip_audit contract guard (advisor 2026-06-03) ───────
-  // Caller que pasa type != 'adjustment' DEBE setear skip_audit=true (porque
+  // Caller que pasa sale/purchase/return DEBE setear skip_audit=true (porque
   // emite su evento de negocio propio — ej: Sales emite 'sale.completed').
   // Falla acá, ANTES de cualquier mutation, para no desperdiciar DB roundtrip
   // ni tener el lock SELECT FOR UPDATE durante writes que rollback.
-  // TODO(F1+): cuando aparezca caller manual para 'loss' (POS UI registra
-  // pérdida sin venta asociada), evaluar:
-  //   (A) reusar 'stock.adjusted_manually' con convención reason obligatorio
-  //   (B) proposal agregar 'stock.loss_recorded' al catálogo EVENT-TAXONOMY
-  if (input.skip_audit !== true && input.type !== 'adjustment') {
+  //
+  // `loss` entró el 2026-09-12 con el ajuste desde la pantalla. El TODO que
+  // estaba acá planteaba (A) reusar `stock.adjusted_manually` o (B) un evento
+  // nuevo en el catálogo cerrado; se eligió la A: una merma cargada a mano ES un
+  // ajuste manual, y el payload del evento dice el type y el motivo.
+  if (input.skip_audit !== true && input.type !== 'adjustment' && input.type !== 'loss') {
     throw new StockValidationError(
       'invalid_type',
-      `type='${input.type}' requiere caller que emita audit propio (skip_audit=true). Catálogo F0 EVENT-TAXONOMY solo cubre 'stock.adjusted_manually'.`
+      `type='${input.type}' requiere caller que emita audit propio (skip_audit=true). Catálogo F0 EVENT-TAXONOMY solo cubre 'stock.adjusted_manually' (adjustment y loss).`
     );
   }
 
@@ -424,6 +466,7 @@ export function prepareStockMovementValues(
     // Sin fecha no se manda la clave: la pone el default de la columna, que la
     // calcula en la zona del comercio.
     ...(input.fecha !== undefined ? { fecha: input.fecha } : {}),
+    motivo: input.motivo ?? null,
     created_by: ctx.actor_user_id ?? null,
     correlation_id: ctx.correlation_id ?? null,
   };
@@ -539,14 +582,18 @@ export async function recordStockMovement(
 
     // ──── (6) audit_log — regla J1 EVENT-TAXONOMY (catálogo cerrado) ────
     // Contrato validado en prepareStockMovementValues (skip_audit guard).
-    // Acá solo emit cuando type='adjustment' && !skip_audit.
-    if (!input.skip_audit && movement.type === 'adjustment') {
+    // Acá solo emit cuando es un ajuste manual (adjustment o loss) && !skip_audit.
+    if (!input.skip_audit && (movement.type === 'adjustment' || movement.type === 'loss')) {
       await writeAuditLog(
         {
           event_name: 'stock.adjusted_manually',
           payload: {
             movement_id: String(movement.id),
             product_id: movement.product_id,
+            // Desde la migration 0038 el mismo evento cubre merma y corrección:
+            // sin `type` y `motivo` en el payload no se distinguirían.
+            type: movement.type,
+            motivo: movement.motivo,
             direction,
             qty: movement.qty,
             stock_current_before: product.stock_current,

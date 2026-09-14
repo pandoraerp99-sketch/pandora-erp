@@ -52,9 +52,21 @@ describe('T-INV-10 — El ajuste manual deja rastro en stock_movements', () => {
   const opuestos = crypto.randomUUID();
   const inactivo = crypto.randomUUID();
   const sinTracking = crypto.randomUUID();
+  const merma = crypto.randomUUID();
 
-  /** Todo ajuste corre con el mismo contexto de tracing que usa la app. */
-  const ajustar = (product_id: string, delta: string, reason: string) =>
+  /**
+   * Todo ajuste corre con el mismo contexto de tracing que usa la app.
+   *
+   * Desde el ajuste en pantalla (migration 0038) el service recibe un MOTIVO
+   * de la lista cerrada y un detalle opcional, no un texto libre. Los tests de
+   * antes usan "recuento" con su texto como detalle: son correcciones.
+   */
+  const ajustar = (
+    product_id: string,
+    delta: string,
+    detalle: string,
+    motivo: string = 'recuento'
+  ) =>
     withTracingContext(
       {
         correlation_id: generateCorrelationId(),
@@ -63,7 +75,7 @@ describe('T-INV-10 — El ajuste manual deja rastro en stock_movements', () => {
         actor_user_id: user,
         actor_type: 'user',
       },
-      () => adjustStock({ product_id, delta, reason })
+      () => adjustStock({ product_id, delta, motivo, detalle })
     );
 
   const movimientosDe = (product_id: string) =>
@@ -124,6 +136,7 @@ describe('T-INV-10 — El ajuste manual deja rastro en stock_movements', () => {
       { ...base, id: conStock, name: 'Producto con stock' },
       { ...base, id: opuestos, name: 'Producto de los ajustes opuestos' },
       { ...base, id: inactivo, name: 'Producto dado de baja', is_active: false },
+      { ...base, id: merma, name: 'Producto de la merma' },
       {
         ...base,
         id: sinTracking,
@@ -159,11 +172,12 @@ describe('T-INV-10 — El ajuste manual deja rastro en stock_movements', () => {
     expect(movs[0]?.type).toBe('adjustment');
     expect(movs[0]?.direction).toBe('in');
     expect(movs[0]?.qty).toBe('5.0000');
-    expect(movs[0]?.reason).toBe('llegó mercadería del proveedor');
+    expect(movs[0]?.reason).toBe('Recuento · llegó mercadería del proveedor');
+    expect(movs[0]?.motivo).toBe('recuento');
   });
 
   it('restar stock queda como movimiento out (qty positiva, el signo va aparte)', async () => {
-    await ajustar(conStock, '-3', 'rotura en depósito');
+    await ajustar(conStock, '-3', 'se había contado de más');
 
     expect(await stockDe(conStock)).toBe('12.0000');
 
@@ -258,5 +272,48 @@ describe('T-INV-10 — El ajuste manual deja rastro en stock_movements', () => {
     expect(movs).toHaveLength(1);
     expect(movs[0]?.direction).toBe('in');
     expect(await stockDe(sinTracking)).toBe('10.0000');
+  });
+
+  // ── Merma y corrección (migration 0038) ────────────────────────────────────
+
+  it('🔴 una rotura queda como MERMA: loss, sale, con su motivo en columna', async () => {
+    await ajustar(merma, '-2', 'se cayó el pack', 'rotura');
+
+    expect(await stockDe(merma)).toBe('8.0000');
+    const movs = await movimientosDe(merma);
+    expect(movs).toHaveLength(1);
+    expect(movs[0]?.type).toBe('loss');
+    expect(movs[0]?.direction).toBe('out');
+    expect(movs[0]?.motivo).toBe('rotura');
+    expect(movs[0]?.reason).toBe('Rotura · se cayó el pack');
+
+    // Se audita con el MISMO evento del catálogo, y el payload dice qué fue:
+    // sin type y motivo ahí, una merma y un recuento serían indistinguibles.
+    const [audit] = await db
+      .select()
+      .from(audit_log)
+      .where(
+        and(
+          eq(audit_log.tenant_id, tenant),
+          eq(audit_log.event_name, 'stock.adjusted_manually'),
+          sql`${audit_log.payload}->>'product_id' = ${merma}`
+        )
+      );
+    expect(audit?.payload).toMatchObject({ type: 'loss', motivo: 'rotura' });
+  });
+
+  it('🔴 una merma que SUMA se rechaza y no deja rastro', async () => {
+    await expect(ajustar(merma, '3', 'apareció', 'robo')).rejects.toThrow(ValidationError);
+    expect(await stockDe(merma)).toBe('8.0000');
+    expect(await movimientosDe(merma)).toHaveLength(1);
+  });
+
+  it('🔴 "Otro" sin detalle se rechaza: sería un ajuste sin motivo', async () => {
+    await expect(ajustar(merma, '1', '', 'otro')).rejects.toThrow(ValidationError);
+    expect(await movimientosDe(merma)).toHaveLength(1);
+  });
+
+  it('un motivo que no está en la lista se rechaza', async () => {
+    await expect(ajustar(merma, '-1', 'x', 'regalo')).rejects.toThrow(ValidationError);
   });
 });

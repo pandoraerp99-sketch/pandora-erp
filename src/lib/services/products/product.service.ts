@@ -42,8 +42,13 @@ import {
   ProductInactiveError,
   ProductNotFoundForMovementError,
   StockValidationError,
-  type MovementDirection,
 } from '../../inventory/stock.js';
+import {
+  AjusteInvalidoError,
+  planDeAjuste,
+  type MotivoAjuste,
+  type PlanDeAjuste,
+} from '../../domain/ajuste-stock.js';
 import {
   CreateProductInputSchema,
   SearchProductsInputSchema,
@@ -480,34 +485,46 @@ export async function adjustStock(rawInput: unknown): Promise<Product> {
   }
   const input: StockAdjustmentInput = parsed.data;
 
-  const delta = money(input.delta);
-
-  if (delta.isZero()) {
-    throw new ValidationError('Ajuste de stock invalido', {
-      delta: 'Un ajuste de 0 no cambia nada. Indica cuanto sumar o restar.',
+  // La regla del ajuste (merma sólo resta, "otro" pide detalle, el motivo
+  // existe, el delta no es cero) vive en el dominio: la misma que usa la
+  // pantalla. Acá se traduce su error a uno que `runAction` sabe mostrar, en el
+  // campo del formulario que corresponde.
+  let plan: PlanDeAjuste;
+  try {
+    plan = planDeAjuste({
+      motivo: input.motivo as MotivoAjuste,
+      delta: input.delta,
+      detalle: input.detalle,
     });
+  } catch (e) {
+    if (e instanceof AjusteInvalidoError) {
+      throw new ValidationError('Ajuste de stock invalido', { [e.campo]: e.message });
+    }
+    throw e;
   }
 
-  // El ledger guarda `qty` siempre positiva y el signo aparte (migration 0032).
-  // El delta que manda la pantalla trae las dos cosas juntas, así que acá se
-  // separan: el signo va a `direction` y el valor absoluto a `qty`.
-  const direction: MovementDirection = delta.isNegative() ? 'out' : 'in';
-
   try {
+    // El ledger guarda `qty` siempre positiva y el signo aparte (migration
+    // 0032); `planDeAjuste` ya los separó. `type` sale del motivo: merma →
+    // 'loss', corrección → 'adjustment' (migration 0038).
     const { product } = await recordStockMovement({
       product_id: input.product_id,
-      type: 'adjustment',
-      qty: moneyToStorage(delta.abs()),
-      direction,
-      reason: input.reason,
+      type: plan.type,
+      qty: plan.qty,
+      direction: plan.direction,
+      motivo: plan.motivo,
+      reason: plan.reason,
     });
 
     logger.info(
       {
         product_id: input.product_id,
-        delta: delta.toString(),
+        type: plan.type,
+        motivo: plan.motivo,
+        direction: plan.direction,
+        qty: plan.qty,
         new_stock: product.stock_current,
-        reason: input.reason,
+        reason: plan.reason,
       },
       'stock.adjusted_manually'
     );
@@ -529,7 +546,7 @@ export async function adjustStock(rawInput: unknown): Promise<Product> {
         {
           product_id: input.product_id,
           current: e.available,
-          delta: delta.toString(),
+          delta: input.delta,
           requested: e.requested,
         }
       );
