@@ -26,8 +26,11 @@ import { withTracingContext } from '@/lib/tracing/context';
 import { generateCorrelationId, generateRequestId } from '@/lib/tracing/ids';
 import {
   createCustomer,
+  getMonthlyPurchasesByCustomer,
   getPurchaseStatsByCustomer,
+  MESES_SERIE,
 } from '@/lib/services/customers/customer.service';
+import { diaDelComercio } from '@/lib/domain/fecha-comercio';
 
 describe('T-CUST-02 — compras por cliente', () => {
   let tenantId: string;
@@ -175,6 +178,61 @@ describe('T-CUST-02 — compras por cliente', () => {
       )
     );
     expect(stats.has(cliente.id)).toBe(false);
+  });
+
+  describe('serie mensual — el mes es el del comercio, no el de UTC', () => {
+    /** 'AAAA-MM-01' del mes local desplazado `delta` meses. */
+    const primeroDelMes = (delta: number) => {
+      const [y, m] = diaDelComercio().split('-').map(Number) as [number, number];
+      const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+      return d.toISOString().slice(0, 10);
+    };
+    // 01:30 UTC del día 1 = 22:30 del último día del mes ANTERIOR en Ushuaia.
+    const ultimoDelMesAnteriorALas2230 = (delta: number) =>
+      new Date(`${primeroDelMes(delta)}T01:30:00Z`);
+
+    const ventaEn = (customerId: string, created_at: Date, total: string) =>
+      db.insert(sales).values({
+        tenant_id: tenantId,
+        correlation_id: generateCorrelationId(),
+        cashier_user_id: userId,
+        customer_id: customerId,
+        commercial_status: 'cobrada',
+        total,
+        subtotal: total,
+        created_at,
+      });
+
+    it('🔴 una compra del último día del mes a las 22:30 cuenta en ESE mes', async () => {
+      const cliente = await withCtx(() =>
+        createCustomer({ name: 'Cierre de mes', tax_condition: 'consumidor_final' })
+      );
+      // 22:30 del último día del mes pasado: en UTC ya es el día 1 de este mes.
+      await ventaEn(cliente.id, ultimoDelMesAnteriorALas2230(0), '1000.0000');
+
+      const series = await withCtx(() => getMonthlyPurchasesByCustomer());
+      const serie = series.get(cliente.id)!;
+      expect(serie).toHaveLength(MESES_SERIE);
+      expect(serie[MESES_SERIE - 2]).toBe(1000);
+      expect(serie[MESES_SERIE - 1]).toBe(0);
+    });
+
+    it('🔴 una compra de ANTES de la ventana no se cuela en el primer mes', async () => {
+      const cliente = await withCtx(() =>
+        createCustomer({ name: 'Hace un año', tax_condition: 'consumidor_final' })
+      );
+      // 22:30 del último día del mes previo al primero de la serie: en UTC cae
+      // adentro de la ventana; en Ushuaia, un mes afuera. (Lo que lo deja
+      // afuera es agrupar por el mes local: ese mes no está entre las etiquetas.)
+      await ventaEn(cliente.id, ultimoDelMesAnteriorALas2230(-(MESES_SERIE - 1)), '500.0000');
+      // Y una adentro, para que el cliente aparezca en el mapa.
+      await ventaEn(cliente.id, new Date(`${primeroDelMes(0)}T12:00:00Z`), '1.0000');
+
+      const series = await withCtx(() => getMonthlyPurchasesByCustomer());
+      const serie = series.get(cliente.id)!;
+      expect(serie[0]).toBe(0);
+      expect(serie[MESES_SERIE - 1]).toBe(1);
+    });
   });
 
   it('devuelve el monto como string, no como number', async () => {

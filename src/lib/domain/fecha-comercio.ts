@@ -17,3 +17,18 @@ export function diaDelComercio(ahora: Date = new Date()): string {
   // 'en-CA' formatea como AAAA-MM-DD.
   return new Intl.DateTimeFormat('en-CA', { timeZone: ZONA_COMERCIO }).format(ahora);
 }
+
+/**
+ * Los últimos `n` meses del comercio como 'AAAA-MM', del más viejo al actual.
+ * El mes actual es el del día del comercio, no el de UTC.
+ */
+export function mesesDelComercio(n: number, ahora: Date = new Date()): string[] {
+  const [y, m] = diaDelComercio(ahora).split('-').map(Number) as [number, number];
+  const meses: string[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    // Aritmética de calendario pura: Date.UTC normaliza el mes negativo.
+    const d = new Date(Date.UTC(y, m - 1 - i, 1));
+    meses.push(d.toISOString().slice(0, 7));
+  }
+  return meses;
+}

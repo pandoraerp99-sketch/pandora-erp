@@ -28,6 +28,7 @@ import { useMemo, useState, useTransition } from 'react';
 import Decimal from 'decimal.js';
 import { AppShell } from '@/components/shell/AppShell';
 import { TipoDropdown } from '@/components/ui/tipo-dropdown';
+import { diaDelComercio, mesesDelComercio } from '@/lib/domain/fecha-comercio';
 import { CLIENTES_CSS } from './clientesCss';
 import {
   createCustomerAction,
@@ -362,17 +363,17 @@ export function ClientesClient({
    * identificado no hay historial que mirar.
    */
   const kpis = useMemo(() => {
-    const ahora = new Date();
-    const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
-    const inicioMesPasado = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1);
+    // El mes del comercio, no el del reloj que renderiza: en el server el
+    // runtime corre en UTC y el 31 a la noche ya "es" el mes siguiente.
+    const [mesPasado, mesActual] = mesesDelComercio(2);
 
     let nuevosMes = 0;
     let nuevosMesPasado = 0;
     let conDoc = 0;
     for (const c of lista) {
-      const alta = new Date(c.created_at);
-      if (alta >= inicioMes) nuevosMes++;
-      else if (alta >= inicioMesPasado) nuevosMesPasado++;
+      const mesAlta = diaDelComercio(new Date(c.created_at)).slice(0, 7);
+      if (mesAlta === mesActual) nuevosMes++;
+      else if (mesAlta === mesPasado) nuevosMesPasado++;
       if (c.doc_number !== null) conDoc++;
     }
     // Por cobrar: suma de los saldos POSITIVOS. Los saldos a favor no se

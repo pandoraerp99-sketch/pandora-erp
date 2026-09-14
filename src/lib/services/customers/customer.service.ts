@@ -18,6 +18,7 @@ import { requireTracingContext } from '../../tracing/context.js';
 import { CrossTenantAccessError, DomainError } from '../../multi_tenant/errors.js';
 import { writeAuditLog } from '../../audit/audit-writer.js';
 import { logger } from '../../observability/logger.js';
+import { mesesDelComercio, ZONA_COMERCIO } from '../../domain/fecha-comercio.js';
 
 function requireTenantId(): string {
   const ctx = requireTracingContext();
@@ -372,27 +373,25 @@ export async function getMonthlyPurchasesByCustomer(): Promise<
     mes: string;
     total: string;
   }>(
+    // El mes se lee en la hora del comercio. La base corre en UTC: sin el
+    // AT TIME ZONE, una compra del 31 a las 22:30 caía en el mes siguiente, y
+    // la ventana arrancaba tres horas antes de lo que ve el comerciante.
     sql`SELECT customer_id::text,
-               to_char(date_trunc('month', created_at), 'YYYY-MM') AS mes,
+               to_char(created_at AT TIME ZONE ${ZONA_COMERCIO}, 'YYYY-MM') AS mes,
                sum(total)::text AS total
         FROM sales
         WHERE tenant_id = ${tenantId}
           AND customer_id IS NOT NULL
           AND commercial_status IN ('cobrada', 'terminada')
-          AND created_at >= date_trunc('month', now()) - interval '11 months'
+          AND created_at AT TIME ZONE ${ZONA_COMERCIO}
+              >= date_trunc('month', now() AT TIME ZONE ${ZONA_COMERCIO})
+                 - make_interval(months => ${MESES_SERIE - 1})
         GROUP BY 1, 2`
   );
 
-  // Las 12 etiquetas de mes, en orden, calculadas acá para no depender de que
-  // la consulta traiga los meses vacios.
-  const hoy = new Date();
-  const etiquetas: string[] = [];
-  for (let i = MESES_SERIE - 1; i >= 0; i--) {
-    const d = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth() - i, 1));
-    etiquetas.push(
-      `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
-    );
-  }
+  // Las etiquetas de mes, en orden, calculadas acá para no depender de que la
+  // consulta traiga los meses vacios. Con el mismo reloj que la consulta.
+  const etiquetas = mesesDelComercio(MESES_SERIE);
 
   const porCliente = new Map<string, Map<string, number>>();
   for (const f of filas) {
