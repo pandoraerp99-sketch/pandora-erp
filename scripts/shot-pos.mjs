@@ -299,6 +299,28 @@ if (ACCION === 'ajuste' || ACCION === 'historial') {
   })()`);
   console.log('PRODUCTO>>>', elegido);
   await dormir(600);
+  // Un click antes de que React hidrate se pierde en silencio y la pantalla
+  // queda en el primer producto: se lee la fila SELECCIONADA, no la clickeada.
+  for (let i = 0; i < 5; i++) {
+    const sel = await evaluar(`document.querySelector('.prow.sel')?.textContent ?? ''`);
+    if (sel.includes(PROD)) break;
+    await evaluar(`[...document.querySelectorAll('.prow')].find(r => r.textContent.includes(${JSON.stringify(PROD)}))?.click(), true`);
+    await dormir(800);
+  }
+  console.log('SELECCIONADO>>>', await evaluar(`(document.querySelector('.prow.sel')?.textContent ?? 'ninguno').replace(/\\s+/g,' ').slice(0,40)`));
+  // El tema se FUERZA en el atributo, además del localStorage de ir(): si la
+  // pantalla no lee esa clave al arrancar, una captura "oscura" sale clara y no
+  // prueba nada. Y se leen COLORES CALCULADOS, no la foto.
+  if (process.env.TEMA) {
+    await evaluar(`document.documentElement.setAttribute('data-theme', ${JSON.stringify(process.env.TEMA)}), true`);
+    await dormir(400);
+  }
+  console.log('TEMA>>>', await evaluar(`JSON.stringify({
+    atributo: document.documentElement.getAttribute('data-theme'),
+    fondoCard: (()=>{const c=document.querySelector('.cli-grid > .card'); return c ? getComputedStyle(c).backgroundColor : null;})(),
+    textoFila: (()=>{const r=document.querySelector('.prow'); return r ? getComputedStyle(r).color : null;})(),
+    fondoBody: getComputedStyle(document.body).backgroundColor,
+  })`));
 }
 
 if (ACCION === 'ajuste') {
