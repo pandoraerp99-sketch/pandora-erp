@@ -28,7 +28,7 @@ import { useMemo, useState, useTransition } from 'react';
 import Decimal from 'decimal.js';
 import { AppShell } from '@/components/shell/AppShell';
 import { TipoDropdown } from '@/components/ui/tipo-dropdown';
-import { diaDelComercio, mesesDelComercio } from '@/lib/domain/fecha-comercio';
+import { diaDelComercio, mesesDelComercio, ZONA_COMERCIO } from '@/lib/domain/fecha-comercio';
 import { CLIENTES_CSS } from './clientesCss';
 import {
   createCustomerAction,
@@ -174,9 +174,10 @@ const MEDIOS_COBRO: Array<{ valor: MedioCobro; label: string }> = [
   { valor: 'credito', label: 'Crédito' },
 ];
 
-/** "ago 2022", como la maqueta. */
+/** "ago 2022", como la maqueta. En la hora del comercio: sin `timeZone`, un
+ *  alta del 31 a la noche decía un mes en el server (UTC) y otro en el navegador. */
 const mesAno = (iso: string) =>
-  new Intl.DateTimeFormat('es-AR', { month: 'short', year: 'numeric' })
+  new Intl.DateTimeFormat('es-AR', { month: 'short', year: 'numeric', timeZone: ZONA_COMERCIO })
     .format(new Date(iso))
     .replace('.', '');
 
