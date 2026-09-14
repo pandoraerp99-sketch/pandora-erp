@@ -40,7 +40,7 @@ import { requireTracingContext } from '../../tracing/context.js';
 import { CrossTenantAccessError, DomainError } from '../../multi_tenant/errors.js';
 import { logger } from '../../observability/logger.js';
 import { csvArmar, csvNum, csvTxt } from '../reporting/csv.js';
-import { diaDelComercio } from '../../domain/fecha-comercio.js';
+import { diaDelComercio, ZONA_COMERCIO } from '../../domain/fecha-comercio.js';
 
 export class ExpenseError extends DomainError {
   constructor(code: string, messageEs: string) {
@@ -821,7 +821,9 @@ export async function listAnnulledExpenses(
            -- El motivo se guarda como "ANULADO: <motivo>" en la descripción de
            -- la fila de anulación; se devuelve limpio para la pantalla.
            regexp_replace(a.descripcion, '^ANULADO: ', '') AS motivo,
-           a.created_at::text  AS anulado_el
+           -- En la hora del comercio: created_at::text sale en UTC, y la
+           -- anulación de las 22:30 del 31 se mostraba "anulada el 1".
+           (a.created_at AT TIME ZONE ${ZONA_COMERCIO})::text AS anulado_el
       FROM expenses a
       JOIN expenses o ON o.id = a.corrects_id
      WHERE a.tenant_id = ${tenantId}
@@ -836,8 +838,12 @@ export async function listAnnulledExpenses(
        -- el filtro por la fecha del original, anular un gasto viejo dejaba al
        -- comerciante mirando "No anulaste ningun gasto en este periodo" un
        -- segundo despues de anular uno.
-       AND a.created_at >= ${desde}::date
-       AND a.created_at <  ${hasta}::date
+       --
+       -- El corte es la medianoche DEL COMERCIO. created_at >= 'AAAA-MM-DD'::date
+       -- compara contra la medianoche UTC: tres horas de anulaciones caían en
+       -- el período siguiente.
+       AND a.created_at >= (${desde}::date::timestamp AT TIME ZONE ${ZONA_COMERCIO})
+       AND a.created_at <  (${hasta}::date::timestamp AT TIME ZONE ${ZONA_COMERCIO})
      ORDER BY a.created_at DESC
   `);
 }

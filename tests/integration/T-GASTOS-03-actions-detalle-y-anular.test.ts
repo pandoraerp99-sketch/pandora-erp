@@ -73,6 +73,8 @@ import {
 } from '@/lib/services/expenses/expense.service';
 import { withTracingContext } from '@/lib/tracing/context';
 import { generateCorrelationId, generateRequestId } from '@/lib/tracing/ids';
+import { diaDelComercio } from '@/lib/domain/fecha-comercio';
+import { sumarDias } from '@/lib/calendar/fechas';
 
 /** Para las lecturas de verificación, que son del service y no de la action. */
 const conCtx = <T>(fn: () => Promise<T>) =>
@@ -299,8 +301,10 @@ describe('T-GASTOS-03 — actions de gastos', () => {
     //
     // Se busca en el rango de HOY y no en el del gasto: la pestaña lista por
     // cuándo se anuló. Ver el test de abajo, que es el que prueba por qué.
-    const hoy = new Date().toISOString().slice(0, 10);
-    const manana = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    // El día del COMERCIO: con el de UTC, este test fallaba entre las 21 y la
+    // medianoche de Ushuaia (la pestaña corta por el día local).
+    const hoy = diaDelComercio();
+    const manana = sumarDias(hoy, 1);
     const anulados = await conCtx(() => listAnnulledExpenses(hoy, manana));
     const suyo = anulados.find((a) => a.id === gasto.id);
     expect(suyo).toBeDefined();
@@ -328,8 +332,10 @@ describe('T-GASTOS-03 — actions de gastos', () => {
     const res = await anularGastoAction(viejo!.id, 'duplicado del de marzo');
     expect(res.ok).toBe(true);
 
-    const hoy = new Date().toISOString().slice(0, 10);
-    const manana = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    // El día del COMERCIO: con el de UTC, este test fallaba entre las 21 y la
+    // medianoche de Ushuaia (la pestaña corta por el día local).
+    const hoy = diaDelComercio();
+    const manana = sumarDias(hoy, 1);
 
     // La anulación PASÓ HOY, así que se ve hoy. Con el filtro por la fecha del
     // comprobante, la pantalla saltaba a la pestaña de anulados y mostraba
@@ -346,5 +352,47 @@ describe('T-GASTOS-03 — actions de gastos', () => {
     // suman, en SU período. Anular no le cambia el período a la plata.
     const vigentesMarzo = await conCtx(() => listExpenses('2026-03-01', '2026-03-15'));
     expect(vigentesMarzo.some((g) => g.id === viejo!.id)).toBe(false);
+  });
+
+  it('🔴 una anulación del último día del mes a las 22:30 es de ESE mes, no del siguiente', async () => {
+    const [gasto] = await db
+      .insert(expenses)
+      .values({
+        tenant_id: tenant,
+        fecha: '2026-03-03',
+        categoria: 'servicios',
+        total: '1200.0000',
+        payee_name: 'Anulado a la noche',
+        medio_pago: 'transferencia',
+        created_by: user,
+      })
+      .returning();
+    const res = await anularGastoAction(gasto!.id, 'de noche');
+    expect(res.ok).toBe(true);
+
+    // 01:30 UTC del día 1 de este mes = 22:30 del último día del mes pasado en
+    // Ushuaia. La tabla es append-only: se mueve el instante saltando el
+    // trigger, sólo para poner la anulación en el borde.
+    const [y, m] = diaDelComercio().split('-').map(Number) as [number, number];
+    const primero = (delta: number) =>
+      new Date(Date.UTC(y, m - 1 + delta, 1)).toISOString().slice(0, 10);
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL session_replication_role = 'replica'`);
+      await tx.execute(
+        sql`UPDATE expenses SET created_at = ${`${primero(0)}T01:30:00Z`}::timestamptz
+             WHERE tenant_id = ${tenant} AND corrects_id = ${gasto!.id}`
+      );
+    });
+
+    const delMesPasado = await conCtx(() => listAnnulledExpenses(primero(-1), primero(0)));
+    const suyo = delMesPasado.find((a) => a.id === gasto!.id);
+    expect(suyo).toBeDefined();
+    // Y la fecha que se muestra es la del comercio: el último día del mes pasado.
+    expect(suyo!.anulado_el.slice(0, 10)).toBe(
+      new Date(Date.UTC(y, m - 1, 0)).toISOString().slice(0, 10)
+    );
+
+    const deEsteMes = await conCtx(() => listAnnulledExpenses(primero(0), primero(1)));
+    expect(deEsteMes.some((a) => a.id === gasto!.id)).toBe(false);
   });
 });

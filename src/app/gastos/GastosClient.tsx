@@ -24,6 +24,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Decimal from 'decimal.js';
 import { AppShell } from '@/components/shell/AppShell';
+import { diaDelComercio } from '@/lib/domain/fecha-comercio';
 import { GASTOS_CSS } from './gastosCss';
 import {
   anularGastoAction,
@@ -197,11 +198,13 @@ function fechaCorta(iso: string): string {
   return `${Number(d)} ${mes}`;
 }
 
-/** Hoy en 'AAAA-MM-DD' local, para el valor por defecto del formulario. */
+/**
+ * Hoy en 'AAAA-MM-DD' del COMERCIO, para el valor por defecto del formulario.
+ * No el del reloj que renderiza: en el server es UTC, y a las 22:00 proponía
+ * mañana — una fecha que el service rechaza por futura en una compra.
+ */
 function hoyLocal(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return diaDelComercio();
 }
 
 type Filtro = 'todos' | 'manda' | 'arca' | 'anulados';
