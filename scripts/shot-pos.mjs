@@ -21,7 +21,8 @@ import { join } from 'node:path';
 
 const OUT = process.argv[2] ?? 'pos.png';
 const ACCION = process.argv[3] ?? '';
-const BASE = 'http://localhost:3000';
+// BASE=http://localhost:3100 para capturar el build de PRODUCCIÓN (scripts/smoke-prod.sh).
+const BASE = process.env.BASE || 'http://localhost:3000';
 const EMAIL = 'operador@pandora.dev';
 const PASS = 'pandora-dev-1234';
 
