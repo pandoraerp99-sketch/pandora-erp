@@ -33,6 +33,7 @@ import { cash_movements } from '@/lib/db/schema/cash_movements';
 import { cash_sessions } from '@/lib/db/schema/cash_sessions';
 import { withTracingContext } from '@/lib/tracing/context';
 import { generateCorrelationId, generateRequestId } from '@/lib/tracing/ids';
+import { diaDelComercio } from '@/lib/domain/fecha-comercio';
 import {
   registerExpense,
   annulExpense,
@@ -198,7 +199,7 @@ describe('T-GASTOS-02 — Anular un gasto', () => {
     expect(anulacion.corrects_id).toBe(gasto.id);
 
     // Y no aparece en el mes en curso.
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = diaDelComercio();
     const delMesActual = await conCtx(() =>
       listExpenses(hoy.slice(0, 7) + '-01', '2100-01-01')
     );

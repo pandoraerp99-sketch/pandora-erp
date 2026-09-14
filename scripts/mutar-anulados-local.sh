@@ -53,7 +53,7 @@ mutar 's/AND a\.created_at >= \(\$\{desde\}::date::timestamp AT TIME ZONE \$\{ZO
 mutar 's/AND a\.created_at <  \(\$\{hasta\}::date::timestamp AT TIME ZONE \$\{ZONA_COMERCIO\}\)/AND a.created_at <  \${hasta}::date/' \
   "el hasta de Anulados corta en medianoche UTC"
 
-mutar 's/\(a\.created_at AT TIME ZONE \$\{ZONA_COMERCIO\}\)::text AS anulado_el/a.created_at::text AS anulado_el/' \
+mutar 's/\(a\.created_at AT TIME ZONE \$\{ZONA_COMERCIO\}\)::date::text AS anulado_el/a.created_at::date::text AS anulado_el/' \
   "la fecha 'anulado el' se muestra en UTC"
 
 echo ""

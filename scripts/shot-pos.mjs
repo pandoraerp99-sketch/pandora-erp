@@ -375,6 +375,20 @@ if (ACCION === 'historial') {
   })`));
 }
 
+if (ACCION === 'anulados') {
+  // /gastos: abrir la pestaña Anulados y leer las filas como las ve el usuario.
+  for (let i = 0; i < 5; i++) {
+    const on = await evaluar(`document.querySelector('.gf.on')?.textContent ?? ''`);
+    if (/Anulados/.test(on)) break;
+    await evaluar(`[...document.querySelectorAll('.gf')].find(b => /Anulados/.test(b.textContent||''))?.click(), true`);
+    await dormir(800);
+  }
+  console.log('ANULADOS>>>', await evaluar(`JSON.stringify({
+    pestania: document.querySelector('.gf.on')?.textContent ?? null,
+    filas: [...document.querySelectorAll('.clrow.anulada')].map(r => r.textContent.replace(/\\s+/g,' ').trim().slice(0, 140)),
+  })`));
+}
+
 if (ACCION === 'modal') {
   // Abrir el alta y cargar precio/costo para ver el calculo en vivo.
   await evaluar(`[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Nuevo producto'))?.click(), true`);

@@ -24,6 +24,7 @@ import { expenses } from '@/lib/db/schema/expenses';
 import { audit_log } from '@/lib/db/schema/audit';
 import { withTracingContext } from '@/lib/tracing/context';
 import { generateCorrelationId, generateRequestId } from '@/lib/tracing/ids';
+import { diaDelComercio } from '@/lib/domain/fecha-comercio';
 import {
   getExpenseSummary,
   getExpenseTotals,
@@ -34,7 +35,9 @@ import {
   periodoDe,
 } from '@/lib/services/reporting/accountant.report';
 
-const HOY = new Date().toISOString().slice(0, 10);
+// El día del COMERCIO, el mismo reloj que el guard `fecha_futura`: con el de
+// UTC, entre las 21 y la medianoche HOY sería "mañana" para el service.
+const HOY = diaDelComercio();
 const DESDE = HOY.slice(0, 8) + '01';
 const HASTA = (() => {
   const d = new Date(HOY);

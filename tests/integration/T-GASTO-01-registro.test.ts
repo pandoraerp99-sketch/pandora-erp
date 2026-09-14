@@ -24,6 +24,7 @@ import { cash_movements } from '@/lib/db/schema/cash_movements';
 import { audit_log } from '@/lib/db/schema/audit';
 import { withTracingContext } from '@/lib/tracing/context';
 import { generateCorrelationId, generateRequestId } from '@/lib/tracing/ids';
+import { diaDelComercio } from '@/lib/domain/fecha-comercio';
 import {
   ExpenseError,
   getExpenseTotals,
@@ -33,7 +34,9 @@ import {
 } from '@/lib/services/expenses/expense.service';
 import { closeCashSession, openCashSession } from '@/lib/cash/sessions';
 
-const HOY = new Date().toISOString().slice(0, 10);
+// El día del COMERCIO, el mismo reloj que el guard `fecha_futura`: con el de
+// UTC, entre las 21 y la medianoche HOY sería "mañana" para el service.
+const HOY = diaDelComercio();
 const DESDE = HOY.slice(0, 8) + '01';
 const HASTA = (() => {
   const d = new Date(HOY);

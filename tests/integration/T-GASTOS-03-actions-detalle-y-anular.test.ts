@@ -388,7 +388,7 @@ describe('T-GASTOS-03 — actions de gastos', () => {
     const suyo = delMesPasado.find((a) => a.id === gasto!.id);
     expect(suyo).toBeDefined();
     // Y la fecha que se muestra es la del comercio: el último día del mes pasado.
-    expect(suyo!.anulado_el.slice(0, 10)).toBe(
+    expect(suyo!.anulado_el).toBe(
       new Date(Date.UTC(y, m - 1, 0)).toISOString().slice(0, 10)
     );
 

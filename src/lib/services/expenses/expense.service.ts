@@ -803,6 +803,7 @@ export interface GastoAnulado {
   comprobante_numero: string | null;
   total: string;
   motivo: string | null;
+  /** 'AAAA-MM-DD': el día del comercio en que se anuló. */
   anulado_el: string;
 }
 
@@ -821,9 +822,11 @@ export async function listAnnulledExpenses(
            -- El motivo se guarda como "ANULADO: <motivo>" en la descripción de
            -- la fila de anulación; se devuelve limpio para la pantalla.
            regexp_replace(a.descripcion, '^ANULADO: ', '') AS motivo,
-           -- En la hora del comercio: created_at::text sale en UTC, y la
-           -- anulación de las 22:30 del 31 se mostraba "anulada el 1".
-           (a.created_at AT TIME ZONE ${ZONA_COMERCIO})::text AS anulado_el
+           -- El DÍA del comercio, sin hora: created_at::text sale en UTC, y la
+           -- anulación de las 22:30 del 31 se mostraba "anulada el 1". Se
+           -- devuelve AAAA-MM-DD (como "cargado" en inventory/queries.ts) y no
+           -- un timestamp sin offset, que un new Date() leería en otro huso.
+           (a.created_at AT TIME ZONE ${ZONA_COMERCIO})::date::text AS anulado_el
       FROM expenses a
       JOIN expenses o ON o.id = a.corrects_id
      WHERE a.tenant_id = ${tenantId}
