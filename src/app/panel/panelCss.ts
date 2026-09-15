@@ -232,6 +232,9 @@ html[data-theme="dark"] .afip-sub{ color:#7fb79b; }
 html[data-theme="dark"] .cashier{ background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.1); box-shadow:inset 0 1px 0 rgba(255,255,255,0.07); }
 html[data-theme="dark"] .seg button.on{ background:rgba(238,242,255,0.94); color:#0d1424; }
 html[data-theme="dark"] .iconbtn .ndot{ border-color:rgba(11,17,42,0.9); }
+/* "Ir a vender" (.cta): con los violetas claros del tema oscuro el texto
+   blanco daba 2,24:1 medido sobre pixeles. Mismo arreglo que _css/tema-oscuro.ts. */
+html[data-theme="dark"] .cta{ background:linear-gradient(140deg,#5f53f5,#6b5fff); }
 
 /* hero + floating cards */
 html[data-theme="dark"] .hero-hi{ color:var(--ink-2); }

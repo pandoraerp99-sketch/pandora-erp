@@ -205,6 +205,10 @@ html[data-theme="dark"] .gact.danger:hover{ background:rgba(255,120,140,0.16); }
   background:rgba(192,56,74,0.10); border:1px solid rgba(192,56,74,0.25);
   border-radius:10px; padding:9px 12px; margin:0 0 14px; line-height:1.45; }
 html[data-theme="dark"] .gerr{ color:#ff9aa9; background:rgba(255,120,140,0.13); border-color:rgba(255,120,140,0.28); }
+/* El error de la pantalla (fuera del modal). Era un color inline: el mismo
+   error una tercera vez. Mismo valor en claro. */
+.g-error{ font-size:12.5px; color:#c0384a; font-weight:600; }
+html[data-theme="dark"] .g-error{ color:#ff9aa9; }
 
 /* Lista de consecuencias antes de confirmar algo que mueve plata y stock. */
 .pm-lista{ margin:0 0 16px; padding:0 0 0 17px; display:flex; flex-direction:column; gap:7px; }

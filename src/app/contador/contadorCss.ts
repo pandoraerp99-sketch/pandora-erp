@@ -9,6 +9,7 @@
 //
 // OJO: esto es UN TEMPLATE LITERAL. Nada de backticks aca adentro.
 import { RESET_CARD_POS } from '../_css/reset-card-pos';
+import { OSCURO_GESTION, OSCURO_NUCLEO } from '../_css/tema-oscuro';
 
 export const CONTADOR_CSS = `
 /* ============================================================
@@ -308,21 +309,61 @@ button.emp-chip{ font-family:inherit; border:none; outline:none; cursor:pointer;
   font-size:12.5px; color:var(--ink-1); border-top:1px solid rgba(13,20,36,0.06); }
 .inv-fecha{ display:block; font-style:normal; font-size:10.5px; color:var(--ink-3); margin-top:2px; }
 /* Por CLASE y no por style inline: un hex inline no puede tener variante de
-   tema, y en este proyecto eso ya rompio el modo oscuro dos veces.
-
-   ⚠️ MEDIDO: /contador HOY NO TIENE MODO OSCURO. Forzando data-theme=dark, las
-   variables (--ink-1 y companía) no cambian: este archivo y shellCss las
-   definen una sola vez, y las unicas reglas data-theme del archivo son las de
-   abajo. O sea que estas cinco lineas no hacen nada todavia — se dejan porque
-   son la convencion del resto de las pantallas (gastos tiene 33, clientes 51)
-   y porque el dia que esta pantalla tenga su paleta oscura, el bloque nuevo ya
-   va a estar bien. Lo que NO hay que hacer es dar por verificado el modo
-   oscuro de /contador: no existe. */
+   tema, y en este proyecto eso ya rompio el modo oscuro dos veces. */
 .inv-falta{ color:var(--red); font-weight:600; font-size:11.5px; }
 .label-sm.alerta{ color:var(--red); }
+
+/* ── Lo que antes era style inline en ContadorClient ──────────────────────
+   Mismos valores que tenia inline: en claro la pantalla no cambia. */
+.emp-chip.invitar{ border:1.5px dashed rgba(107,95,255,0.45); color:var(--purple); background:rgba(107,95,255,0.06); font-weight:600; }
+.periodo-ic{ width:42px; height:42px; border-radius:13px; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
+  background:linear-gradient(150deg,rgba(52,199,125,0.18),rgba(107,95,255,0.12)); color:#1a8e5a; }
+.label-sm.err{ color:#c0384a; }
+.label-sm.aviso{ color:#b96c1a; }
+.cc-bv.debe{ color:#c0384a; }
+` + RESET_CARD_POS + OSCURO_NUCLEO + OSCURO_GESTION + `
+/* ════════════════ MODO OSCURO · lo propio de /contador ════════════════
+   Va DESPUES de RESET_CARD_POS para ganarle al .card:hover claro.
+   Los tonos son los mismos que usan Clientes y Gastos para cada rol
+   (verde #55dd9b, ambar #ffb87a, rojo #ff8b96). */
+html[data-theme="dark"] .card:hover{ border-color:rgba(255,255,255,0.12); }
+html[data-theme="dark"] .divider{ background:rgba(255,255,255,0.08); }
+
+/* chips de empresa: .on era violeta lleno con texto blanco; con el violeta
+   claro del tema oscuro el blanco no se lee. Se hace como .cchip.on de Clientes. */
+html[data-theme="dark"] .emp-chip{ background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.12); }
+html[data-theme="dark"] .emp-chip.on{ background:rgba(141,162,255,0.18); color:var(--purple); border-color:rgba(141,162,255,0.4); box-shadow:none; }
+html[data-theme="dark"] .emp-chip.invitar{ border-color:rgba(141,162,255,0.45); background:rgba(141,162,255,0.06); }
+html[data-theme="dark"] .periodo-ic{ color:#55dd9b; border:1px solid rgba(255,255,255,0.10); }
+
+/* posicion de IVA + estados */
+html[data-theme="dark"] .iva-pos{ background:rgba(247,152,74,0.10); border-color:rgba(247,152,74,0.28); }
+html[data-theme="dark"] .iva-pos > span:first-child,
+html[data-theme="dark"] .iva-amt{ color:#ffb87a; }
+html[data-theme="dark"] .iva-pos.ok{ background:rgba(52,199,125,0.10); border-color:rgba(52,199,125,0.26); }
+html[data-theme="dark"] .iva-pos.ok > span:first-child{ color:#55dd9b; }
+html[data-theme="dark"] .c-green2{ color:#55dd9b !important; }
+html[data-theme="dark"] .c-red2{ color:#ff8b96 !important; }
+html[data-theme="dark"] .label-sm.aviso,
+html[data-theme="dark"] .per-status,
+html[data-theme="dark"] .bar .per-status{ color:#ffb87a; }
+html[data-theme="dark"] .conc-diff.warn{ background:rgba(247,152,74,0.14); color:#ffb87a; }
+html[data-theme="dark"] .label-sm.err,
+html[data-theme="dark"] .cc-bv.debe,
+html[data-theme="dark"] .inv-falta,
+html[data-theme="dark"] .label-sm.alerta{ color:#ff8b96; }
+
+/* superficies claras de la maqueta */
+html[data-theme="dark"] .rx,
+html[data-theme="dark"] .exp-btn{ background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.12); box-shadow:inset 0 1px 0 rgba(255,255,255,0.08); }
+html[data-theme="dark"] .exp-btn:hover{ border-color:rgba(141,162,255,0.45); }
+html[data-theme="dark"] .cc-box{ background:rgba(255,255,255,0.04); border-color:rgba(255,255,255,0.10); }
+html[data-theme="dark"] .legal-note{ background:rgba(255,255,255,0.04); border-color:rgba(255,255,255,0.10); }
+html[data-theme="dark"] .cc-row,
+html[data-theme="dark"] .conc-row{ border-top-color:rgba(255,255,255,0.06); }
+
+/* inventario valorizado */
 html[data-theme="dark"] .inv-tab{ border-color:rgba(255,255,255,0.10); }
 html[data-theme="dark"] .inv-th{ background:rgba(255,255,255,0.05); }
 html[data-theme="dark"] .inv-tr{ border-top-color:rgba(255,255,255,0.07); }
-html[data-theme="dark"] .inv-falta,
-html[data-theme="dark"] .label-sm.alerta{ color:#ff9aa9; }
-` + RESET_CARD_POS;
+`;

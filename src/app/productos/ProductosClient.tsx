@@ -78,6 +78,16 @@ function colorDeRubro(rubro: string | null): string {
   return COLORES[h % COLORES.length]!;
 }
 
+/**
+ * El color del rubro viaja como VARIABLE CSS, no como `color`/`background`
+ * inline: un style inline le gana a cualquier regla y no puede tener variante
+ * de tema. La clase `.rubro` lo pinta, y en oscuro lo aclara (productosCss).
+ * En claro el resultado es el mismo que antes: `${color}14` = 8% de opacidad.
+ */
+function estiloRubro(color: string): React.CSSProperties {
+  return { '--rubro': color, '--rubro-bg': `${color}14` } as React.CSSProperties;
+}
+
 type Estado = { clase: 'ok' | 'warn' | 'err'; label: string };
 
 function estadoDe(p: ProductoDTO): Estado {
@@ -456,8 +466,8 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
                       {/* Sin foto: inicial con el color del rubro, igual que
                           la maqueta para los productos sin imagen. */}
                       <span
-                        className="pthumb"
-                        style={{ color, background: `${color}14` }}
+                        className="pthumb rubro"
+                        style={estiloRubro(color)}
                       >
                         {p.name.charAt(0).toUpperCase()}
                       </span>
@@ -470,8 +480,8 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
                       <div className="clid">{p.sku ?? p.barcode ?? 'sin código'}</div>
                     </div>
                     <span
-                      className="pill"
-                      style={{ background: `${color}14`, color }}
+                      className="pill rubro"
+                      style={estiloRubro(color)}
                     >
                       {p.category ?? 'Sin rubro'}
                     </span>
@@ -520,11 +530,8 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
                   }}
                 >
                   <span
-                    className="pill"
-                    style={{
-                      background: `${colorDeRubro(sel.category)}14`,
-                      color: colorDeRubro(sel.category),
-                    }}
+                    className="pill rubro"
+                    style={estiloRubro(colorDeRubro(sel.category))}
                   >
                     {sel.category ?? 'Sin rubro'}
                   </span>
@@ -670,8 +677,7 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
               <div className="card-title">
                 <h3>
                   <span
-                    className="ic"
-                    style={{ background: 'rgba(247,152,74,0.14)', color: '#b96c1a' }}
+                    className="ic repo-ic"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <circle cx="8" cy="21" r="1" />
@@ -682,8 +688,7 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
                   Reposición sugerida
                 </h3>
                 <span
-                  className="pill"
-                  style={{ background: 'rgba(247,152,74,0.16)', color: '#b96c1a' }}
+                  className="pill repo-n"
                 >
                   {reposicion.length}
                 </span>
@@ -699,8 +704,8 @@ export function ProductosClient({ productos, cashierName, salePointLabel }: Prop
                     onClick={() => setSelId(r.producto.id)}
                   >
                     <span
-                      className="rthumb"
-                      style={{ color, background: `${color}14` }}
+                      className="rthumb rubro"
+                      style={estiloRubro(color)}
                     >
                       {r.producto.name.charAt(0).toUpperCase()}
                     </span>

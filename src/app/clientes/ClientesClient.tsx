@@ -906,8 +906,7 @@ export function ClientesClient({
                   <div>
                     <div className="upper-mini">Saldo cuenta corriente</div>
                     <div
-                      className="tnum cd-ccv"
-                      style={debe(sel.saldo) ? undefined : { color: '#1a8e5a' }}
+                      className={debe(sel.saldo) ? 'tnum cd-ccv' : 'tnum cd-ccv aldia'}
                     >
                       {plata(sel.saldo)}
                     </div>
@@ -978,8 +977,7 @@ export function ClientesClient({
               <div className="card-title">
                 <h3>
                   <span
-                    className="ic"
-                    style={{ background: 'rgba(239,93,106,0.13)', color: '#c0384a' }}
+                    className="ic ic-deuda"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <rect x="2" y="5" width="20" height="14" rx="2" />
@@ -988,10 +986,7 @@ export function ClientesClient({
                   </span>
                   Deudores
                 </h3>
-                <span
-                  className="pill"
-                  style={{ background: 'rgba(239,93,106,0.12)', color: '#c0384a' }}
-                >
+                <span className="pill pill-deuda">
                   {plata(kpis.porCobrar)}
                 </span>
               </div>
@@ -1032,7 +1027,7 @@ export function ClientesClient({
                             : `${d.dias_deuda} días`}
                     </span>
                   </div>
-                  <span className="stock-q" style={{ color: '#c0384a' }}>
+                  <span className="stock-q">
                     {plata(d.saldo)}
                   </span>
                 </button>
@@ -1246,7 +1241,7 @@ function CobroModal({
               Entra a la <b>caja del día</b> y suma al arqueo.
             </p>
           ) : (
-            <p className="pm-note" style={{ color: '#c0384a' }}>
+            <p className="pm-note err">
               <b>No hay una caja abierta.</b> Un cobro en efectivo tiene que
               entrar a la caja del día. Abrila desde Caja, o cobrá por otro
               medio.

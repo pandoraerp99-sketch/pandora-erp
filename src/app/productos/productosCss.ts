@@ -18,6 +18,7 @@
 // en comentarios — cierran el string y rompen toda la app con un error que
 // apunta al CSS y no al culpable.
 import { RESET_CARD_POS } from '../_css/reset-card-pos';
+import { OSCURO_GESTION, OSCURO_NUCLEO } from '../_css/tema-oscuro';
 
 export const PRODUCTOS_CSS = `
 /* ============================================================
@@ -503,4 +504,78 @@ button.aj-motivo.on{ border-color:var(--purple); background:rgba(107,95,255,0.10
 .hs-quien{ display:block; font-size:11px; color:var(--ink-3); margin-top:2px; }
 .hs-q{ font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .hs-q.in{ color:#13734a; } .hs-q.out{ color:#c93545; }
-` + RESET_CARD_POS;
+
+/* ── Lo que antes era style inline en ProductosClient ─────────────────────
+   Un hex inline no puede tener variante de tema. Mismos valores que tenia
+   inline: en claro la pantalla no cambia. El color de rubro llega como
+   variable (--rubro / --rubro-bg) porque sale del NOMBRE del rubro. */
+.rubro{ color:var(--rubro); background:var(--rubro-bg); }
+.repo-ic{ background:rgba(247,152,74,0.14); color:#b96c1a; }
+.pill.repo-n{ background:rgba(247,152,74,0.16); color:#b96c1a; }
+` + RESET_CARD_POS + OSCURO_NUCLEO + OSCURO_GESTION + `
+/* ════════════════ MODO OSCURO · lo propio de /productos ════════════════
+   Va DESPUES de RESET_CARD_POS para ganarle al .card:hover claro. Sólo las
+   clases que la pantalla usa (grep de className en productos/*.tsx): la
+   maqueta trae mucho CSS que acá no se pinta. Los tonos son los de Clientes y
+   Gastos para cada rol (verde #55dd9b, ambar #ffb87a, rojo #ff8b96). */
+html[data-theme="dark"] .card:hover,
+html[data-theme="dark"] .cli-grid > .card:hover,
+html[data-theme="dark"] .col-side .card:hover{ border-color:rgba(255,255,255,0.12); }
+html[data-theme="dark"] .hbtn{ background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.12); color:var(--ink-1); box-shadow:inset 0 1px 0 rgba(255,255,255,0.08); }
+html[data-theme="dark"] .hbtn.primary{ background:linear-gradient(140deg,#5f53f5,#6b5fff); color:#fff; border:none; }
+
+/* rubro: el mismo tono, aclarado para que se lea sobre el fondo nocturno */
+html[data-theme="dark"] .rubro{ color:color-mix(in srgb, var(--rubro) 62%, #fff); background:color-mix(in srgb, var(--rubro) 20%, transparent); }
+html[data-theme="dark"] .repo-ic,
+html[data-theme="dark"] .pill.repo-n{ background:rgba(247,152,74,0.16); color:#ffb87a; }
+
+/* lista */
+html[data-theme="dark"] .prow{ border-top-color:rgba(255,255,255,0.06); }
+html[data-theme="dark"] .prow:hover{ background:rgba(255,255,255,0.05); }
+html[data-theme="dark"] .prow.sel{ background:rgba(141,162,255,0.12); }
+html[data-theme="dark"] .pthumb.img,
+html[data-theme="dark"] .rthumb.img{ border-color:rgba(255,255,255,0.12); }
+html[data-theme="dark"] .pmargen{ color:#55dd9b; }
+html[data-theme="dark"] .estado.ok{ background:rgba(52,199,125,0.15); color:#55dd9b; }
+html[data-theme="dark"] .estado.warn{ background:rgba(247,152,74,0.16); color:#ffb87a; }
+html[data-theme="dark"] .estado.err{ background:rgba(239,93,106,0.16); color:#ff8b96; }
+
+/* detalle + reposicion */
+html[data-theme="dark"] .pd-bar{ background:rgba(255,255,255,0.08); }
+html[data-theme="dark"] .quick{ background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.10); box-shadow:inset 0 1px 0 rgba(255,255,255,0.06); }
+html[data-theme="dark"] .stock-row,
+html[data-theme="dark"] button.stock-row{ border-top-color:rgba(255,255,255,0.06); }
+html[data-theme="dark"] button.stock-row:hover{ background:rgba(141,162,255,0.08); }
+html[data-theme="dark"] .cd-btns .b.ghost,
+html[data-theme="dark"] .pm-acts .b.ghost{ background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.12); box-shadow:inset 0 1px 0 rgba(255,255,255,0.08); }
+
+/* modal de producto */
+html[data-theme="dark"] .pm-x,
+html[data-theme="dark"] .pm-btn.ghost{ background:rgba(255,255,255,0.07); }
+/* mismo caso que .cta (ver _css/tema-oscuro.ts): var(--purple) se aclara en
+   oscuro y el texto blanco deja de leerse */
+html[data-theme="dark"] .pm-btn.primary{ background:linear-gradient(140deg,#5f53f5,#6b5fff); }
+html[data-theme="dark"] .pm-fld input,
+html[data-theme="dark"] .pm-fld select{ background:rgba(255,255,255,0.07); border-color:rgba(255,255,255,0.14); color:var(--ink); color-scheme:dark; }
+html[data-theme="dark"] .pm-warn{ color:#ff9aa4; background:rgba(255,120,140,0.12); border-color:rgba(255,120,140,0.30); }
+html[data-theme="dark"] .pm-prev{ background:rgba(255,255,255,0.04); border-color:rgba(255,255,255,0.10); }
+html[data-theme="dark"] .pm-prev .pv.mgok{ color:#55dd9b; }
+html[data-theme="dark"] .pm-prev .pv.mgtight{ color:#f4c948; }
+html[data-theme="dark"] .pm-prev .pv.mgbad{ color:#ff8b96; }
+
+/* ajuste de stock: .on era fondo --ink con texto blanco; en oscuro --ink es
+   casi blanco, asi que el texto pasa a oscuro (como .seg button.on) */
+html[data-theme="dark"] button.aj-motivo{ background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.14); }
+html[data-theme="dark"] button.aj-motivo.on{ background:rgba(141,162,255,0.16); border-color:var(--purple); }
+html[data-theme="dark"] .aj-seg button{ background:rgba(255,255,255,0.06); }
+html[data-theme="dark"] .aj-seg button.on{ background:rgba(238,242,255,0.94); color:#0d1424; }
+html[data-theme="dark"] .aj-err{ color:#ff9aa4; }
+
+/* historial */
+html[data-theme="dark"] .hs-row{ border-top-color:rgba(255,255,255,0.07); }
+html[data-theme="dark"] .hs-tag{ background:rgba(255,255,255,0.08); }
+html[data-theme="dark"] .hs-tag.loss{ background:rgba(239,93,106,0.16); color:#ff9aa4; }
+html[data-theme="dark"] .hs-tag.purchase{ background:rgba(52,199,125,0.15); color:#55dd9b; }
+html[data-theme="dark"] .hs-q.in{ color:#55dd9b; }
+html[data-theme="dark"] .hs-q.out{ color:#ff8b96; }
+`;

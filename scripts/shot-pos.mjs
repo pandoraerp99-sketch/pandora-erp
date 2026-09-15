@@ -679,6 +679,25 @@ if (ACCION === 'merma') {
   await dormir(700);
 }
 
+// Genérico: traer a la vista el primer elemento que matchee un selector.
+// Uso: RUTA=/contador TEMA=dark node scripts/shot-pos.mjs out.png "ver:.cc-list"
+// Imprime el rectángulo para medir contraste sobre píxeles.
+if (ACCION.startsWith('ver:')) {
+  const sel = ACCION.slice(4);
+  if (process.env.TEMA) {
+    await evaluar(`document.documentElement.setAttribute('data-theme', ${JSON.stringify(process.env.TEMA)}), true`);
+    await dormir(400);
+  }
+  console.log('VER>>>', await evaluar(`JSON.stringify((()=>{
+    const e = document.querySelector(${JSON.stringify(sel)});
+    if (!e) return { encontrado: false };
+    e.scrollIntoView({ block: 'center' });
+    const r = e.getBoundingClientRect();
+    return { encontrado: true, x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
+  })())`));
+  await dormir(700);
+}
+
 const shot = await cmd('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
 writeFileSync(OUT, Buffer.from(shot.data, 'base64'));
 console.log('OK ->', OUT);

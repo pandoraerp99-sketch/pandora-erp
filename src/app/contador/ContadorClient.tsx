@@ -364,22 +364,16 @@ export function ContadorClient({
               Queda visible para que se entienda el modelo. */}
           <button
             type="button"
-            className="emp-chip"
+            className="emp-chip invitar"
             disabled
             title="La invitación la hace el dueño del comercio desde su cuenta. Esa pantalla todavía no está."
-            style={{
-              border: '1.5px dashed rgba(107,95,255,0.45)',
-              color: 'var(--purple)',
-              background: 'rgba(107,95,255,0.06)',
-              fontWeight: 600,
-            }}
           >
             + Invitar empresa
           </button>
         </div>
 
         {error !== null ? (
-          <p className="label-sm" style={{ color: '#c0384a' }}>
+          <p className="label-sm err">
             {error}
           </p>
         ) : null}
@@ -398,20 +392,7 @@ export function ContadorClient({
             flexWrap: 'wrap',
           }}
         >
-          <span
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 13,
-              flex: '0 0 auto',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background:
-                'linear-gradient(150deg,rgba(52,199,125,0.18),rgba(107,95,255,0.12))',
-              color: '#1a8e5a',
-            }}
-          >
+          <span className="periodo-ic">
             {H2_ICONO}
           </span>
           <div style={{ flex: '0 0 auto' }}>
@@ -438,7 +419,7 @@ export function ContadorClient({
             </div>
             <div>
               <div className="upper-mini">Cargados a mano</div>
-              <div className="tnum" style={{ ...CIFRA, color: '#1a8e5a' }}>
+              <div className="tnum c-green2" style={CIFRA}>
                 0
               </div>
             </div>
@@ -526,8 +507,8 @@ export function ContadorClient({
               <div className="iva-pos">
                 <span>Saldo a pagar</span>
                 <span
-                  className="label-sm"
-                  style={{ color: '#b96c1a', textAlign: 'right', maxWidth: 200 }}
+                  className="label-sm aviso"
+                  style={{ textAlign: 'right', maxWidth: 200 }}
                 >
                   no se puede calcular sin el crédito fiscal
                 </span>
@@ -563,12 +544,16 @@ export function ContadorClient({
                 {plata(resumen.ventas.total)}
               </span>
             </div>
-            {/* La maqueta pone "Estado de Resultados" acá. Necesita costo de
-                mercadería vendida y gastos, que no se registran: daría un
-                resultado inventado. */}
+            {/* La maqueta pone "Estado de Resultados" acá. Los gastos se
+                registran desde 2026-09-09 y el costo de cada venta desde la
+                migration 0031 — pero las ventas anteriores tienen ese costo en
+                NULL y no se puede reconstruir. Un resultado de un período que
+                las incluya saldría incompleto sin decirlo, así que no se arma.
+                (El texto anterior decía "no se registran": quedó viejo.) */}
             <p className="label-sm" style={{ marginTop: 12 }}>
-              El Estado de Resultados necesita el costo de mercadería vendida y
-              los gastos, que todavía no se registran.
+              El Estado de Resultados todavía no se arma acá. Los gastos y el
+              costo de cada venta ya se guardan, pero las ventas anteriores a
+              que se empezara a guardar el costo no lo tienen.
             </p>
           </section>
         </div>
@@ -815,11 +800,10 @@ export function ContadorClient({
             <div className="cc-box">
               <div className="cc-bk">Total por cobrar</div>
               <div
-                className="cc-bv tnum"
-                style={
+                className={
                   resumen.cuentasCorrientes.deudores > 0
-                    ? { color: '#c0384a' }
-                    : undefined
+                    ? 'cc-bv tnum debe'
+                    : 'cc-bv tnum'
                 }
               >
                 {plata(resumen.cuentasCorrientes.porCobrar)}

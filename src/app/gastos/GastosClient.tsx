@@ -376,7 +376,7 @@ export function GastosClient({
 
       {error !== null ? (
         <div className="card glass" style={{ padding: '13px 18px', marginBottom: 16 }}>
-          <div style={{ fontSize: 12.5, color: '#c0384a', fontWeight: 600 }}>{error}</div>
+          <div className="g-error">{error}</div>
         </div>
       ) : null}
 
