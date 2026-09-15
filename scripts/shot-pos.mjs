@@ -650,6 +650,35 @@ if (ACCION === 'inventario') {
   })())`));
 }
 
+// Panel → tarjeta "Stock y merma" (RESEARCH-BRIEF-panel §8.e).
+// Uso: RUTA=/panel TEMA=dark node scripts/shot-pos.mjs merma.png merma
+if (ACCION === 'merma') {
+  if (process.env.TEMA) {
+    await evaluar(`document.documentElement.setAttribute('data-theme', ${JSON.stringify(process.env.TEMA)}), true`);
+    await dormir(400);
+  }
+  console.log('MERMA>>>', await evaluar(`JSON.stringify((()=>{
+    const card = [...document.querySelectorAll('section.card')].find(s => s.querySelector('h3')?.textContent.trim() === 'Stock y merma');
+    if (!card) return { encontrada: false };
+    card.scrollIntoView({ block: 'center' });
+    const col = (sel) => { const e = card.querySelector(sel); return e ? getComputedStyle(e).color : null; };
+    return {
+      encontrada: true,
+      tema: document.documentElement.getAttribute('data-theme'),
+      texto: card.innerText.replace(/\\n+/g, ' | '),
+      colores: { numero: col('.pr-num'), aviso: col('.pr-aviso'), k: col('.pr-k'), n: col('.pr-n'), tabla: col('.mg-nombre') },
+      // Rectángulos para medir el contraste sobre PÍXELES (scripts/contraste-png.ps1):
+      // con fondo translúcido, el color declarado no dice contra qué se ve.
+      rects: ['.pr-n', '.pr-aviso'].map((sel) => {
+        const r = card.querySelector(sel)?.getBoundingClientRect();
+        return r ? { sel, x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) } : null;
+      }),
+      errores: window.__errs ?? 0,
+    };
+  })())`));
+  await dormir(700);
+}
+
 const shot = await cmd('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
 writeFileSync(OUT, Buffer.from(shot.data, 'base64'));
 console.log('OK ->', OUT);

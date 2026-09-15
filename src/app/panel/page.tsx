@@ -70,6 +70,7 @@ import {
   getMargenDelMes,
   getRentabilidadPorProducto,
 } from '@/lib/services/reporting/margen.report';
+import { getMermaDelMes, getValorStock } from '@/lib/services/reporting/merma.report';
 import { PanelClient } from './PanelClient';
 
 // F0: un único punto de venta, igual que el resto de la app.
@@ -120,6 +121,8 @@ export default async function PanelPage() {
         diasDeStock,
         margen,
         rentabilidad,
+        merma,
+        valorStock,
       ] = await Promise.all([
         getPanelHoy(),
         getPanelMes(),
@@ -151,6 +154,10 @@ export default async function PanelPage() {
         // decision de si hay numero o no la toma la capa pura al renderizar.
         getMargenDelMes(),
         getRentabilidadPorProducto(6),
+        // Merma del mes (sólo movimientos con motivo cargado) y plata en
+        // stock. Crudo: qué se puede afirmar lo decide reporting/merma.ts.
+        getMermaDelMes(),
+        getValorStock(),
       ]);
 
       // El desglose de la caja sale de `computeCashBreakdown`, que es LA MISMA
@@ -192,6 +199,8 @@ export default async function PanelPage() {
         diasDeStock,
         margen,
         rentabilidad,
+        merma,
+        valorStock,
         // `due_date` ya viene como texto 'AAAA-MM-DD' de Postgres (columna
         // `date`). `done_at` se serializa a ISO — solo para poder pasar por
         // el limite server/client, porque en esta lista siempre es null.

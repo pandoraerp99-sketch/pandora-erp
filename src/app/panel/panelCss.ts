@@ -933,4 +933,12 @@ html[data-theme="dark"] .pr-base{ border-top-color:rgba(255,255,255,0.08); }
 .pr-espera{ font-size:12.5px; color:var(--ink-2); line-height:1.55; padding:4px 2px; }
 .pr-espera span{ display:block; font-size:11px; color:var(--ink-3); margin-top:5px; }
 
+/* ── Stock y merma (brief §8.e) ───────────────────────────────────────────
+   Reusa pr-* y mg-*. Lo unico propio: las notas de esta tarjeta NO son letra
+   chica decorativa ("a costo de ultima compra", "N productos sin costo", el
+   desglose por motivo), asi que van en --ink-2 y no en --ink-3, que esta
+   medido debajo de WCAG AA (brief §8.d). Es un token: el oscuro lo resuelve
+   solo. */
+.mm-card .pr-n, .mm-card .pr-aviso, .mm-card .mg-espera span{ color:var(--ink-2); }
+
 ` + RESET_CARD_POS;

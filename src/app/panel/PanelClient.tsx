@@ -24,6 +24,7 @@ import { Pendientes, type PendienteVista } from '@/components/tasks/Pendientes';
 import { DiasDeStock, type DiasDeStockItem } from '@/components/stock/DiasDeStock';
 import { MargenDelMes } from '@/components/reporting/MargenDelMes';
 import type { CrudoMargen, CrudoProducto } from '@/lib/reporting/margen';
+import { MermaDelMes, type MermaDelMesProps } from '@/components/reporting/MermaDelMes';
 import { CierreDeMes } from '@/components/reporting/CierreDeMes';
 import { proyectarCierre } from '@/lib/reporting/cierre-de-mes';
 import { PANEL_CSS } from './panelCss';
@@ -108,6 +109,9 @@ export interface PanelProps {
    *  Viaja en strings porque un Decimal no cruza el borde server→client. */
   margen: CrudoMargen;
   rentabilidad: CrudoProducto[];
+  /** Crudo de merma del mes y valor del stock; decide `reporting/merma.ts`. */
+  merma: Pick<MermaDelMesProps, 'motivos' | 'productos' | 'correcciones'>;
+  valorStock: MermaDelMesProps['valorStock'];
   /** Dias desde la PRIMERA venta. 0 = el comercio todavia no vendio. */
   diasDeHistoria: number;
   /** Dia DEL COMERCIO en que se abrio la caja que sigue abierta. */
@@ -348,6 +352,8 @@ export function PanelClient({
   diasDeHistoria,
   margen,
   rentabilidad,
+  merma,
+  valorStock,
   cajaAbiertaDesde,
   comercio,
   usuario,
@@ -1398,6 +1404,12 @@ export function PanelClient({
               cuanto DEJA. Es composicion nueva — el panel no tenia tarjeta de
               margen (la de reportes-v2.html es de otra pantalla). */}
           <MargenDelMes crudo={margen} productos={rentabilidad} />
+
+          {/* ═══ STOCK Y MERMA ═══
+              Debajo de Rentabilidad: el margen dice cuanto DEJA lo que se
+              vendio; la merma, cuanto se PERDIO de lo que no llego a venderse.
+              Y arriba de Reponer, que habla del mismo stock. Brief §8.e. */}
+          <MermaDelMes {...merma} valorStock={valorStock} hoyComercio={hoyComercio} />
 
           {/* ═══ CIERRE DE MES ═══
               Se DERIVA de la misma serie diaria que dibuja el grafico de
