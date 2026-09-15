@@ -14,6 +14,7 @@
 // OJO: es UN TEMPLATE LITERAL. Los backticks y las interpolaciones del CSS
 // original vienen escapados por el generador.
 import { RESET_CARD_POS } from '../_css/reset-card-pos';
+import { OSCURO_CTA } from '../_css/tema-oscuro';
 
 export const PANEL_CSS = `
 /* ============================================================
@@ -232,9 +233,8 @@ html[data-theme="dark"] .afip-sub{ color:#7fb79b; }
 html[data-theme="dark"] .cashier{ background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.1); box-shadow:inset 0 1px 0 rgba(255,255,255,0.07); }
 html[data-theme="dark"] .seg button.on{ background:rgba(238,242,255,0.94); color:#0d1424; }
 html[data-theme="dark"] .iconbtn .ndot{ border-color:rgba(11,17,42,0.9); }
-/* "Ir a vender" (.cta): con los violetas claros del tema oscuro el texto
-   blanco daba 2,24:1 medido sobre pixeles. Mismo arreglo que _css/tema-oscuro.ts. */
-html[data-theme="dark"] .cta{ background:linear-gradient(140deg,#5f53f5,#6b5fff); }
+/* "Ir a vender" (.cta): ver OSCURO_CTA en _css/tema-oscuro.ts */
+` + OSCURO_CTA + `
 
 /* hero + floating cards */
 html[data-theme="dark"] .hero-hi{ color:var(--ink-2); }
@@ -797,8 +797,49 @@ html[data-theme="dark"] .pend-fecha{ background:rgba(255,255,255,0.06);
                                      color:var(--ink); }
 html[data-theme="dark"] .pend-tipo{ background:rgba(255,255,255,0.06); }
 html[data-theme="dark"] .pend-tipo:hover{ background:rgba(255,255,255,0.11); }
-html[data-theme="dark"] .pend-tipo.on{ background:var(--purple); color:#fff; }
+/* var(--purple) en oscuro es un violeta CLARO: con blanco encima no se lee
+   (mismo caso que OSCURO_CTA). */
+html[data-theme="dark"] .pend-tipo.on{ background:#5f53f5; color:#fff; }
 html[data-theme="dark"] .pend-err{ color:#ff9aa4; }
+
+/* ── Color por TIPO de pendiente (antes iba por style inline) ──
+   Etiqueta y puntito del filtro. Mismos valores que tenia en claro. */
+.todo-tag.tipo-general{ background:rgba(118,129,160,0.16); color:#4a5570; }
+.todo-tag.tipo-stock{ background:rgba(52,199,125,0.16); color:#1a8e5a; }
+.todo-tag.tipo-caja{ background:rgba(107,95,255,0.14); color:#5348cc; }
+.todo-tag.tipo-proveedor{ background:rgba(247,152,74,0.18); color:#8a520c; }
+.todo-tag.tipo-cliente{ background:rgba(91,140,255,0.16); color:#2f5fd0; }
+.todo-tag.tipo-fiscal{ background:rgba(214,93,177,0.16); color:#a13c80; }
+.todo-tag.tipo-contador{ background:rgba(13,20,36,0.08); color:#1f2a44; }
+.tf-dot.tipo-general{ background:#4a5570; } .tf-dot.tipo-stock{ background:#1a8e5a; }
+.tf-dot.tipo-caja{ background:#5348cc; } .tf-dot.tipo-proveedor{ background:#8a520c; }
+.tf-dot.tipo-cliente{ background:#2f5fd0; } .tf-dot.tipo-fiscal{ background:#a13c80; }
+.tf-dot.tipo-contador{ background:#1f2a44; }
+html[data-theme="dark"] .todo-tag.tipo-general{ color:#b6c0da; }
+html[data-theme="dark"] .todo-tag.tipo-stock{ color:#55dd9b; }
+html[data-theme="dark"] .todo-tag.tipo-caja{ color:#b3aaff; }
+html[data-theme="dark"] .todo-tag.tipo-proveedor{ color:#ffc79a; }
+html[data-theme="dark"] .todo-tag.tipo-cliente{ color:#9dbcff; }
+html[data-theme="dark"] .todo-tag.tipo-fiscal{ color:#f4a8d6; }
+html[data-theme="dark"] .todo-tag.tipo-contador{ background:rgba(255,255,255,0.08); color:#cdd6f0; }
+html[data-theme="dark"] .tf-dot.tipo-general{ background:#b6c0da; } html[data-theme="dark"] .tf-dot.tipo-stock{ background:#55dd9b; }
+html[data-theme="dark"] .tf-dot.tipo-caja{ background:#b3aaff; } html[data-theme="dark"] .tf-dot.tipo-proveedor{ background:#ffc79a; }
+html[data-theme="dark"] .tf-dot.tipo-cliente{ background:#9dbcff; } html[data-theme="dark"] .tf-dot.tipo-fiscal{ background:#f4a8d6; }
+html[data-theme="dark"] .tf-dot.tipo-contador{ background:#cdd6f0; }
+
+/* ── Íconos y montos que antes llevaban el color por style inline ──
+   El fondo translúcido sigue inline (se ve igual en los dos temas); el color
+   del trazo/texto va por clase. En oscuro daban 1,96:1 ("Cargar gasto") y
+   2,51:1 ("Clientes") medido sobre píxeles; un ícono necesita 3:1. */
+.t-ambar{ color:#8a520c; } .t-ambar-afip{ color:#b9701c; }
+.t-verde{ color:#1a8e5a; } .t-azul{ color:#2f5fd0; }
+/* con .kv .v adelante: esa regla (y su variante oscura) le gana a una clase sola */
+.kv .v.t-deuda{ color:#c0384a; }
+html[data-theme="dark"] .t-ambar,
+html[data-theme="dark"] .t-ambar-afip{ color:#ffb87a; }
+html[data-theme="dark"] .t-verde{ color:#55dd9b; }
+html[data-theme="dark"] .t-azul{ color:#9dbcff; }
+html[data-theme="dark"] .kv .v.t-deuda{ color:#ff8b96; }
 
 /* El filtro de tipo va al lado del aviso de vencidos, no debajo: si no, el
    cabezal crece y se come una fila de la lista. */

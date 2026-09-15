@@ -1,15 +1,27 @@
 // Modo oscuro compartido por las pantallas de gestion (cielo nocturno).
 //
 // Nacio en clientesCss.ts y se saco de ahi sin cambiar un byte (se verifico con
-// una huella sha256 del CSS armado). Despues se le agrego el arreglo de .cta,
-// que aplica a todas las pantallas que lo usan. Cada pantalla define sus tokens claros en su propio
+// una huella sha256 del CSS armado). Despues se le agrego el arreglo de .cta.
+// Cada pantalla define sus tokens claros en su propio
 // :root; estos bloques van DESPUES en el mismo <style>, y html[data-theme="dark"]
 // le gana a :root por especificidad.
 //
 // OSCURO_NUCLEO: tokens, fondo con estrellas, scrollbar, sidebar y topbar.
 // OSCURO_GESTION: la barra de titulo (.bar) y la tira de KPIs (.kpis).
+// OSCURO_CTA: el boton principal. Va dentro del nucleo y SUELTO para el Panel,
+//   que tiene su propio bloque oscuro y no toma el nucleo entero. Una sola
+//   copia: si se cambia aca, cambia en todas (lo cuida tema-oscuro-pantallas).
 //
 // OJO: son TEMPLATE LITERALS. Nada de backticks aca adentro.
+
+/* Boton principal (.cta). En claro es un degradado de var(--purple) a
+   var(--purple-2) con texto blanco; en oscuro esos tokens pasan a violetas
+   CLAROS (#8da2ff / #bcc8ff) y el blanco quedaba en 2,05:1 (medido sobre
+   pixeles en /productos, "Editar"; 2,24:1 en "Ir a vender" del Panel). Se fija
+   un violeta con blanco >= 4,5. */
+export const OSCURO_CTA = `
+html[data-theme="dark"] .cta{ background:linear-gradient(140deg,#5f53f5,#6b5fff); }
+`;
 
 export const OSCURO_NUCLEO = `
 /* ════════════════ MODO OSCURO · cielo nocturno (Claude Design) ════════════════ */
@@ -64,12 +76,7 @@ html[data-theme="dark"] .afip-sub{ color:#7fb79b; }
 html[data-theme="dark"] .seg button.on{ background:rgba(238,242,255,0.94); color:#0d1424; }
 html[data-theme="dark"] .iconbtn .ndot{ border-color:rgba(11,17,42,0.9); }
 
-/* Boton principal (.cta). En claro es un degradado de var(--purple) a
-   var(--purple-2) con texto blanco; en oscuro esos tokens pasan a violetas
-   CLAROS (#8da2ff / #bcc8ff) y el blanco quedaba en 2,05:1 (medido sobre
-   pixeles en /productos, "Editar"). Se fija un violeta con blanco >= 4,5. */
-html[data-theme="dark"] .cta{ background:linear-gradient(140deg,#5f53f5,#6b5fff); }
-`;
+` + OSCURO_CTA;
 
 export const OSCURO_GESTION = `
 /* header bar + KPIs */

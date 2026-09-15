@@ -529,7 +529,7 @@ export function PanelClient({
               Nueva venta
             </Link>
             <Link className="qa-b" href="/gastos">
-              <span className="qa-ic" style={{ background: 'rgba(247,152,74,0.16)', color: '#8a520c' }}>
+              <span className="qa-ic t-ambar" style={{ background: 'rgba(247,152,74,0.16)' }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M4 5h16v14H4z" />
                   <path d="M8 10h8M8 14h5" />
@@ -538,7 +538,7 @@ export function PanelClient({
               Cargar gasto
             </Link>
             <Link className="qa-b" href="/productos">
-              <span className="qa-ic" style={{ background: 'rgba(52,199,125,0.15)', color: '#1a8e5a' }}>
+              <span className="qa-ic t-verde" style={{ background: 'rgba(52,199,125,0.15)' }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 8l-9-5-9 5 9 5 9-5z" />
                   <path d="M3 8v8l9 5 9-5V8" />
@@ -547,7 +547,7 @@ export function PanelClient({
               Nuevo producto
             </Link>
             <Link className="qa-b" href="/clientes">
-              <span className="qa-ic" style={{ background: 'rgba(91,140,255,0.15)', color: '#2f5fd0' }}>
+              <span className="qa-ic t-azul" style={{ background: 'rgba(91,140,255,0.15)' }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="8" r="3.4" />
                   <path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" />
@@ -992,7 +992,7 @@ export function PanelClient({
             <div className="card glass">
               <div className="card-title">
                 <h3>
-                  <span className="ic" style={{ background: 'rgba(91,140,255,0.15)', color: '#2f5fd0' }}>
+                  <span className="ic t-azul" style={{ background: 'rgba(91,140,255,0.15)' }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <circle cx="9" cy="8" r="3.2" />
                       <path d="M2 20c0-3.4 3-5.6 7-5.6s7 2.2 7 5.6" />
@@ -1231,8 +1231,8 @@ export function PanelClient({
             <div className="card-title">
               <h3>
                 <span
-                  className="ic"
-                  style={{ background: 'rgba(52,199,125,0.13)', color: '#1a8e5a' }}
+                  className="ic t-verde"
+                  style={{ background: 'rgba(52,199,125,0.13)' }}
                 >
                   <svg
                     width="14"
@@ -1331,8 +1331,8 @@ export function PanelClient({
             <div className="card-title">
               <h3>
                 <span
-                  className="ic"
-                  style={{ background: 'rgba(247,152,74,0.16)', color: '#b9701c' }}
+                  className="ic t-ambar-afip"
+                  style={{ background: 'rgba(247,152,74,0.16)' }}
                 >
                   <svg
                     width="14"
@@ -1381,7 +1381,7 @@ export function PanelClient({
               </div>
               <div className="kv">
                 <span className="k">Por cobrar</span>
-                <span className="v" style={{ fontSize: 18, color: '#c0384a' }}>
+                <span className="v t-deuda" style={{ fontSize: 18 }}>
                   {plata(cuentaCorriente.porCobrar)}
                 </span>
               </div>

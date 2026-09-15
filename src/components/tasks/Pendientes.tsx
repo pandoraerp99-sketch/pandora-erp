@@ -54,16 +54,23 @@ export interface PendienteVista {
   done_at: string | null;
 }
 
-/** El color de cada tipo. Los mismos que usa el resto del panel. */
-const COLOR_TIPO: Record<string, { bg: string; fg: string; label: string }> = {
-  general: { bg: 'rgba(118,129,160,0.16)', fg: '#4a5570', label: 'General' },
-  stock: { bg: 'rgba(52,199,125,0.16)', fg: '#1a8e5a', label: 'Stock' },
-  caja: { bg: 'rgba(107,95,255,0.14)', fg: '#5348cc', label: 'Caja' },
-  proveedor: { bg: 'rgba(247,152,74,0.18)', fg: '#8a520c', label: 'Proveedor' },
-  cliente: { bg: 'rgba(91,140,255,0.16)', fg: '#2f5fd0', label: 'Cliente' },
-  fiscal: { bg: 'rgba(214,93,177,0.16)', fg: '#a13c80', label: 'Fiscal' },
-  contador: { bg: 'rgba(13,20,36,0.08)', fg: '#1f2a44', label: 'Contador' },
+/**
+ * Cada tipo de pendiente. El COLOR no vive acá: va por clase (`tipo-<clave>`
+ * en panelCss), porque un color pasado por style no tiene variante de tema y
+ * en oscuro el "Contador" (#1f2a44) quedaba negro sobre azul noche.
+ */
+const COLOR_TIPO: Record<string, { label: string }> = {
+  general: { label: 'General' },
+  stock: { label: 'Stock' },
+  caja: { label: 'Caja' },
+  proveedor: { label: 'Proveedor' },
+  cliente: { label: 'Cliente' },
+  fiscal: { label: 'Fiscal' },
+  contador: { label: 'Contador' },
 };
+
+/** La clase de color de un tipo; un tipo desconocido se pinta como general. */
+const claseTipo = (tipo: string) => `tipo-${tipo in COLOR_TIPO ? tipo : 'general'}`;
 
 const TIPOS_ALTA: readonly TaskType[] = ['general', 'caja', 'stock', 'proveedor', 'fiscal'];
 
@@ -234,7 +241,7 @@ export function Pendientes({
                     setMenuAbierto(false);
                   }}
                 >
-                  <span className="tf-dot" style={{ background: c.fg }} />
+                  <span className={`tf-dot ${claseTipo(clave)}`} />
                   {c.label}
                 </button>
               ))}
@@ -320,10 +327,7 @@ export function Pendientes({
                       {t.detalle !== null ? ` · ${t.detalle}` : ''}
                     </div>
                   </div>
-                  <span
-                    className="todo-tag"
-                    style={{ background: c.bg, color: c.fg }}
-                  >
+                  <span className={`todo-tag ${claseTipo(t.tipo)}`}>
                     {c.label}
                   </span>
                   {/* Reprogramar es lo que MAS se hace con un pendiente: casi

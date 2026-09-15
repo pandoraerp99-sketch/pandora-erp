@@ -27,7 +27,10 @@ mutar "contador sin bloque oscuro" src/app/contador/contadorCss.ts 's/ + OSCURO_
 mutar "clientes sin bloque oscuro" src/app/clientes/clientesCss.ts 's/^` + OSCURO_NUCLEO + OSCURO_GESTION + `$/` + `/'
 mutar "color inline en contador" src/app/contador/ContadorClient.tsx "s|<p className=\"label-sm err\">|<p className=\"label-sm\" style={{ color: '#c0384a' }}>|"
 mutar "rubro inline en productos" src/app/productos/ProductosClient.tsx 's|style={estiloRubro(color)}|style={{ color, background: `${color}14` }}|'
-mutar "fondo rgba inline en productos" src/app/productos/ProductosClient.tsx "s|className=\"ic repo-ic\"|className=\"ic\" style={{ background: 'rgba(247,152,74,0.14)' }}|"
+mutar "color de icono inline en productos" src/app/productos/ProductosClient.tsx "s|className=\"ic repo-ic\"|className=\"ic\" style={{ color: '#b96c1a' }}|"
+mutar "color inline en el panel" src/app/panel/PanelClient.tsx "s|<span className=\"v t-deuda\" style={{ fontSize: 18 }}>|<span className=\"v\" style={{ fontSize: 18, color: '#c0384a' }}>|"
+mutar "color por variable en pendientes" src/components/tasks/Pendientes.tsx 's|<span className={`todo-tag ${claseTipo(t.tipo)}`}>|<span className="todo-tag" style={{ color: fg }}>|'
+mutar "panel con su propia copia del .cta" src/app/panel/panelCss.ts 's|^` + OSCURO_CTA + `$|html[data-theme="dark"] .cta{ background:#5f53f5; }|'
 mutar "color inline en gastos" src/app/gastos/GastosClient.tsx "s|<div className=\"g-error\">|<div style={{ color: '#c0384a' }}>|"
 
 echo "mutaciones muertas: $ok/$total"
