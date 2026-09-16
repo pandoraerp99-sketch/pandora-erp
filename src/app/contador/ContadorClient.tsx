@@ -54,6 +54,14 @@ interface Props {
   esContador: boolean;
   grano: Grano;
   resumen: ResumenDTO;
+  /**
+   * La fecha de la FOTO: la misma para caja, deudores e inventario, porque son
+   * tres columnas del mismo balance. Viaja como prop propia y no se lee de
+   * `caja.fecha`: que hoy coincidan es una decisión de `page.tsx` que desde
+   * acá no se ve, y el día que alguna tarjeta sea condicional se rompería en
+   * silencio.
+   */
+  fechaCierre: string;
   caja: CajaDTO;
   /** Ítem 5: razón social, documento e importe — al cierre, no a hoy. */
   deudores: Array<{
@@ -251,6 +259,7 @@ export function ContadorClient({
   esContador,
   grano,
   resumen,
+  fechaCierre,
   caja,
   deudores,
   inventario,
@@ -757,7 +766,9 @@ export function ContadorClient({
           <p className="label-sm" style={{ marginTop: 10 }}>
             Es el <b>efectivo</b> del cajón. Lo cobrado con tarjeta, QR o
             transferencia no está acá: es un crédito contra el banco o la
-            billetera, y eso Pandora todavía no lo tiene.
+            billetera, y eso Pandora todavía no lo tiene. Cada arqueo cuenta en
+            el día en que <b>se contó</b>, no en el del turno: una caja contada
+            a las 02:00 del día siguiente figura como abierta a esta fecha.
           </p>
 
           {caja.total !== null || caja.abiertas.length > 0 ? (
@@ -946,7 +957,7 @@ export function ContadorClient({
             <h3>Deudores</h3>
             {/* Ítem 5, textual: "razón social, CUIT e importe". Al CIERRE: el
                 saldo de hoy no es el que va al balance. */}
-            <span className="upper-mini">al {fechaLarga(caja.fecha)}</span>
+            <span className="upper-mini">al {fechaLarga(fechaCierre)}</span>
           </div>
           <div className="cc-2">
             <div className="cc-box">
@@ -1014,7 +1025,7 @@ export function ContadorClient({
             <button
               type="button"
               className="exp-btn"
-              onClick={() => bajar(() => exportarDeudoresCsvAction(caja.fecha))}
+              onClick={() => bajar(() => exportarDeudoresCsvAction(fechaCierre))}
               disabled={pending}
             >
               {pending ? 'Generando…' : 'Exportar deudores (CSV)'}

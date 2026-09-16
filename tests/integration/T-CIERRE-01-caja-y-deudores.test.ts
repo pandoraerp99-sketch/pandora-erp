@@ -236,6 +236,31 @@ describe('T-CIERRE-01 — caja y deudores a la fecha de cierre', () => {
     expect(armarCsvCaja(caja)).toMatch(/caja abierta al cierre/);
   });
 
+  it('🔴 la caja contada a las 02:00 del día siguiente NO entra en el cierre', async () => {
+    // La noche normal de un kiosco: abre el 31/07 y cuenta el cajón pasada la
+    // medianoche. 01/08 05:00 UTC = 02:00 de Ushuaia.
+    //
+    // Se atribuye por `closed_at`, así que cae en el 01/08 y el saldo del
+    // ejercicio NO lo incluye: figura como abierta, contada el 01/08.
+    // Atribuirlo por `opened_at` metería en el 31/07 un conteo hecho después —
+    // y con un turno que queda abierto cuatro días, las ventas de esos días.
+    await db
+      .insert(cash_sessions)
+      .values([turno(4, '2026-07-31T15:00:00Z', '2026-08-01T05:00:00Z', '123000.0000')]);
+
+    const caja = await conCtx(() => getCajaAlCierre(CIERRE));
+
+    expect(caja.total).toBe('399000.0000');
+    expect(caja.puntos.map((p) => p.punto)).not.toContain(4);
+    expect(caja.abiertas.find((a) => a.punto === 4)).toEqual({
+      punto: 4,
+      desde: '2026-07-31',
+      cerroDespues: '2026-08-01',
+    });
+    // Y el CSV lo declara, para que el estudio decida qué hacer con eso.
+    expect(armarCsvCaja(caja)).toMatch(/se atribuye al dia en que SE CONTO/);
+  });
+
   it('sin ningún cierre hasta la fecha, no hay número', async () => {
     const caja = await conCtx(() => getCajaAlCierre('2026-01-15'));
 

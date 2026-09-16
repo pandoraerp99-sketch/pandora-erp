@@ -83,6 +83,7 @@ export default async function ContadorPage({
       // Sólo un contador ve el selector con varias: el dueño tiene una sola.
       esContador={session.app_role === 'accountant'}
       grano={grano}
+      fechaCierre={fechaCierre}
       caja={caja}
       deudores={deudores}
       inventario={{

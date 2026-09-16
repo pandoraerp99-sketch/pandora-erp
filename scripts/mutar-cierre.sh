@@ -76,6 +76,8 @@ mutar "$REPORTE" 's/fecha en que se REGISTRO cada movimiento/fecha de la operaci
   "el CSV deja de declarar por dónde corta"
 mutar "$REPORTE" 's/Es el EFECTIVO contado en el arqueo /Es el total de la caja /' \
   "el CSV de caja deja de decir que es sólo efectivo"
+mutar "$REPORTE" 's/Cada arqueo se atribuye al dia en que SE CONTO/Cada arqueo corresponde al turno/' \
+  "el CSV deja de avisar que la caja contada a las 02:00 cae al día siguiente"
 
 echo ""
 echo "==> Mutaciones — capa pura"

@@ -67,6 +67,18 @@ function exigirFecha(fechaCierre: string): void {
  * exactamente una fila por caja: la del cierre más fresco que entra en la fecha.
  * Sumar todos los cierres del período daría la suma de todos los turnos del año,
  * que no es un saldo de nada.
+ *
+ * ── EL ARQUEO ES DEL DIA EN QUE SE CONTO, NO DEL TURNO QUE CIERRA ─────────
+ * Se atribuye por `closed_at`. Un turno que abre el 31/07 y se cuenta a las
+ * 02:00 del 01/08 —la noche normal de un kiosco— NO entra en el 31/07: sale en
+ * `abiertas` diciendo que se contó el 01/08, y el saldo cae al arqueo anterior.
+ *
+ * Es incómodo y es a propósito. La alternativa (atribuir por `opened_at`) mete
+ * en el saldo del 31/07 un conteo hecho después, y si el turno quedó abierto
+ * cuatro días ese `final_amount` incluye las ventas de esos cuatro días: un
+ * número perfectamente formado que no es el del cierre. Entre mostrar el hueco
+ * y rellenarlo con plata de otro día, se muestra el hueco — y la pantalla y el
+ * CSV lo dicen, para que el estudio decida.
  */
 export async function getCajaAlCierre(fechaCierre: string): Promise<CajaAlCierre> {
   exigirFecha(fechaCierre);
@@ -250,6 +262,9 @@ export function armarCsvCaja(caja: CajaAlCierre): string {
   const nota =
     `Saldo de caja al ${caja.fecha}. Es el EFECTIVO contado en el arqueo ` +
     'de cada caja. Lo cobrado con tarjeta, QR o transferencia no esta en el ' +
-    'cajon: es un credito contra el banco o la billetera.';
+    'cajon: es un credito contra el banco o la billetera. ' +
+    'Cada arqueo se atribuye al dia en que SE CONTO, no al turno que cierra: ' +
+    'una caja contada a las 02:00 del dia siguiente figura como abierta a esta ' +
+    'fecha.';
   return `${tabla}\r\n${csvTxt(nota)}\r\n`;
 }

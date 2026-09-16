@@ -497,30 +497,17 @@ export function armarCsv(filas: FilaExport[]): string {
   );
 }
 
-export interface DeudorDelPeriodo {
-  // Index signature: db.execute<T> exige que T sea indexable por string.
-  [k: string]: string;
-  nombre: string;
-  saldo: string;
-}
-
 /**
- * Los que deben, con nombre, para la tarjeta de cuentas corrientes.
+ * Acá vivía `getDeudores(limite = 6)`: los que deben **a hoy**, con nombre y
+ * saldo, sin documento y sin export.
  *
- * Es un STOCK (lo que deben hoy), no del periodo: la deuda no se reinicia
- * cada mes. Va aparte del resumen porque son filas, no un total.
+ * Lo reemplazó `getDeudoresAlCierre` (`cierre.report.ts`) el 2026-09-16, que es
+ * lo que pide el ítem 5: razón social, **CUIT** e importe **a la fecha de
+ * cierre**. Se borra en vez de dejarlo exportado: una función que calcula el
+ * número equivocado y no la llama nadie es la trampa de
+ * `patron-modulos-escritos-sin-cablear` — la próxima pantalla la encuentra,
+ * parece la indicada por el nombre, y vuelve a mostrar el saldo de hoy.
+ *
+ * El total "a hoy" que la tarjeta sigue mostrando (para operar) sale de
+ * `getResumenContable().cuentasCorrientes`, que ya lo calculaba.
  */
-export async function getDeudores(limite = 6): Promise<DeudorDelPeriodo[]> {
-  const tenantId = requireTenantId();
-  return db.execute<DeudorDelPeriodo>(
-    sql`SELECT c.name AS nombre,
-               sum(CASE WHEN m.type = 'payment' THEN -m.amount ELSE m.amount END)::text AS saldo
-        FROM customer_account_movements m
-        JOIN customers c ON c.id = m.customer_id
-        WHERE m.tenant_id = ${tenantId}
-        GROUP BY c.id, c.name
-        HAVING sum(CASE WHEN m.type = 'payment' THEN -m.amount ELSE m.amount END) > 0
-        ORDER BY 2 DESC
-        LIMIT ${limite}`
-  );
-}
