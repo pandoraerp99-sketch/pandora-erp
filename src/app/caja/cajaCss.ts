@@ -10,7 +10,21 @@
  * arqueo por medio, Lectura X, modales y reconciliacion.
  *
  * NO editar a mano: regenerar con el script de split contra la maqueta.
+ *
+ * ── MODO OSCURO (2026-09-16) ──────────────────────────────────────────────
+ * Hasta hoy esta pantalla se veía ENTERA EN CLARO con el tema oscuro puesto:
+ * la luna aparecía y no hacía nada. Tenía seis parches sueltos y le faltaba el
+ * núcleo, pero sobre todo le faltaban CUATRO TOKENS que define su propio
+ * `:root` y el núcleo no conoce (`--ink-0`, `--blue-2`, y los alias viejos
+ * `--glass-border` / `--glass-shadow`): con el borde blanco y la sombra clara
+ * puestos por token, repintar el fondo no alcanzaba.
+ *
+ * El bloque oscuro va al FINAL, después del `:root` de arriba — ese es el
+ * orden que hace que `html[data-theme="dark"]` gane. Medido con
+ * `scripts/tokens-y-colores-claros.sh`.
  */
+import { OSCURO_NUCLEO } from '../_css/tema-oscuro';
+
 export const CAJA_CSS = `
 :root{
   /* Tokens que usa Caja y el shell del POS no define. Mismos valores del
@@ -218,6 +232,12 @@ export const CAJA_CSS = `
 .mov-item:first-of-type { border-top:none; }
 
 .mov-ic { width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+
+/* Ingreso / egreso. Estaban como style inline en el componente — mismos
+   valores, ahora en clase para que el modo oscuro pueda pisarlos. */
+.mov-ic.ing { background:rgba(52,199,125,0.12); color:#1a8e5a; }
+
+.mov-ic.egr { background:rgba(239,93,106,0.12); color:var(--red); }
 
 .mov-txt { flex:1; min-width:0; }
 
@@ -769,21 +789,59 @@ export const CAJA_CSS = `
 
 .cl-ic svg{ width:15px; height:15px; }
 
-/* session bar */
+` + OSCURO_NUCLEO + `
+/* ════════════════ MODO OSCURO · lo propio de Caja ════════════════ */
+
+/* (1) LOS TOKENS QUE EL NUCLEO NO CONOCE.
+   Caja los define en su :root con nombres viejos (drift entre maquetas). Sin
+   esto, el borde blanco y la sombra clara siguen puestos por token y la
+   pantalla se ve clara aunque el fondo sea noche. */
+html[data-theme="dark"]{
+  --ink-0:#eef2ff;
+  --blue:#6fa8ff; --blue-2:#9dbcff;
+  --glass-border:rgba(255,255,255,0.12);
+  --glass-shadow:inset 0 1px 0 rgba(255,255,255,0.07), 0 8px 32px rgba(3,7,20,0.42), 0 2px 8px rgba(3,7,20,0.28);
+}
+
+/* (2) Superficies y bordes que estaban a mano, no por token.
+   SOLO clases que la pantalla usa de verdad: la maqueta trae mucho CSS muerto
+   (.alivio, .ali-*, .rs-*, .cl-*, .arq-row, .more-btn no existen en
+   CajaClient). Medido con scripts/reglas-claras-en-uso.sh — pintar a ciegas
+   daba un bloque el doble de largo donde la mitad no se ve nunca. */
 html[data-theme="dark"] .sg-div{ background:rgba(255,255,255,0.1); }
-
-/* efectivo + evolución */
 html[data-theme="dark"] .btn{ box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), 0 2px 6px rgba(3,7,20,0.3); }
-
-/* movimientos + tabla */
-html[data-theme="dark"] .mov-cols > div:first-child{ border-right-color:rgba(255,255,255,0.08); }
-
-/* arqueo + cierre */
-html[data-theme="dark"] .arq-row{ border-top-color:rgba(255,255,255,0.07); }
-
-/* modal denominaciones */
+html[data-theme="dark"] .modal-x{ background:rgba(255,255,255,0.07); }
+html[data-theme="dark"] .modal-x:hover{ background:rgba(255,255,255,0.13); }
+html[data-theme="dark"] .mov-cols > div:first-child,
+html[data-theme="dark"] .res-cell:nth-child(odd){ border-right-color:rgba(255,255,255,0.08); }
+html[data-theme="dark"] .cash-right{ border-left-color:rgba(255,255,255,0.08); }
+html[data-theme="dark"] .mov-item,
+html[data-theme="dark"] .tbl td,
+html[data-theme="dark"] .denom-row,
+html[data-theme="dark"] .res-cell:nth-child(n+3){ border-top-color:rgba(255,255,255,0.07); }
+html[data-theme="dark"] .tbl th{ border-bottom-color:rgba(255,255,255,0.08); }
 html[data-theme="dark"] .modal-ov{ background:rgba(3,7,20,0.55); }
 
-/* alivios + historial */
-html[data-theme="dark"] .alivio{ background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.1); }
+/* Cajas de superficie clara (metadatos de Lectura X, conciliación, chips). */
+html[data-theme="dark"] .lx-meta,
+html[data-theme="dark"] .rm,
+html[data-theme="dark"] .reasign-opt,
+html[data-theme="dark"] .mov-fchip{ background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.1); }
+html[data-theme="dark"] .mov-fchip[aria-pressed="true"] .fsw{ box-shadow:0 0 0 2.5px rgba(255,255,255,0.25); }
+
+/* Campos donde se escribe plata: el blanco al 85% encandila sobre noche. */
+html[data-theme="dark"] .dq,
+html[data-theme="dark"] .rm-input,
+html[data-theme="dark"] .arq-input,
+html[data-theme="dark"] .motivo-input{ background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.16); color:var(--ink); }
+
+/* (3) Textos de acento. En claro son verdes OSCUROS (#1a8e5a, #177a4a),
+   pensados para fondo blanco: sobre azul noche quedan casi negros. Se pasan a
+   los mismos brillantes que ya usan las otras pantallas. */
+html[data-theme="dark"] .c-green,
+html[data-theme="dark"] .mov-ic.ing,
+html[data-theme="dark"] .pill-open,
+html[data-theme="dark"] .denom-foot > span:first-child,
+html[data-theme="dark"] .denom-total{ color:#55dd9b; }
+html[data-theme="dark"] .pill-closed{ background:rgba(255,255,255,0.1); }
 `;

@@ -156,7 +156,17 @@ if (ACCION === 'cliente') {
 }
 
 if (ACCION === 'cobro') {
-  // Un producto al carrito y abrir la hoja de cobro.
+  // ESPERAR a que el catálogo esté pintado antes de clickear.
+  //
+  // Antes clickeaba `.card` de una. Si el catálogo todavía no había llegado,
+  // el click no agarraba nada: el carrito quedaba en $0, el botón Cobrar
+  // deshabilitado y la hoja NUNCA abría — pero la captura salía igual, con la
+  // hoja abajo y a media opacidad. Eso se lee como "los textos quedaron
+  // apagados en modo oscuro", que es una conclusión falsa sobre el CSS.
+  for (let i = 0; i < 20; i += 1) {
+    if (await evaluar(`!!document.querySelector('.card')`)) break;
+    await dormir(500);
+  }
   await evaluar(`document.querySelector('.card')?.click(), true`);
   await dormir(2500);
   await evaluar(`(() => {
@@ -677,6 +687,41 @@ if (ACCION === 'merma') {
     };
   })())`));
   await dormir(700);
+}
+
+// Genérico: qué color TERMINA teniendo cada elemento, con el tema puesto.
+// Uso: RUTA=/pos TEMA=dark node scripts/shot-pos.mjs out.png "computados:.numpad button|.pmrow .pmn|.paystat"
+//
+// Sirve para no discutir contra una captura: si un texto se ve apagado, esto
+// dice si es el color, el fondo o la opacidad heredada del contenedor.
+if (ACCION.startsWith('computados:')) {
+  const sels = ACCION.slice('computados:'.length).split('|');
+  if (process.env.TEMA) {
+    await evaluar(`document.documentElement.setAttribute('data-theme', ${JSON.stringify(process.env.TEMA)}), true`);
+    await dormir(400);
+  }
+  console.log('COMPUTADOS>>>', await evaluar(`JSON.stringify((()=>{
+    const sels = ${JSON.stringify(sels)};
+    const tokens = getComputedStyle(document.documentElement);
+    return {
+      tema: document.documentElement.getAttribute('data-theme'),
+      ink: tokens.getPropertyValue('--ink').trim(),
+      ink3: tokens.getPropertyValue('--ink-3').trim(),
+      elementos: sels.map((s) => {
+        const e = document.querySelector(s);
+        if (!e) return { sel: s, encontrado: false };
+        const cs = getComputedStyle(e);
+        // La opacidad heredada apaga TODO lo de adentro sin tocar el color.
+        let op = 1, p = e;
+        while (p && p !== document.documentElement) {
+          op *= parseFloat(getComputedStyle(p).opacity || '1');
+          p = p.parentElement;
+        }
+        return { sel: s, color: cs.color, fondo: cs.backgroundColor, opacidadAcumulada: Number(op.toFixed(3)) };
+      }),
+    };
+  })())`));
+  await dormir(300);
 }
 
 // Genérico: traer a la vista el primer elemento que matchee un selector.

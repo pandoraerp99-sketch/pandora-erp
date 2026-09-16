@@ -51,16 +51,19 @@ describe('sin color de texto/ícono escrito a mano en style inline', () => {
   // carpeta entera: una lista de archivos a mano ya dejó afuera al Panel, que
   // es justo donde el error había pasado antes.
   //
-  // AFUERA, a propósito: app/caja y app/pos. Medido 2026-09-15: esas dos
-  // pantallas NO tienen modo oscuro (con el tema oscuro se ven enteras en
-  // claro), así que sus colores en claro no dejan nada ilegible hoy. El día
-  // que tengan paleta oscura, entran acá — y van a fallar.
+  // `app/caja` y `app/pos` entraron el 2026-09-16, cuando se les dio paleta
+  // oscura. Estaban afuera con el motivo escrito ("medido: NO tienen modo
+  // oscuro"), y al entrar fallaron — que era exactamente lo que ese comentario
+  // anticipaba: el verde de `.mov-ic` en Caja y el ámbar de "Modo consulta"
+  // en el POS.
   const CARPETAS = [
     'app/clientes',
     'app/gastos',
     'app/productos',
     'app/contador',
     'app/panel',
+    'app/caja',
+    'app/pos',
     'components',
   ];
   const ARCHIVOS = CARPETAS.flatMap((c) =>
@@ -71,11 +74,15 @@ describe('sin color de texto/ícono escrito a mano en style inline', () => {
 
   // Se mira el COLOR (texto, trazo de ícono): es lo que se vuelve ilegible.
   // Un fondo translúcido o un puntito de color no tapan nada en ningún tema.
-  const INLINE = /\bcolor\s*:\s*['"`][^'"`]*(#[0-9a-fA-F]{3,8}\b|rgba?\()/;
+  // `(?<![.\w])` = que `color` sea la PROPIEDAD CSS y no el campo de un objeto.
+  // Sin eso, `style={{ background: b.color }}` (el puntito de color por medio
+  // de pago en /caja) se marcaba como texto ilegible: un fondo, no un color de
+  // letra. Trece falsos positivos en una pantalla.
+  const INLINE = /(?<![.\w])color\s*:\s*['"`][^'"`]*(#[0-9a-fA-F]{3,8}\b|rgba?\()/;
   // El mismo error con el color en una VARIABLE: style={{ color, background:
   // `${color}14` }} — así estaba el rubro en /productos. Un string con comilla
   // (literal o 'var(--x)') lo juzga la regex de arriba.
-  const INLINE_VARIABLE = /style=\{\{[^}]*\bcolor\s*(,|\}|:\s*[`A-Za-z_$])/;
+  const INLINE_VARIABLE = /style=\{\{[^}]*(?<![.\w])color\s*(,|\}|:\s*[`A-Za-z_$])/;
 
   // Excepciones con motivo. Agregar una acá es una decisión, no un atajo:
   // medir el caso en oscuro (scripts/contraste-png.ps1) antes.
@@ -90,6 +97,12 @@ describe('sin color de texto/ícono escrito a mano en style inline', () => {
     { archivo: 'app/clientes/ClientesClient.tsx', contiene: "color: '#fff'", porque: 'blanco sobre degradado propio' },
     // Mapas de color por medio de pago: se usan como FONDO de puntitos.
     { archivo: 'app/panel/PanelClient.tsx', contiene: "{ label: '", porque: 'color de punto, no de texto' },
+    // Idem en Caja. Verificado uso por uso (2026-09-16): los seis colores del
+    // mapa MEDIOS entran como `background` de .pay-dot / .fsw / .medio-sw /
+    // .reasign-sw / .rm-dot / .lx-pago .d y como `stroke` del donut SVG. En
+    // ningún lado pintan texto, así que no hay nada que se vuelva ilegible.
+    { archivo: 'app/caja/CajaClient.tsx', contiene: "{ label: '", porque: 'color de punto/arco, no de texto' },
+    { archivo: 'app/caja/CajaClient.tsx', contiene: "label: 'Sin asignar'", porque: 'color de punto, no de texto' },
   ];
 
   it('encuentra archivos (si la carpeta cambia de lugar, esto no pasa en falso)', () => {

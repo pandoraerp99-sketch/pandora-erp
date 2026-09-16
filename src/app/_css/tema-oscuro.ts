@@ -75,6 +75,13 @@ html[data-theme="dark"] .afip-sub{ color:#7fb79b; }
 /* topbar */
 html[data-theme="dark"] .seg button.on{ background:rgba(238,242,255,0.94); color:#0d1424; }
 html[data-theme="dark"] .iconbtn .ndot{ border-color:rgba(11,17,42,0.9); }
+/* El chip del comercio y el de conexión son del SHELL (los muestra cualquier
+   pantalla), y tenían fondo blanco al 68% con texto --ink-2: gris claro sobre
+   blanco. Medido con "computados:" en /pos el 2026-09-16. Van acá y no en el
+   CSS de una pantalla, porque el que los dibuja es el shell. */
+html[data-theme="dark"] .store-pill,
+html[data-theme="dark"] .online{ background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.12); }
+html[data-theme="dark"] .store-pill span{ color:var(--ink-1); }
 
 ` + OSCURO_CTA;
 

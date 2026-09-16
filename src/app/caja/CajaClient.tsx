@@ -645,7 +645,11 @@ export function CajaClient({
                       ) : (
                         ingresosMan.map((m) => (
                           <div key={m.id} className="mov-item">
-                            <div className="mov-ic" style={{ background: 'rgba(52,199,125,0.12)', color: '#1a8e5a' }} dangerouslySetInnerHTML={{ __html: IC.plus }} />
+                            {/* Por CLASE, no por style: el verde #1a8e5a que
+                                estaba acá inline quedaba casi negro sobre el
+                                azul noche, y un style no tiene variante de
+                                tema. */}
+                            <div className="mov-ic ing" dangerouslySetInnerHTML={{ __html: IC.plus }} />
                             <div className="mov-txt"><div className="mov-r">{m.reason}</div><div className="mov-h">{hora(m.timeIso)}</div></div>
                             <div className="mov-v c-green">+{money(m.amount)}</div>
                           </div>
@@ -662,7 +666,7 @@ export function CajaClient({
                       ) : (
                         egresosMan.map((m) => (
                           <div key={m.id} className="mov-item">
-                            <div className="mov-ic" style={{ background: 'rgba(239,93,106,0.12)', color: 'var(--red)' }} dangerouslySetInnerHTML={{ __html: IC.minus }} />
+                            <div className="mov-ic egr" dangerouslySetInnerHTML={{ __html: IC.minus }} />
                             <div className="mov-txt"><div className="mov-r">{m.payeeName ? `${m.reason} · ${m.payeeName}` : m.reason}</div><div className="mov-h">{hora(m.timeIso)}</div></div>
                             <div className="mov-v c-red">−{money(m.amount)}</div>
                           </div>

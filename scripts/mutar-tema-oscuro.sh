@@ -32,6 +32,11 @@ mutar "color inline en el panel" src/app/panel/PanelClient.tsx "s|<span classNam
 mutar "color por variable en pendientes" src/components/tasks/Pendientes.tsx 's|<span className={`todo-tag ${claseTipo(t.tipo)}`}>|<span className="todo-tag" style={{ color: fg }}>|'
 mutar "panel con su propia copia del .cta" src/app/panel/panelCss.ts 's|^` + OSCURO_CTA + `$|html[data-theme="dark"] .cta{ background:#5f53f5; }|'
 mutar "color inline en gastos" src/app/gastos/GastosClient.tsx "s|<div className=\"g-error\">|<div style={{ color: '#c0384a' }}>|"
+# /caja y /pos entraron a la guardia el 2026-09-16, al darles paleta oscura.
+# Sin estas dos, que el test "pase" para esas carpetas no probaría nada.
+mutar "color inline en caja" src/app/caja/CajaClient.tsx "s|<div className=\"mov-ic ing\"|<div className=\"mov-ic\" style={{ color: '#1a8e5a' }}|"
+mutar "color inline en el pos" src/app/pos/POSClient.tsx "s|<b className=\"pos-consulta-t\">|<b style={{ color: '#a2560f' }}>|"
+mutar "iniciales del pos con el color a mano" src/app/pos/POSClient.tsx "s|<span aria-hidden className=\"card-ini\">|<span aria-hidden style={{ color: 'rgba(13,20,36,0.13)' }}>|"
 
 echo "mutaciones muertas: $ok/$total"
 [ "$ok" -eq "$total" ]

@@ -32,6 +32,7 @@ import {
 } from 'react';
 import Decimal from 'decimal.js';
 import { AppShell } from '@/components/shell/AppShell';
+import { POS_CSS } from './posCss';
 import {
   startSaleAction,
   addItemAction,
@@ -936,16 +937,14 @@ export function POSClient({
       afipConnected={false}
       afipDetail="WSFEv1 · sin certificado"
     >
+      {/* El CSS propio del POS va acá adentro: AppShell monta SHELL_CSS
+          (donde viven las clases del POS, en claro) antes de sus hijos, así
+          que este bloque queda después y el modo oscuro le gana. */}
+      <style>{POS_CSS}</style>
+
       {(error || toast) && (
         <div
-          className="glass"
-          style={{
-            flex: '0 0 auto',
-            padding: '10px 14px',
-            borderRadius: 14,
-            fontSize: 12.5,
-            color: error ? '#c0384a' : '#1f7a4d',
-          }}
+          className={error ? 'glass pos-aviso err' : 'glass pos-aviso'}
           role="status"
         >
           {error ?? toast}
@@ -985,22 +984,11 @@ export function POSClient({
           modo venta: si el cajero no distingue en cuál está, el remedio sale
           peor que la enfermedad. */}
       {modoConsulta && (
-        <div
-          className="glass"
-          style={{
-            flex: '0 0 auto',
-            padding: '10px 14px',
-            borderRadius: 14,
-            border: '1px solid rgba(247,152,74,0.5)',
-            background: 'rgba(247,152,74,0.10)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            fontSize: 12.5,
-          }}
-          role="status"
-        >
-          <strong style={{ color: '#a2560f' }}>Modo consulta</strong>
+        // El ámbar vive en `.pos-consulta` (posCss): estaba acá como style y
+        // por eso no tenía variante de tema — el #a2560f quedaba casi negro
+        // sobre el fondo noche.
+        <div className="glass pos-consulta" role="status">
+          <b className="pos-consulta-t">Modo consulta</b>
           {consultado ? (
             <span style={{ display: 'flex', gap: 14, alignItems: 'baseline', flexWrap: 'wrap' }}>
               <b>{consultado.name}</b>
@@ -1062,15 +1050,10 @@ export function POSClient({
                   }
                 >
                   <div className="card-img">
-                    <span
-                      aria-hidden
-                      style={{
-                        fontSize: 34,
-                        fontWeight: 700,
-                        color: 'rgba(13,20,36,0.13)',
-                        letterSpacing: '-0.03em',
-                      }}
-                    >
+                    {/* Las iniciales que hacen de foto. El color va por clase
+                        (.card-ini): como marca de agua OSCURA sobre la tarjeta
+                        oscura no se veía nada. */}
+                    <span aria-hidden className="card-ini">
                       {p.name.slice(0, 2).toUpperCase()}
                     </span>
                     {/* .tag-tdf ya trae position:absolute + top/left en el CSS
