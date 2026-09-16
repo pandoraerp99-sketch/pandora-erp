@@ -23,6 +23,41 @@ export const OSCURO_CTA = `
 html[data-theme="dark"] .cta{ background:linear-gradient(140deg,#5f53f5,#6b5fff); }
 `;
 
+/* .btn-primary es el MISMO degradado con el mismo texto blanco, y lo peor es
+   donde aparece: vive en shellCss pero hoy solo lo usa /caja, en TODOS los
+   botones que ejecutan algo (abrir caja, cerrar caja, confirmar movimiento,
+   aplicar al arqueo). Estaba en ~1,6:1 contra --purple-2 en oscuro. No se vio
+   antes porque esos botones viven dentro de modales, y ningun screenshot habia
+   abierto un modal: se midio recien al abrirlo con CLICS= en shot-pos.mjs.
+   Va al NUCLEO y no al CSS de /caja, por el mismo criterio que .store-pill y
+   .online: la clase la define el shell. */
+
+/* Modal de alta/edicion (.pmod). El mismo vocabulario lo usan /productos,
+   /clientes y —por herencia de CLIENTES_CSS— /gastos.
+   /productos ya tenia estas reglas; /clientes y /gastos NO, y eso dejaba el
+   formulario inusable con el tema oscuro puesto:
+     .pm-fld input  -> fondo #fff SOLIDO con texto var(--ink) = #eef2ff.
+                       Casi blanco sobre blanco: escribir el nombre o el CUIT
+                       de un cliente, o el importe de un gasto, a ciegas.
+                       Misma forma que .paysheet del POS.
+     .pm-btn.primary-> blanco sobre var(--purple) aclarado, ~2,4:1.
+     .pm-x / .ghost -> fondo claro rgba(13,20,36,0.05), invisible en oscuro.
+     .pm-note.err   -> #c0384a, rojo oscuro sobre fondo oscuro.
+   Se comparte en vez de copiarse por lo mismo que OSCURO_CTA: una cuarta copia
+   diverge el dia que se corrige una sola. */
+export const OSCURO_MODAL = `
+html[data-theme="dark"] .pm-x,
+html[data-theme="dark"] .pm-btn.ghost{ background:rgba(255,255,255,0.07); }
+html[data-theme="dark"] .pm-btn.primary{ background:linear-gradient(140deg,#5f53f5,#6b5fff); }
+/* input y select nada mas: hoy no hay un solo <textarea> adentro de .pm-fld
+   (verificado 2026-09-16), y un selector que no existe parece cobertura sin
+   serlo — es lo que busca scripts/selectores-existen.sh. El unico textarea de
+   la app es .motivo-input en /caja, que ya tiene su variante. */
+html[data-theme="dark"] .pm-fld input,
+html[data-theme="dark"] .pm-fld select{ background:rgba(255,255,255,0.07); border-color:rgba(255,255,255,0.14); color:var(--ink); color-scheme:dark; }
+html[data-theme="dark"] .pm-note.err{ color:#ff8b96; }
+`;
+
 export const OSCURO_NUCLEO = `
 /* ════════════════ MODO OSCURO · cielo nocturno (Claude Design) ════════════════ */
 html[data-theme="dark"]{
@@ -82,6 +117,9 @@ html[data-theme="dark"] .iconbtn .ndot{ border-color:rgba(11,17,42,0.9); }
 html[data-theme="dark"] .store-pill,
 html[data-theme="dark"] .online{ background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.12); }
 html[data-theme="dark"] .store-pill span{ color:var(--ink-1); }
+
+/* Boton que ejecuta (ver el comentario de OSCURO_CTA arriba). */
+html[data-theme="dark"] .btn-primary{ background:linear-gradient(140deg,#5f53f5,#6b5fff); }
 
 ` + OSCURO_CTA;
 

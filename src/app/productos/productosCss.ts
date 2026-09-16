@@ -18,7 +18,7 @@
 // en comentarios — cierran el string y rompen toda la app con un error que
 // apunta al CSS y no al culpable.
 import { RESET_CARD_POS } from '../_css/reset-card-pos';
-import { OSCURO_GESTION, OSCURO_NUCLEO } from '../_css/tema-oscuro';
+import { OSCURO_GESTION, OSCURO_MODAL, OSCURO_NUCLEO } from '../_css/tema-oscuro';
 
 export const PRODUCTOS_CSS = `
 /* ============================================================
@@ -549,14 +549,9 @@ html[data-theme="dark"] button.stock-row:hover{ background:rgba(141,162,255,0.08
 html[data-theme="dark"] .cd-btns .b.ghost,
 html[data-theme="dark"] .pm-acts .b.ghost{ background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.12); box-shadow:inset 0 1px 0 rgba(255,255,255,0.08); }
 
-/* modal de producto */
-html[data-theme="dark"] .pm-x,
-html[data-theme="dark"] .pm-btn.ghost{ background:rgba(255,255,255,0.07); }
-/* mismo caso que .cta (ver _css/tema-oscuro.ts): var(--purple) se aclara en
-   oscuro y el texto blanco deja de leerse */
-html[data-theme="dark"] .pm-btn.primary{ background:linear-gradient(140deg,#5f53f5,#6b5fff); }
-html[data-theme="dark"] .pm-fld input,
-html[data-theme="dark"] .pm-fld select{ background:rgba(255,255,255,0.07); border-color:rgba(255,255,255,0.14); color:var(--ink); color-scheme:dark; }
+/* modal de producto: lo generico (.pm-x, .pm-btn, .pm-fld) salio de aca a
+   OSCURO_MODAL, que se concatena mas abajo. Estas reglas vivian SOLO aca, y
+   por eso el mismo modal en /clientes y /gastos quedaba en claro. */
 html[data-theme="dark"] .pm-warn{ color:#ff9aa4; background:rgba(255,120,140,0.12); border-color:rgba(255,120,140,0.30); }
 html[data-theme="dark"] .pm-prev{ background:rgba(255,255,255,0.04); border-color:rgba(255,255,255,0.10); }
 html[data-theme="dark"] .pm-prev .pv.mgok{ color:#55dd9b; }
@@ -578,4 +573,4 @@ html[data-theme="dark"] .hs-tag.loss{ background:rgba(239,93,106,0.16); color:#f
 html[data-theme="dark"] .hs-tag.purchase{ background:rgba(52,199,125,0.15); color:#55dd9b; }
 html[data-theme="dark"] .hs-q.in{ color:#55dd9b; }
 html[data-theme="dark"] .hs-q.out{ color:#ff8b96; }
-`;
+` + OSCURO_MODAL;

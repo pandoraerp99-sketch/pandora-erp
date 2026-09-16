@@ -140,6 +140,45 @@ await dormir(3500);
 // ── POS ──
 await ir(`${BASE}${process.env.RUTA || '/pos'}`);
 
+// Clics previos, componibles con CUALQUIER acción (incluida "computados:").
+// Lo que vive detrás de un click —un modal— no se mide si no se abre primero,
+// y medir es lo único que no miente: el modal de denominaciones de /caja es
+// donde se cuenta la plata y nunca había entrado a ninguna captura.
+// Uso:  CLICS='Lectura X' RUTA=/caja TEMA=dark node scripts/shot-pos.mjs out.png "computados:.modal-card"
+if (process.env.CLICS) {
+  for (const texto of process.env.CLICS.split('|')) {
+    // Un .click() sintético NO alcanza acá: el botón responde, React no. Se
+    // despachan eventos de mouse reales por CDP sobre el centro del botón.
+    const donde = JSON.parse(await evaluar(`JSON.stringify((()=>{
+      const t = ${JSON.stringify(texto.trim())};
+      const b = [...document.querySelectorAll('button, a')].find((x) => x.textContent.includes(t));
+      if (!b) return { ok: false };
+      b.scrollIntoView({ block: 'center' });
+      const r = b.getBoundingClientRect();
+      return { ok: true, x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), que: b.tagName + '.' + String(b.className || '') };
+    })())`));
+    if (!donde.ok) { console.log(`CLIC>>> ${texto.trim()}: NO ENCONTRADO`); continue; }
+    // Esperar la hidratación: sin esto el clic sale antes de que React escuche
+    // y la medición posterior reporta "no encontrado" — una falla que se lee
+    // igual que "el elemento no existe".
+    for (let i = 0; i < 20; i++) {
+      if (await evaluar(`(()=>{const b=[...document.querySelectorAll('button, a')].find((x)=>x.textContent.includes(${JSON.stringify(texto.trim())})); return !!b && Object.keys(b).some((k)=>k.startsWith('__react'));})()`) === true) break;
+      await dormir(250);
+    }
+    for (const type of ['mousePressed', 'mouseReleased']) {
+      await cmd('Input.dispatchMouseEvent', { type, x: donde.x, y: donde.y, button: 'left', clickCount: 1 });
+    }
+    console.log(`CLIC>>> ${texto.trim()}: ${donde.que} @${donde.x},${donde.y}`);
+    await dormir(1200);
+    // Qué quedó bajo el puntero: si el clic no abrió nada, esto dice si el
+    // botón estaba tapado o si simplemente no pasó nada.
+    console.log('CLIC-TRAS>>>', await evaluar(`JSON.stringify((()=>{
+      const e = document.elementFromPoint(${donde.x}, ${donde.y});
+      return { enPunto: e ? e.tagName + '.' + String(e.className || '') : null };
+    })())`));
+  }
+}
+
 if (ACCION === 'cliente') {
   // Cargar un producto, abrir el selector de cliente y elegir uno.
   await evaluar(`document.querySelector('.card')?.click(), true`);
@@ -717,7 +756,11 @@ if (ACCION.startsWith('computados:')) {
           op *= parseFloat(getComputedStyle(p).opacity || '1');
           p = p.parentElement;
         }
-        return { sel: s, color: cs.color, fondo: cs.backgroundColor, opacidadAcumulada: Number(op.toFixed(3)) };
+        // Un degradado NO aparece en backgroundColor (queda transparente): sin
+        // esta linea, un boton con texto blanco sobre violeta claro se reporta
+        // como "fondo transparente" y parece sano.
+        const grad = cs.backgroundImage && cs.backgroundImage !== 'none' ? cs.backgroundImage : null;
+        return { sel: s, color: cs.color, fondo: cs.backgroundColor, degradado: grad, opacidadAcumulada: Number(op.toFixed(3)) };
       }),
     };
   })())`));

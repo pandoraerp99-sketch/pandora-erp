@@ -38,5 +38,12 @@ mutar "color inline en caja" src/app/caja/CajaClient.tsx "s|<div className=\"mov
 mutar "color inline en el pos" src/app/pos/POSClient.tsx "s|<b className=\"pos-consulta-t\">|<b style={{ color: '#a2560f' }}>|"
 mutar "iniciales del pos con el color a mano" src/app/pos/POSClient.tsx "s|<span aria-hidden className=\"card-ini\">|<span aria-hidden style={{ color: 'rgba(13,20,36,0.13)' }}>|"
 
+# Los botones que EJECUTAN (abrir/cerrar caja, guardar, aplicar al arqueo)
+# llevan el mismo degradado violeta que ya falló en .cta. Sin estas dos, la
+# guardia de la forma no prueba nada.
+mutar "sin arreglo del boton que ejecuta (.btn-primary)" src/app/_css/tema-oscuro.ts '/^html\[data-theme="dark"\] \.btn-primary{/d'
+mutar "clientes sin el modal compartido" src/app/clientes/clientesCss.ts 's/^` + OSCURO_MODAL + RESET_CARD_POS;$/` + RESET_CARD_POS;/'
+mutar "productos con su propia copia del modal" src/app/productos/productosCss.ts 's/^` + OSCURO_MODAL;$/`;/'
+
 echo "mutaciones muertas: $ok/$total"
 [ "$ok" -eq "$total" ]

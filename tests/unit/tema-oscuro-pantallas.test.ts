@@ -8,12 +8,15 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { OSCURO_CTA, OSCURO_GESTION, OSCURO_NUCLEO } from '../../src/app/_css/tema-oscuro';
+import { OSCURO_CTA, OSCURO_GESTION, OSCURO_MODAL, OSCURO_NUCLEO } from '../../src/app/_css/tema-oscuro';
 import { PANEL_CSS } from '../../src/app/panel/panelCss';
 import { CLIENTES_CSS } from '../../src/app/clientes/clientesCss';
 import { CONTADOR_CSS } from '../../src/app/contador/contadorCss';
 import { GASTOS_CSS } from '../../src/app/gastos/gastosCss';
 import { PRODUCTOS_CSS } from '../../src/app/productos/productosCss';
+import { CAJA_CSS } from '../../src/app/caja/cajaCss';
+import { POS_CSS } from '../../src/app/pos/posCss';
+import { SHELL_CSS } from '../../src/components/shell/shellCss';
 
 const PANTALLAS = {
   clientes: CLIENTES_CSS,
@@ -37,12 +40,86 @@ describe('bloque oscuro en cada pantalla de gestión', () => {
     });
   }
 
+  it('el modal de alta/edición toma el bloque compartido, no una copia', () => {
+    // Estas reglas vivían SOLO en productosCss. El mismo modal en /clientes
+    // —y en /gastos, que concatena CLIENTES_CSS— quedaba en claro: el input
+    // medía fondo #fff sólido con texto #eef2ff. Casi blanco sobre blanco en
+    // el alta de un cliente y en el importe de un gasto.
+    expect(PRODUCTOS_CSS).toContain(OSCURO_MODAL);
+    expect(CLIENTES_CSS).toContain(OSCURO_MODAL);
+    expect(GASTOS_CSS).toContain(OSCURO_MODAL);
+  });
+
   it('el Panel (bloque oscuro propio) toma el arreglo del boton principal del modulo', () => {
     // Si el Panel tuviera su propia copia, cambiar el degradado en el modulo
     // lo dejaria con el violeta que medía 2,24:1.
     expect(PANEL_CSS).toContain(OSCURO_CTA);
     expect(OSCURO_NUCLEO).toContain(OSCURO_CTA);
   });
+});
+
+
+describe('botón con degradado de --purple y texto blanco', () => {
+  // Esta FORMA ya mordió cuatro veces: .cta en /productos (2,05:1), .cta en el
+  // Panel (2,24:1), .pm-btn.primary en el modal, y .btn-primary en /caja
+  // (~1,6:1) — este último en TODOS los botones que ejecutan algo: abrir caja,
+  // cerrar caja, confirmar movimiento, aplicar al arqueo. Tardó en aparecer
+  // porque viven dentro de modales y ninguna captura había abierto uno; se
+  // midió recién con CLICS= en scripts/shot-pos.mjs.
+  //
+  // En claro var(--purple) es un violeta fuerte; en oscuro el token se aclara
+  // y el mismo blanco se apaga. Se busca la forma, no los nombres: un botón
+  // nuevo con este degradado falla acá el día que se escribe.
+  //
+  // Lo que esta guardia NO hace: calcular contraste. Se probó, y medía bien
+  // pero gateaba de más — .cta da 3,60:1 en el tema CLARO, que es la identidad
+  // Dawn Sky (ADR-0016), decisión del owner y no un bug de modo oscuro. Los
+  // números quedaron anotados como pendientes, que es donde sirven.
+  const MODULOS = {
+    shell: SHELL_CSS,
+    caja: CAJA_CSS,
+    pos: POS_CSS,
+    panel: PANEL_CSS,
+    ...PANTALLAS,
+  } as const;
+
+  // Excepciones con el número medido. Escribir una acá es declarar un defecto,
+  // no taparlo: si el motivo fuera "está roto y elegimos no arreglarlo",
+  // entonces se arregla.
+  const SIN_VARIANTE_OK: ReadonlyArray<{ sel: string; porque: string }> = [
+    // Iniciales decorativas sobre el avatar violeta→azul. Fallan en los DOS
+    // temas (3,16:1 en claro, ~2,4:1 en oscuro): no son una regresión del modo
+    // oscuro, van al balde de contraste junto a --ink-3 4,28.
+    { sel: '.cashier-av', porque: 'iniciales decorativas; falla AA también en claro (3,16:1)' },
+    { sel: '.cc-av', porque: 'iniciales decorativas; falla AA también en claro' },
+    { sel: '.alivio-av', porque: 'iniciales decorativas; falla AA también en claro' },
+    { sel: '.mini-ava', porque: 'iniciales decorativas; falla AA también en claro' },
+    // Definido en shellCss y sin un solo uso en ningún .tsx (verificado
+    // 2026-09-16). Limpiar selectores muertos del shell es otra pasada: ese
+    // archivo lo carga toda la app.
+    { sel: '.btn-solid', porque: 'CSS muerto del shell: ningún .tsx lo usa' },
+  ];
+
+  for (const [nombre, css] of Object.entries(MODULOS)) {
+    it(`${nombre}: cada degradado de --purple con texto blanco tiene variante oscura`, () => {
+      const sinVariante: string[] = [];
+      for (const [, selector, cuerpo] of css.matchAll(/(?:^|\})\s*([^{}@]+?)\{([^{}]*)\}/g)) {
+        const sel = (selector ?? '').trim();
+        const cuerpoTexto = cuerpo ?? '';
+        if (!sel || sel.includes('data-theme')) continue;
+        if (SIN_VARIANTE_OK.some((p) => sel.split(',').some((s) => s.trim() === p.sel))) continue;
+        if (!/linear-gradient\([^)]*var\(--purple/.test(cuerpoTexto)) continue;
+        if (!/(?<![.\w])color\s*:\s*(#fff\b|#ffffff\b|white\b)/i.test(cuerpoTexto)) continue;
+        // El override puede vivir en el núcleo o en OSCURO_MODAL (los montan
+        // las pantallas con tema) o en el bloque oscuro del propio módulo.
+        const cubierto = [OSCURO_NUCLEO, OSCURO_MODAL, css].some((donde) =>
+          sel.split(',').every((s) => donde.includes(`html[data-theme="dark"] ${s.trim()}`)),
+        );
+        if (!cubierto) sinVariante.push(sel);
+      }
+      expect(sinVariante).toEqual([]);
+    });
+  }
 });
 
 describe('sin color de texto/ícono escrito a mano en style inline', () => {
