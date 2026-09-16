@@ -24,6 +24,8 @@ import { AppShell } from '@/components/shell/AppShell';
 import { CONTADOR_CSS } from './contadorCss';
 import {
   cambiarEmpresaAction,
+  exportarCajaCsvAction,
+  exportarDeudoresCsvAction,
   exportarInventarioCsvAction,
   exportarVentasCsvAction,
 } from './actions';
@@ -52,9 +54,38 @@ interface Props {
   esContador: boolean;
   grano: Grano;
   resumen: ResumenDTO;
-  deudores: Array<{ nombre: string; saldo: string }>;
+  caja: CajaDTO;
+  /** Ítem 5: razón social, documento e importe — al cierre, no a hoy. */
+  deudores: Array<{
+    nombre: string;
+    doc_tipo: string;
+    doc_numero: string;
+    saldo: string;
+  }>;
   inventario: InventarioDTO;
   usuario: string;
+}
+
+/**
+ * Ítem 1 del pedido: saldo de caja a la fecha de cierre.
+ *
+ * Se declara acá en vez de importar el tipo del dominio para no arrastrar ese
+ * módulo (y `decimal.js`) al bundle del cliente. Es la misma forma, a mano.
+ *
+ * `total` es `null` cuando no hay ningún arqueo hasta esa fecha — y ahí NO se
+ * muestra $0: un cero se lee como "la caja estaba vacía".
+ */
+export interface CajaDTO {
+  fecha: string;
+  estado: 'contado' | 'anterior' | 'sin_datos';
+  total: string | null;
+  puntos: Array<{
+    punto: number;
+    fecha: string;
+    contado: string;
+    descuadre: string;
+  }>;
+  abiertas: Array<{ punto: number; desde: string; cerroDespues: string | null }>;
 }
 
 /**
@@ -109,6 +140,12 @@ const MESES_LARGOS = [
 function fechaLarga(iso: string): string {
   const [a, m, d] = iso.split('-');
   return `${Number(d)} de ${MESES_LARGOS[Number(m) - 1] ?? ''} de ${a}`;
+}
+
+/** 'AAAA-MM-DD' → '16/09/2026'. La contadora lee fechas argentinas. */
+function fechaCorta(iso: string): string {
+  const [a, m, d] = iso.split('-');
+  return `${d}/${m}/${a}`;
 }
 
 /** Cantidades: sin decimales cuando son enteras, que es el caso normal. */
@@ -214,6 +251,7 @@ export function ContadorClient({
   esContador,
   grano,
   resumen,
+  caja,
   deudores,
   inventario,
   usuario,
@@ -221,6 +259,14 @@ export function ContadorClient({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  // El total al cierre se suma acá y no en el servidor porque son las mismas
+  // filas que se listan: un total traído aparte podría no coincidir con lo que
+  // se ve, y ese es el error que nadie nota. Decimal, no `+`: es plata.
+  const totalDeudores = deudores
+    .reduce((acc, d) => acc.plus(new Decimal(d.saldo)), new Decimal(0))
+    .toFixed(4);
+  const sinDocumento = deudores.filter((d) => d.doc_numero === '').length;
 
   // Cambiar de período es NAVEGAR: vive en la URL. Antes esto asignaba
   // `window.location.href`, que recarga la app entera (y el linter lo marcaba,
@@ -622,6 +668,110 @@ export function ContadorClient({
           </section>
         </div>
 
+        {/* Ítem 1 del pedido de la contadora. En el papel que le mandan hoy está
+            escrito A MANO ("$349.000"): la caja se cuenta todos los días y el
+            número nunca salía de acá. */}
+        {/* El `id` es el ancla para linkear la tarjeta y para traerla a la
+            vista en las capturas de verificación. */}
+        <section className="card glass" id="caja-al-cierre">
+          <div className="card-title">
+            <h3>Saldo de caja al cierre</h3>
+            {/* La FECHA, no el período: es un saldo a un día, como el
+                inventario. */}
+            <span className="upper-mini">al {fechaLarga(caja.fecha)}</span>
+          </div>
+
+          {caja.total === null ? (
+            <p className="label-sm">
+              No hay ningún cierre de caja hasta esa fecha, así que no hay un
+              saldo contado. <b>No se muestra $0</b>: un cero diría que la caja
+              estaba vacía, que es otra cosa.
+            </p>
+          ) : (
+            <>
+              <div className="conc-stats">
+                <div>
+                  <div className="cs-k">Efectivo contado</div>
+                  <div className="cs-v tnum">{plata(caja.total)}</div>
+                </div>
+                <div>
+                  <div className="cs-k">Cajas</div>
+                  <div className="cs-v tnum">{caja.puntos.length}</div>
+                </div>
+                <div>
+                  <div className="cs-k">Último arqueo</div>
+                  {/* El más RECIENTE, no el de la última caja de la lista: la
+                      lista va ordenada por número de punto de venta. */}
+                  <div className="cs-v tnum">
+                    {fechaCorta(
+                      caja.puntos.reduce(
+                        (max, p) => (p.fecha > max ? p.fecha : max),
+                        caja.puntos[0]?.fecha ?? caja.fecha
+                      )
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {caja.estado === 'anterior' ? (
+                <div className="conc-diff warn">
+                  El arqueo más fresco de alguna caja es <b>anterior</b> a esa
+                  fecha. Sigue siendo plata contada, pero de otro día: la fecha
+                  de cada una está en la lista.
+                </div>
+              ) : null}
+
+              {/* La CUENTA, no sólo el resultado: si mañana abren una segunda
+                  caja, el total pasa a significar otra cosa y acá se ve. */}
+              <div className="cc-list">
+                {caja.puntos.map((p) => (
+                  <div className="cc-row" key={p.punto}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      Caja {p.punto}
+                      <span className="label-sm"> · arqueo del {fechaCorta(p.fecha)}</span>
+                    </div>
+                    <span className="cc-m">{plata(p.contado)}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {caja.abiertas.length > 0 ? (
+            <p className="label-sm alerta" style={{ marginTop: 10 }}>
+              ⚠️{' '}
+              {caja.abiertas.map((a, i) => (
+                <span key={a.punto}>
+                  {i > 0 ? ' · ' : ''}
+                  La <b>caja {a.punto}</b> quedó abierta (desde el {fechaCorta(a.desde)})
+                  {a.cerroDespues === null
+                    ? ' y nunca se contó'
+                    : `, se contó recién el ${fechaCorta(a.cerroDespues)}`}
+                </span>
+              ))}
+              . Esa plata <b>no está</b> en el total: a esa fecha nadie la
+              contó, y estimarla sería una cuenta nuestra, no un arqueo.
+            </p>
+          ) : null}
+
+          <p className="label-sm" style={{ marginTop: 10 }}>
+            Es el <b>efectivo</b> del cajón. Lo cobrado con tarjeta, QR o
+            transferencia no está acá: es un crédito contra el banco o la
+            billetera, y eso Pandora todavía no lo tiene.
+          </p>
+
+          {caja.total !== null || caja.abiertas.length > 0 ? (
+            <button
+              type="button"
+              className="exp-btn"
+              onClick={() => bajar(() => exportarCajaCsvAction(caja.fecha))}
+              disabled={pending}
+            >
+              {pending ? 'Generando…' : 'Exportar caja (CSV)'}
+            </button>
+          ) : null}
+        </section>
+
         <div className="sec-h2">{H2_ICONO}Gastos del período</div>
         <section className="card glass">
           <div className="card-title">
@@ -791,47 +941,85 @@ export function ContadorClient({
         </section>
 
         <div className="sec-h2">{H2_ICONO}Cuentas corrientes</div>
-        <section className="card glass">
+        <section className="card glass" id="deudores-al-cierre">
           <div className="card-title">
             <h3>Deudores</h3>
-            <span className="upper-mini">saldo a hoy</span>
+            {/* Ítem 5, textual: "razón social, CUIT e importe". Al CIERRE: el
+                saldo de hoy no es el que va al balance. */}
+            <span className="upper-mini">al {fechaLarga(caja.fecha)}</span>
           </div>
           <div className="cc-2">
             <div className="cc-box">
               <div className="cc-bk">Total por cobrar</div>
               <div
-                className={
-                  resumen.cuentasCorrientes.deudores > 0
-                    ? 'cc-bv tnum debe'
-                    : 'cc-bv tnum'
-                }
+                className={deudores.length > 0 ? 'cc-bv tnum debe' : 'cc-bv tnum'}
               >
-                {plata(resumen.cuentasCorrientes.porCobrar)}
+                {plata(totalDeudores)}
               </div>
             </div>
             <div className="cc-box">
               <div className="cc-bk">Clientes con deuda</div>
-              <div className="cc-bv tnum">
-                {resumen.cuentasCorrientes.deudores}
-              </div>
+              <div className="cc-bv tnum">{deudores.length}</div>
             </div>
           </div>
           {deudores.length === 0 ? (
-            <p className="label-sm">Nadie debe: todas las cuentas al día.</p>
+            <p className="label-sm">
+              Nadie debía a esa fecha: todas las cuentas al día.
+            </p>
           ) : (
             <div className="cc-list">
               {deudores.map((d) => (
-                <div className="cc-row" key={d.nombre}>
+                <div className="cc-row" key={d.nombre + d.doc_numero}>
                   <span className="cc-av">{iniciales(d.nombre)}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>{d.nombre}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {d.nombre}
+                    <span className="label-sm">
+                      {' · '}
+                      {/* `doc_type` ya viene legible por el CHECK de la
+                          migration 0023: 'DNI' | 'CUIT' | 'CUIL' | 'none'. */}
+                      {d.doc_numero === ''
+                        ? 'sin CUIT cargado'
+                        : `${d.doc_tipo} ${d.doc_numero}`}
+                    </span>
+                  </div>
                   <span className="cc-m">{plata(d.saldo)}</span>
                 </div>
               ))}
             </div>
           )}
+
+          {sinDocumento > 0 ? (
+            <p className="label-sm alerta" style={{ marginTop: 10 }}>
+              ⚠️ {sinDocumento}{' '}
+              {sinDocumento === 1 ? 'deudor no tiene' : 'deudores no tienen'}{' '}
+              documento cargado. El estudio lo pide con CUIT: se completa en la
+              ficha del cliente.
+            </p>
+          ) : null}
+
           <p className="label-sm" style={{ marginTop: 10 }}>
-            Es el saldo a HOY, no del período: la deuda no se reinicia cada mes.
+            Hoy la deuda total es{' '}
+            <b>{plata(resumen.cuentasCorrientes.porCobrar)}</b> entre{' '}
+            {resumen.cuentasCorrientes.deudores} cliente
+            {resumen.cuentasCorrientes.deudores === 1 ? '' : 's'} — ese es el
+            número para operar; el de arriba es el del balance.
           </p>
+          <p className="label-sm">
+            El corte usa la fecha en que se <b>registró</b> cada movimiento: el
+            libro de cuenta corriente no guarda la fecha de la operación. Un
+            fiado del 30/07 cargado el 02/08 cuenta en el ejercicio siguiente.
+          </p>
+
+          {deudores.length > 0 ? (
+            <button
+              type="button"
+              className="exp-btn"
+              onClick={() => bajar(() => exportarDeudoresCsvAction(caja.fecha))}
+              disabled={pending}
+            >
+              {pending ? 'Generando…' : 'Exportar deudores (CSV)'}
+            </button>
+          ) : null}
         </section>
 
         <div className="sec-h2">{H2_ICONO}Todavía no disponible</div>

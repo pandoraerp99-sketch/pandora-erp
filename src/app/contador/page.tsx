@@ -14,13 +14,16 @@ import { db } from '@/lib/db/client';
 import { companies } from '@/lib/db/schema/companies';
 import { listCompaniesForUser } from '@/lib/services/identity/accountant.service';
 import {
-  getDeudores,
   getResumenContable,
   periodoDe,
   GRANOS,
   type Grano,
 } from '@/lib/services/reporting/accountant.report';
 import { getInventarioAlCierre } from '@/lib/services/reporting/inventario.report';
+import {
+  getCajaAlCierre,
+  getDeudoresAlCierre,
+} from '@/lib/services/reporting/cierre.report';
 import { fechaDeLaFoto } from '@/lib/domain/inventario';
 import { ContadorClient } from './ContadorClient';
 
@@ -51,17 +54,21 @@ export default async function ContadorPage({
 
   const periodo = periodoDe(grano, new Date(), empresa?.mesCierre ?? 12);
 
-  // El inventario es una FOTO, no un flujo: se valoriza a un día, no a un
-  // rango. La regla (último día del período acotado a hoy, con "hoy" leído en
-  // la zona del comercio) vive en `fechaDeLaFoto`, que se prueba sola.
-  const fechaInventario = fechaDeLaFoto(periodo.hasta);
+  // El inventario, la caja y los deudores son FOTOS, no flujos: valen a un día,
+  // no a un rango. La regla (último día del período acotado a hoy, con "hoy"
+  // leído en la zona del comercio) vive en `fechaDeLaFoto`, que se prueba sola.
+  //
+  // Las tres usan LA MISMA fecha a propósito: son las tres columnas de un mismo
+  // balance, y con fechas distintas no cerrarían entre sí.
+  const fechaCierre = fechaDeLaFoto(periodo.hasta);
 
-  const [resumen, deudores, inventario] = await withServerActionTracing(
+  const [resumen, inventario, caja, deudores] = await withServerActionTracing(
     async () =>
       Promise.all([
         getResumenContable(periodo),
-        getDeudores(),
-        getInventarioAlCierre(fechaInventario),
+        getInventarioAlCierre(fechaCierre),
+        getCajaAlCierre(fechaCierre),
+        getDeudoresAlCierre(fechaCierre),
       ]),
     { requireAuth: true }
   );
@@ -76,6 +83,7 @@ export default async function ContadorPage({
       // Sólo un contador ve el selector con varias: el dueño tiene una sola.
       esContador={session.app_role === 'accountant'}
       grano={grano}
+      caja={caja}
       deudores={deudores}
       inventario={{
         fecha: inventario.fecha,

@@ -23,6 +23,12 @@ import {
   armarCsvInventario,
   getInventarioAlCierre,
 } from '@/lib/services/reporting/inventario.report';
+import {
+  armarCsvCaja,
+  armarCsvDeudores,
+  getCajaAlCierre,
+  getDeudoresAlCierre,
+} from '@/lib/services/reporting/cierre.report';
 
 /**
  * Cambia la empresa que está mirando el contador.
@@ -130,6 +136,59 @@ export async function exportarInventarioCsvAction(
       { requireAuth: true }
     );
     return { ok: true, csv, nombre: `inventario-valorizado-al-${fecha}.csv` };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : 'No se pudo exportar',
+    };
+  }
+}
+
+/**
+ * CSV de deudores a la fecha de cierre — ítem 5: razón social, CUIT e importe.
+ *
+ * Es el saldo AL CIERRE, no a hoy: es el que va al balance. El archivo aclara
+ * adentro que el corte usa la fecha de registración del movimiento, porque el
+ * libro de cuenta corriente no guarda la de la operación.
+ */
+export async function exportarDeudoresCsvAction(
+  fecha: string
+): Promise<{ ok: true; csv: string; nombre: string } | { ok: false; error: string }> {
+  try {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      return { ok: false, error: 'Fecha inválida' };
+    }
+    const csv = await withServerActionTracing(
+      async () => armarCsvDeudores(fecha, await getDeudoresAlCierre(fecha)),
+      { requireAuth: true }
+    );
+    return { ok: true, csv, nombre: `deudores-al-${fecha}.csv` };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : 'No se pudo exportar',
+    };
+  }
+}
+
+/**
+ * CSV del saldo de caja al cierre — ítem 1.
+ *
+ * Una fila por punto de venta con la fecha de SU arqueo, y las cajas que
+ * quedaron abiertas sin importe: que faltó contar una caja es el dato.
+ */
+export async function exportarCajaCsvAction(
+  fecha: string
+): Promise<{ ok: true; csv: string; nombre: string } | { ok: false; error: string }> {
+  try {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      return { ok: false, error: 'Fecha inválida' };
+    }
+    const csv = await withServerActionTracing(
+      async () => armarCsvCaja(await getCajaAlCierre(fecha)),
+      { requireAuth: true }
+    );
+    return { ok: true, csv, nombre: `caja-al-${fecha}.csv` };
   } catch (e) {
     return {
       ok: false,
