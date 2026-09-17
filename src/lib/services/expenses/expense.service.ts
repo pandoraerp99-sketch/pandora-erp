@@ -1007,12 +1007,17 @@ export async function listExpenses(
 export interface TotalPorCategoria {
   [k: string]: string;
   categoria: string;
-  /** Plata que SALIÓ. No incluye lo comprado a cuenta corriente y sin pagar. */
+  /**
+   * DEVENGADO: lo pagado de una en el período. Ojo — esta función NO puede
+   * informar "plata que salió" (ver el comentario de la consulta): un pago a
+   * proveedor no tiene rubro. No tiene por qué coincidir con el total del
+   * resumen, y no es un bug.
+   */
   total: string;
   neto: string;
   iva: string;
   cantidad: string;
-  /** Comprometido y todavía impago (cuenta corriente de proveedores). */
+  /** Comprado a crédito EN ESTE PERÍODO. No es la deuda que queda hoy. */
   impago: string;
   impago_cantidad: string;
 }
@@ -1089,9 +1094,9 @@ export interface ResumenGastos {
    * Sale del libro, misma regla que el reporte de acreedores: una deuda saldada
    * deja de figurar.
    */
-  impago_total: string;
+  deuda_al_cierre: string;
   /** Cuántos PROVEEDORES quedan con saldo a favor suyo (no cuántos gastos). */
-  impago_cantidad: string;
+  acreedores_al_cierre: string;
   /** Los que el estudio YA baja de ARCA. */
   arca_total: string;
   arca_cantidad: string;
@@ -1125,7 +1130,7 @@ export async function getExpenseSummary(
     // nunca lo volvía a sumar al pagarse: el gasto desaparecía de todos los
     // meses. Test: "lo que se paga en agosto de una compra de julio".
     //
-    // `impago_total` es una FOTO al cierre del rango, sacada del LIBRO, no
+    // `deuda_al_cierre` es una FOTO al cierre del rango, sacada del LIBRO, no
     // "los gastos que nacieron a crédito": `medio_pago` no cambia cuando se
     // paga, así que esa cuenta seguía informando una deuda ya saldada.
     //
@@ -1136,8 +1141,8 @@ export async function getExpenseSummary(
     sql`SELECT (coalesce(sum(total) FILTER (WHERE ${GASTO_PAGADO_SQL}), 0)
                 + ${pagosAProveedoresSql(tenantId, desde, hasta)})::text       AS total,
                count(*) FILTER (WHERE ${GASTO_PAGADO_SQL})::text                AS cantidad,
-               ${deudaAProveedoresSql(tenantId, hasta)}::text                   AS impago_total,
-               ${cantidadAcreedoresSql(tenantId, hasta)}::text                  AS impago_cantidad,
+               ${deudaAProveedoresSql(tenantId, hasta)}::text                   AS deuda_al_cierre,
+               ${cantidadAcreedoresSql(tenantId, hasta)}::text                  AS acreedores_al_cierre,
                coalesce(sum(total) FILTER (WHERE en_iva_compras), 0)::text AS arca_total,
                count(*)   FILTER (WHERE en_iva_compras)::text              AS arca_cantidad,
                coalesce(sum(iva)   FILTER (WHERE en_iva_compras), 0)::text AS arca_credito,
@@ -1151,8 +1156,8 @@ export async function getExpenseSummary(
   const cero: ResumenGastos = {
     total: '0',
     cantidad: '0',
-    impago_total: '0',
-    impago_cantidad: '0',
+    deuda_al_cierre: '0',
+    acreedores_al_cierre: '0',
     arca_total: '0',
     arca_cantidad: '0',
     arca_credito: '0',

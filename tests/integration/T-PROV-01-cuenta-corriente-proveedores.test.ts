@@ -244,11 +244,11 @@ describe('T-PROV-01 — cuenta corriente de proveedores', () => {
     // El número grande es lo que salió: sólo la transferencia.
     expect(resumen.total).toBe('200.0000');
     expect(resumen.cantidad).toBe('1');
-    // Y lo adeudado se ve aparte: 500 a UN proveedor. Ojo que `impago_cantidad`
+    // Y lo adeudado se ve aparte: 500 a UN proveedor. Ojo que `acreedores_al_cierre`
     // cuenta PROVEEDORES con saldo, no gastos impagos — acá da lo mismo porque
     // hay uno de cada, pero son dos preguntas distintas.
-    expect(Number(resumen.impago_total)).toBe(500);
-    expect(Number(resumen.impago_cantidad)).toBe(1);
+    expect(Number(resumen.deuda_al_cierre)).toBe(500);
+    expect(Number(resumen.acreedores_al_cierre)).toBe(1);
   });
 
   /**
@@ -275,7 +275,7 @@ describe('T-PROV-01 — cuenta corriente de proveedores', () => {
     // Julio: se compró, no salió plata. Y al cierre de julio se debía.
     const julio = await withCtx(() => getExpenseSummary('2026-07-01', '2026-08-01'));
     expect(Number(julio.total)).toBe(0);
-    expect(Number(julio.impago_total)).toBe(500);
+    expect(Number(julio.deuda_al_cierre)).toBe(500);
 
     // Agosto: salió la plata. Sin esto, el gasto no aparece en NINGÚN mes.
     const agosto = await withCtx(() => getExpenseSummary('2026-08-01', '2026-09-01'));
@@ -283,8 +283,8 @@ describe('T-PROV-01 — cuenta corriente de proveedores', () => {
     // Y ya no se debe nada: `impago` es una foto del LIBRO al cierre del rango.
     // Si fuera "nació a crédito", esta deuda ya saldada seguiría figurando para
     // siempre, y contradiría al reporte de acreedores.
-    expect(Number(agosto.impago_total)).toBe(0);
-    expect(Number(agosto.impago_cantidad)).toBe(0);
+    expect(Number(agosto.deuda_al_cierre)).toBe(0);
+    expect(Number(agosto.acreedores_al_cierre)).toBe(0);
   });
 
   it('el gráfico de ingresos vs gastos muestra el egreso en el mes del pago', async () => {
@@ -304,6 +304,69 @@ describe('T-PROV-01 — cuenta corriente de proveedores', () => {
 
     expect(Number(julio?.gastos ?? 0)).toBe(0);
     expect(Number(agosto?.gastos ?? 0)).toBe(500);
+  });
+
+  /**
+   * El resto de este archivo usa UN tenant, así que ninguno de sus casos puede
+   * ver una fuga. Y la consulta del gráfico ahora lee una tabla NUEVA dentro de
+   * una derivada con dos brazos: si a uno se le cayera el filtro por tenant, los
+   * pagos a proveedores de un comercio aparecerían en el gráfico de otro y todo
+   * lo demás seguiría en verde (CLAUDE.md §7.9).
+   */
+  it('el pago de OTRO tenant no aparece en mi gráfico', async () => {
+    const otroTenant = crypto.randomUUID();
+    const otroProveedor = crypto.randomUUID();
+    await db.insert(companies).values({
+      id: otroTenant,
+      name: 'Vecino SRL',
+      legal_name: 'Vecino SRL',
+      cuit: '20' + String(Math.floor(Math.random() * 1e9)).padStart(9, '0'),
+      tax_regime: 'responsable_inscripto',
+      merchant_jurisdiction_province: 'TIERRA_DEL_FUEGO',
+      merchant_special_regime: null,
+      afip_environment: 'homologacion',
+      afip_sale_point: '0001',
+      demo_status: 'trial',
+    });
+    await db.insert(terceros).values({
+      id: otroProveedor,
+      tenant_id: otroTenant,
+      type: 'proveedor',
+      name: 'Proveedor del vecino',
+      doc: '30799999999',
+      is_active: true,
+    });
+    // Se inserta el pago directo: el servicio exige saldo previo, y lo que se
+    // prueba acá es el filtro de la consulta, no la regla de negocio del vecino.
+    await db.insert(supplier_account_movements).values({
+      id: crypto.randomUUID(),
+      tenant_id: otroTenant,
+      tercero_id: otroProveedor,
+      type: 'payment',
+      amount: '9999.0000',
+      fecha: '2026-08-05',
+      payment_method: 'transferencia',
+    });
+
+    try {
+      const meses = await withCtx(() => getIngresosVsGastos(6));
+      const agosto = meses.find((m) => m.mes.startsWith('2026-08'));
+      expect(Number(agosto?.gastos ?? 0)).toBe(0);
+
+      // Y tampoco se cuela en el resumen del período.
+      const resumen = await withCtx(() => getExpenseSummary('2026-08-01', '2026-09-01'));
+      expect(Number(resumen.total)).toBe(0);
+      expect(Number(resumen.deuda_al_cierre)).toBe(0);
+    } finally {
+      await db.transaction(async (tx) => {
+        await tx.execute(sql`SET LOCAL session_replication_role = 'replica'`);
+        await tx.execute(
+          sql`DELETE FROM supplier_account_movements WHERE tenant_id = ${otroTenant}`
+        );
+        await tx.execute(sql`DELETE FROM terceros WHERE tenant_id = ${otroTenant}`);
+        await tx.execute(sql`DELETE FROM companies WHERE id = ${otroTenant}`);
+      });
+    }
   });
 
   it('el pago en efectivo sale de la caja; la transferencia no', async () => {

@@ -261,12 +261,19 @@ export interface ResumenContable {
    * por mas IVA que tenga adentro el precio.
    */
   gastos: {
-    /** Plata que SALIÓ. No incluye lo comprado a cuenta corriente sin pagar. */
+    /**
+     * Plata que SALIÓ en el período: gastos pagados de una + lo que se le pagó
+     * a proveedores (por compras de cualquier mes).
+     */
     total: string;
     cantidad: number;
-    /** Comprometido y todavía impago (cuenta corriente de proveedores). */
-    impago: string;
-    impagoCantidad: number;
+    /**
+     * Lo que se le DEBE a proveedores al cierre del período — una FOTO, no un
+     * flujo. No depende de `desde`: cambiar el inicio del rango no lo mueve.
+     */
+    deudaAlCierre: string;
+    /** Cuántos proveedores quedan con saldo a favor suyo al cierre. */
+    acreedoresAlCierre: number;
     credito: string;
     /** Cuantos gastos aportan credito fiscal. */
     comprobantes: number;
@@ -371,8 +378,8 @@ export async function getResumenContable(
   const [gastos] = await db.execute<{
     total: string;
     cantidad: number;
-    impago: string;
-    impago_cantidad: number;
+    deuda_al_cierre: string;
+    acreedores_al_cierre: number;
     credito: string;
     comprobantes: number;
   }>(
@@ -381,7 +388,7 @@ export async function getResumenContable(
     // período. Sin la segunda mitad, una compra a 30 días no aparecía ni en el
     // mes en que se compró ni en el mes en que se pagó — desaparecía del año.
     //
-    // `impago` es la deuda a proveedores AL CIERRE del período: una foto sacada
+    // `deuda_al_cierre` es lo que se debe a proveedores AL CIERRE: una foto sacada
     // del LIBRO, la misma regla del reporte de acreedores. No es "lo que nació
     // a crédito", que es lo que decía la primera versión y seguía informando
     // como deuda algo ya saldado (el medio de pago del gasto no cambia al pagar).
@@ -393,8 +400,8 @@ export async function getResumenContable(
     sql`SELECT (coalesce(sum(total) FILTER (WHERE ${GASTO_PAGADO_SQL}), 0)
                 + ${pagosAProveedoresSql(tenantId, desde, hasta)})::text        AS total,
                count(*) FILTER (WHERE ${GASTO_PAGADO_SQL})::int                 AS cantidad,
-               ${deudaAProveedoresSql(tenantId, hasta)}::text                   AS impago,
-               ${cantidadAcreedoresSql(tenantId, hasta)}::int                   AS impago_cantidad,
+               ${deudaAProveedoresSql(tenantId, hasta)}::text                   AS deuda_al_cierre,
+               ${cantidadAcreedoresSql(tenantId, hasta)}::int                   AS acreedores_al_cierre,
                coalesce(sum(iva) FILTER (WHERE en_iva_compras), 0)::text AS credito,
                count(*) FILTER (WHERE en_iva_compras)::int              AS comprobantes
         FROM expenses
@@ -429,8 +436,8 @@ export async function getResumenContable(
     gastos: {
       total: gastos?.total ?? '0',
       cantidad: gastos?.cantidad ?? 0,
-      impago: gastos?.impago ?? '0',
-      impagoCantidad: gastos?.impago_cantidad ?? 0,
+      deudaAlCierre: gastos?.deuda_al_cierre ?? '0',
+      acreedoresAlCierre: gastos?.acreedores_al_cierre ?? 0,
       credito: gastos?.credito ?? '0',
       comprobantes: gastos?.comprobantes ?? 0,
     },
