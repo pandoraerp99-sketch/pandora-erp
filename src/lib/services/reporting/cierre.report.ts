@@ -1,6 +1,6 @@
 /**
- * Lo que la contadora pide **a la fecha de cierre**: caja (ítem 1) y deudores
- * con CUIT (ítem 5).
+ * Lo que la contadora pide **a la fecha de cierre**: caja (ítem 1), deudores
+ * con CUIT (ítem 5) y acreedores impagos (la otra mitad del ítem 9).
  *
  * ── POR QUE NO ALCANZABA CON LO QUE YA HABIA ──────────────────────────────
  * Los dos ítems figuraban ✅ en la evidencia, y el dato está en la base — pero
@@ -266,5 +266,92 @@ export function armarCsvCaja(caja: CajaAlCierre): string {
     'Cada arqueo se atribuye al dia en que SE CONTO, no al turno que cierra: ' +
     'una caja contada a las 02:00 del dia siguiente figura como abierta a esta ' +
     'fecha.';
+  return `${tabla}\r\n${csvTxt(nota)}\r\n`;
+}
+
+export interface AcreedorAlCierre {
+  [k: string]: string;
+  nombre: string;
+  /** CUIT del proveedor. Vacío si nunca se cargó. */
+  doc: string;
+  saldo: string;
+}
+
+/**
+ * Los acreedores impagos al cierre — la otra mitad del ítem 9.
+ *
+ * La primera mitad (el listado de proveedores del período con su CUIT y lo que
+ * se les pagó) ya existía en `/gastos`. Lo que faltaba es lo que el balance
+ * pide de verdad: **cuánto se les debe** a la fecha de cierre.
+ *
+ * ── EL CORTE USA LA FECHA DEL HECHO ───────────────────────────────────────
+ * A diferencia del ítem 5, acá `supplier_account_movements.fecha` guarda la
+ * fecha de la operación, así que una factura del 30/07 cargada en septiembre
+ * cuenta en el ejercicio correcto. Ese caveat no se repite.
+ *
+ * Sólo salen los que tienen saldo POSITIVO: un proveedor al que se le pagó de
+ * más (una seña, un anticipo) no es un acreedor — es un crédito nuestro, y
+ * mezclarlo restaría del total de deuda como si fuera menos pasivo.
+ */
+export async function getAcreedoresAlCierre(
+  fechaCierre: string
+): Promise<AcreedorAlCierre[]> {
+  exigirFecha(fechaCierre);
+  const tenantId = requireTenantId();
+
+  return db.execute<AcreedorAlCierre>(sql`
+    SELECT t.name                     AS nombre,
+           COALESCE(t.doc, '')        AS doc,
+           SUM(CASE WHEN m.type = 'payment' THEN -m.amount ELSE m.amount END)::text AS saldo
+      FROM supplier_account_movements m
+      JOIN terceros t ON t.id = m.tercero_id
+     WHERE m.tenant_id = ${tenantId}
+       AND m.fecha <= ${fechaCierre}::date
+       -- Un cargo cuyo comprobante se anuló no es una deuda. Misma regla que
+       -- gobierna la tabla expenses (GASTO_VIGENTE), no una segunda definición.
+       AND (
+         m.type <> 'charge'
+         OR EXISTS (
+           SELECT 1 FROM expenses e
+            WHERE e.id = m.expense_id
+              AND e.total > 0
+              AND NOT EXISTS (SELECT 1 FROM expenses c WHERE c.corrects_id = e.id)
+         )
+       )
+     GROUP BY t.id, t.name, t.doc
+    HAVING SUM(CASE WHEN m.type = 'payment' THEN -m.amount ELSE m.amount END) > 0
+     ORDER BY SUM(CASE WHEN m.type = 'payment' THEN -m.amount ELSE m.amount END) DESC,
+              t.name
+  `);
+}
+
+/**
+ * El CSV de acreedores que va al estudio.
+ *
+ * La nota al pie dice qué NO incluye, que es la parte que un total suelto no
+ * puede comunicar: Pandora sólo conoce las deudas que se cargaron como gasto a
+ * cuenta corriente. Una factura que nunca se cargó no está — y el estudio
+ * tiene que saber que este número es "lo registrado", no "todo lo que se debe".
+ */
+export function armarCsvAcreedores(
+  fechaCierre: string,
+  filas: AcreedorAlCierre[]
+): string {
+  const tabla = csvArmar(
+    ['Proveedor', 'CUIT', 'Saldo acreedor'],
+    filas.map((f) => [csvTxt(f.nombre), csvTxt(f.doc), csvNum(f.saldo)])
+  );
+
+  const sinCuit = filas.filter((f) => f.doc.trim() === '').length;
+  const nota =
+    `Acreedores impagos al ${fechaCierre}. ` +
+    'Sale de los gastos cargados con medio de pago "cuenta corriente" menos ' +
+    'los pagos registrados. El corte usa la fecha DEL COMPROBANTE, no la de ' +
+    'carga: una factura del 30/07 cargada despues cuenta igual en este ' +
+    'ejercicio. ' +
+    'NO incluye deudas que no se hayan cargado en el sistema. ' +
+    (sinCuit > 0
+      ? `${sinCuit} proveedor(es) sin CUIT cargado.`
+      : 'Todos los proveedores tienen CUIT cargado.');
   return `${tabla}\r\n${csvTxt(nota)}\r\n`;
 }

@@ -20,6 +20,23 @@ else
   ARCHIVOS=$(ls src/app/*/*Css.ts src/app/_css/*.ts src/components/shell/shellCss.ts 2>/dev/null)
 fi
 
+# ── Los template de SQL tienen el mismo problema ──────────────────────────
+# El 2026-09-17 volvió a pasar, esta vez en un comentario adentro de un
+# sql`...`: citar una tabla con backticks cierra el template y Next tira
+# "`,` o `)` expected" en una línea que no tiene ni coma ni paréntesis.
+#
+# Acá no se puede usar el mismo parser de arriba —un .ts de servicio tiene
+# muchos template sueltos y el estado abierto/cerrado no es confiable—, así que
+# se busca lo que de verdad rompe: un backtick DENTRO de un comentario SQL.
+if [ "$#" -eq 0 ]; then
+  SQL_MALOS=$(grep -rn -- '--.*`' src/lib/services/ src/lib/db/ 2>/dev/null || true)
+  if [ -n "$SQL_MALOS" ]; then
+    echo "🔴 backtick adentro de un comentario SQL (rompe el template):"
+    printf '%s\n' "$SQL_MALOS"
+    exit 1
+  fi
+fi
+
 MALOS=0
 for f in $ARCHIVOS; do
   # Estado: 0 = fuera del template, 1 = adentro. Cada backtick lo alterna.

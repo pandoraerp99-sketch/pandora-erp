@@ -45,6 +45,10 @@ import {
   SupplierAccountError,
 } from '@/lib/services/expenses/supplier-account.service';
 import { getInventarioAlCierre } from '@/lib/services/reporting/inventario.report';
+import {
+  getAcreedoresAlCierre,
+  armarCsvAcreedores,
+} from '@/lib/services/reporting/cierre.report';
 import { openCashSession } from '@/lib/cash/sessions';
 
 describe('T-PROV-01 — cuenta corriente de proveedores', () => {
@@ -425,6 +429,62 @@ describe('T-PROV-01 — cuenta corriente de proveedores', () => {
         )
       )
     ).toMatch(/INSERT-only/);
+  });
+
+  it('el reporte de acreedores al cierre trae razón social, CUIT e importe', async () => {
+    // Exactamente lo que pide el ítem 9.
+    await compraACredito('2026-07-20', '500.0000');
+    await withCtx(() =>
+      settleSupplier({
+        tercero_id: proveedorId,
+        amount: '200.0000',
+        method: 'transferencia',
+        fecha: '2026-07-25',
+      })
+    );
+
+    const filas = await withCtx(() => getAcreedoresAlCierre('2026-07-31'));
+    expect(filas).toHaveLength(1);
+    expect(filas[0]?.nombre).toBe('Distribuidora del Fin del Mundo');
+    expect(filas[0]?.doc).toBe('30712345678');
+    expect(Number(filas[0]?.saldo)).toBe(300);
+
+    const csv = armarCsvAcreedores('2026-07-31', filas);
+    expect(csv).toContain('Proveedor');
+    expect(csv).toContain('30712345678');
+    // La nota dice qué NO incluye: un total suelto no puede comunicar eso.
+    expect(csv).toMatch(/NO incluye deudas que no se hayan cargado/i);
+    expect(csv).toMatch(/Todos los proveedores tienen CUIT/i);
+  });
+
+  it('un proveedor al que se le pagó de más NO figura como acreedor', async () => {
+    await compraACredito('2026-07-20', '500.0000');
+    await withCtx(() =>
+      settleSupplier({
+        tercero_id: proveedorId,
+        amount: '700.0000',
+        method: 'transferencia',
+        fecha: '2026-07-25',
+      })
+    );
+
+    // Saldo −200: es un anticipo, un crédito NUESTRO. Si figurara, restaría
+    // del total de deuda como si fuera menos pasivo.
+    const saldo = await withCtx(() => getSupplierBalance(proveedorId));
+    expect(saldo.toFixed(2)).toBe('-200.00');
+    const filas = await withCtx(() => getAcreedoresAlCierre('2026-07-31'));
+    expect(filas).toHaveLength(0);
+  });
+
+  it('el gasto anulado desaparece del reporte de acreedores', async () => {
+    const gasto = await compraACredito('2026-07-20', '500.0000');
+    expect(await withCtx(() => getAcreedoresAlCierre('2026-07-31'))).toHaveLength(1);
+
+    await withCtx(() =>
+      annulExpense({ expense_id: gasto.id, motivo: 'la factura era de otro comercio' })
+    );
+
+    expect(await withCtx(() => getAcreedoresAlCierre('2026-07-31'))).toHaveLength(0);
   });
 
   it('los saldos de todos los proveedores salen en UNA consulta', async () => {
