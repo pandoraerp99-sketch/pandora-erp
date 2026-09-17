@@ -29,8 +29,13 @@ import {
 } from '../../db/schema/expenses.js';
 import { expense_items, type ExpenseItem } from '../../db/schema/expense_items.js';
 import {
+  cantidadAcreedoresSql,
+  deudaAProveedoresSql,
+  pagosAProveedoresSql,
+} from '../../db/schema/supplier_account.js';
+import {
+  anularDejariaPagosSinRespaldo,
   registerChargeFromExpense,
-  tienePagosPosteriores,
 } from './supplier-account.service.js';
 import { products } from '../../db/schema/products.js';
 import { terceros } from '../../db/schema/terceros.js';
@@ -623,11 +628,16 @@ export async function annulExpense(input: AnulacionGasto): Promise<Expense> {
     //     nadie registró, en un libro append-only que después nadie entiende.
     // Primero se deshace el pago —con su motivo, que queda auditado— y recién
     // ahí se anula.
+    //
+    // Lo que bloquea NO es "el proveedor tuvo pagos": es que al sacar este
+    // cargo su saldo quedaría NEGATIVO, o sea plata pagada sin deuda contra
+    // qué ir. Si le pagaste otra factura, ese pago lo absorbe la otra y este
+    // duplicado se puede anular tranquilo.
     if (original.medio_pago === 'cuenta_corriente') {
-      if (await tienePagosPosteriores(original.id, tx)) {
+      if (await anularDejariaPagosSinRespaldo(original.id, tx)) {
         throw new ExpenseError(
           'tiene_pagos',
-          'Este gasto está en la cuenta del proveedor y ya hubo pagos o ajustes posteriores. ' +
+          'No se puede anular: al proveedor ya se le pagó más de lo que quedaría debiéndole. ' +
             'Registrá primero el ajuste que revierte esa plata, y después anulalo.'
         );
       }
@@ -1022,10 +1032,22 @@ export async function getExpenseTotals(
 ): Promise<TotalPorCategoria[]> {
   const { tenantId } = ctx();
   return db.execute<TotalPorCategoria>(
-    // `total` es la plata que SALIÓ (decisión del owner 2026-09-17): un gasto a
-    // cuenta corriente todavía no se pagó, así que no suma acá. Se devuelve
-    // aparte en `impago` para que la pantalla lo muestre como lo que es —una
-    // deuda—, sin cambiar de valor el número que el comercio ya venía leyendo.
+    // ⚠️ LIMITACIÓN DECLARADA — esta función NO es "plata que salió".
+    //
+    // Los otros tres lectores (getExpenseSummary, getResumenContable y el
+    // gráfico de ingresos vs gastos) suman los pagos a proveedores al mes en
+    // que se pagaron, que es el criterio que eligió el owner. Acá no se puede:
+    // esta consulta agrupa POR CATEGORÍA y un pago a proveedor no tiene
+    // categoría — se le paga al proveedor, no a una factura. Imputar el pago a
+    // comprobantes (PEPS o lo que fuere) sería inventar un dato que nadie cargó.
+    //
+    // Así que lo que este listado informa es DEVENGADO: qué se gastó en cada
+    // rubro en el período, pagado o no. `total` = lo pagado de una, `impago` =
+    // lo comprado a crédito EN ESTE PERÍODO (no lo que sigue debiéndose hoy:
+    // para eso está el reporte de acreedores, que sale del libro).
+    //
+    // Es una vista legítima, pero es otra pregunta que la del resumen: los dos
+    // números no tienen por qué coincidir, y no es un bug cuando no coinciden.
     sql`SELECT categoria,
                sum(total) FILTER (WHERE ${GASTO_PAGADO_SQL})::text AS total,
                sum(neto)  FILTER (WHERE ${GASTO_PAGADO_SQL})::text AS neto,
@@ -1051,11 +1073,24 @@ export async function getExpenseTotals(
 
 export interface ResumenGastos {
   [k: string]: string;
-  /** Plata que SALIÓ en el período. No incluye lo impago a proveedores. */
+  /**
+   * Plata que SALIÓ en el período: los gastos pagados de una + lo que se les
+   * pagó a proveedores por compras a cuenta corriente (de cualquier mes).
+   */
   total: string;
+  /**
+   * Cantidad de GASTOS pagados de una. A propósito NO cuenta los pagos a
+   * proveedores: un pago puede saldar tres facturas o media, así que sumarlo
+   * acá rompería cualquier promedio por gasto que la pantalla derive.
+   */
   cantidad: string;
-  /** Comprometido y todavía sin pagar (cuenta corriente de proveedores). */
+  /**
+   * Lo que se le DEBE a proveedores al cierre del rango — una foto, no un flujo.
+   * Sale del libro, misma regla que el reporte de acreedores: una deuda saldada
+   * deja de figurar.
+   */
   impago_total: string;
+  /** Cuántos PROVEEDORES quedan con saldo a favor suyo (no cuántos gastos). */
   impago_cantidad: string;
   /** Los que el estudio YA baja de ARCA. */
   arca_total: string;
@@ -1082,17 +1117,27 @@ export async function getExpenseSummary(
 ): Promise<ResumenGastos> {
   const { tenantId } = ctx();
   const [fila] = await db.execute<ResumenGastos>(
-    // `total` = plata que salió. Lo comprado a cuenta corriente y sin pagar va
-    // en `impago_total`, aparte y con su nombre (decisión del owner 2026-09-17).
+    // `total` = plata que salió, y eso son DOS cosas: el gasto que se pagó de
+    // una, MÁS lo que se le pagó a un proveedor este mes por una compra que
+    // pudo ser de cualquier mes (decisión del owner 2026-09-17).
+    //
+    // El primer intento sólo tenía la resta —excluir lo comprado a crédito— y
+    // nunca lo volvía a sumar al pagarse: el gasto desaparecía de todos los
+    // meses. Test: "lo que se paga en agosto de una compra de julio".
+    //
+    // `impago_total` es una FOTO al cierre del rango, sacada del LIBRO, no
+    // "los gastos que nacieron a crédito": `medio_pago` no cambia cuando se
+    // paga, así que esa cuenta seguía informando una deuda ya saldada.
     //
     // OJO con `arca_credito`: el IVA de una compra a crédito se computa por
     // DEVENGADO —la fecha de la factura, esté paga o no— así que sigue entrando
     // entero. Eso NO es una decisión nuestra: es criterio del estudio, y está
     // preguntado como A-29. Si la contadora dice lo contrario, se cambia acá.
-    sql`SELECT coalesce(sum(total) FILTER (WHERE ${GASTO_PAGADO_SQL}), 0)::text AS total,
+    sql`SELECT (coalesce(sum(total) FILTER (WHERE ${GASTO_PAGADO_SQL}), 0)
+                + ${pagosAProveedoresSql(tenantId, desde, hasta)})::text       AS total,
                count(*) FILTER (WHERE ${GASTO_PAGADO_SQL})::text                AS cantidad,
-               coalesce(sum(total) FILTER (WHERE NOT ${GASTO_PAGADO_SQL}), 0)::text AS impago_total,
-               count(*) FILTER (WHERE NOT ${GASTO_PAGADO_SQL})::text            AS impago_cantidad,
+               ${deudaAProveedoresSql(tenantId, hasta)}::text                   AS impago_total,
+               ${cantidadAcreedoresSql(tenantId, hasta)}::text                  AS impago_cantidad,
                coalesce(sum(total) FILTER (WHERE en_iva_compras), 0)::text AS arca_total,
                count(*)   FILTER (WHERE en_iva_compras)::text              AS arca_cantidad,
                coalesce(sum(iva)   FILTER (WHERE en_iva_compras), 0)::text AS arca_credito,

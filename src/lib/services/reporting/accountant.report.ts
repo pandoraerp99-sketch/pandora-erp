@@ -19,6 +19,11 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { GASTO_PAGADO_SQL, GASTO_VIGENTE_SQL } from '../../db/schema/expenses.js';
+import {
+  cantidadAcreedoresSql,
+  deudaAProveedoresSql,
+  pagosAProveedoresSql,
+} from '../../db/schema/supplier_account.js';
 import { requireTracingContext } from '../../tracing/context.js';
 import { CrossTenantAccessError } from '../../multi_tenant/errors.js';
 import { csvArmar, csvNum, csvTxt } from './csv.js';
@@ -371,19 +376,25 @@ export async function getResumenContable(
     credito: string;
     comprobantes: number;
   }>(
-    // `total` = plata que SALIÓ. Lo comprado a cuenta corriente y todavía sin
-    // pagar va aparte, en `impago` (decisión del owner 2026-09-17): así el
-    // número que la contadora ya venía leyendo no cambia de valor el día que
-    // aparece la primera compra a 30 días, y lo adeudado se ve como lo que es.
+    // `total` = plata que SALIÓ (decisión del owner 2026-09-17), y son DOS
+    // cosas: el gasto pagado de una MÁS lo que se le pagó a proveedores en el
+    // período. Sin la segunda mitad, una compra a 30 días no aparecía ni en el
+    // mes en que se compró ni en el mes en que se pagó — desaparecía del año.
+    //
+    // `impago` es la deuda a proveedores AL CIERRE del período: una foto sacada
+    // del LIBRO, la misma regla del reporte de acreedores. No es "lo que nació
+    // a crédito", que es lo que decía la primera versión y seguía informando
+    // como deuda algo ya saldado (el medio de pago del gasto no cambia al pagar).
     //
     // `credito` (IVA computable) NO se filtra: el crédito fiscal de una compra
     // se computa por DEVENGADO, no al pagarla. Eso es criterio del estudio, no
     // nuestro — está preguntado como A-29. Si la contadora dice lo contrario,
     // se cambia acá y en getExpenseSummary, que lleva la misma nota.
-    sql`SELECT coalesce(sum(total) FILTER (WHERE ${GASTO_PAGADO_SQL}), 0)::text AS total,
+    sql`SELECT (coalesce(sum(total) FILTER (WHERE ${GASTO_PAGADO_SQL}), 0)
+                + ${pagosAProveedoresSql(tenantId, desde, hasta)})::text        AS total,
                count(*) FILTER (WHERE ${GASTO_PAGADO_SQL})::int                 AS cantidad,
-               coalesce(sum(total) FILTER (WHERE NOT ${GASTO_PAGADO_SQL}), 0)::text AS impago,
-               count(*) FILTER (WHERE NOT ${GASTO_PAGADO_SQL})::int             AS impago_cantidad,
+               ${deudaAProveedoresSql(tenantId, hasta)}::text                   AS impago,
+               ${cantidadAcreedoresSql(tenantId, hasta)}::int                   AS impago_cantidad,
                coalesce(sum(iva) FILTER (WHERE en_iva_compras), 0)::text AS credito,
                count(*) FILTER (WHERE en_iva_compras)::int              AS comprobantes
         FROM expenses

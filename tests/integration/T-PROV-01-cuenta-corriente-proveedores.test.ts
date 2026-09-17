@@ -45,6 +45,7 @@ import {
   SupplierAccountError,
 } from '@/lib/services/expenses/supplier-account.service';
 import { getInventarioAlCierre } from '@/lib/services/reporting/inventario.report';
+import { getIngresosVsGastos } from '@/lib/services/reporting/panel.report';
 import {
   getAcreedoresAlCierre,
   armarCsvAcreedores,
@@ -243,9 +244,66 @@ describe('T-PROV-01 — cuenta corriente de proveedores', () => {
     // El número grande es lo que salió: sólo la transferencia.
     expect(resumen.total).toBe('200.0000');
     expect(resumen.cantidad).toBe('1');
-    // Y lo comprometido se ve, aparte y con su nombre.
-    expect(resumen.impago_total).toBe('500.0000');
-    expect(resumen.impago_cantidad).toBe('1');
+    // Y lo adeudado se ve aparte: 500 a UN proveedor. Ojo que `impago_cantidad`
+    // cuenta PROVEEDORES con saldo, no gastos impagos — acá da lo mismo porque
+    // hay uno de cada, pero son dos preguntas distintas.
+    expect(Number(resumen.impago_total)).toBe(500);
+    expect(Number(resumen.impago_cantidad)).toBe(1);
+  });
+
+  /**
+   * La otra mitad del caso de arriba, y la que faltaba.
+   *
+   * "Gastos del mes = plata que salió" (decisión del owner) tiene DOS lados: el
+   * gasto a crédito no cuenta en el mes en que se compró, pero SÍ tiene que
+   * contar en el mes en que se pagó. Con el criterio escrito como
+   * `medio_pago <> 'cuenta_corriente'` sólo estaba el primer lado: ese gasto
+   * quedaba excluido para siempre, en TODOS los meses, y un comercio que compra
+   * a 30 días veía sus gastos en cero de por vida.
+   */
+  it('lo que se paga en agosto de una compra de julio cuenta como gasto de AGOSTO', async () => {
+    await compraACredito('2026-07-15', '500.0000');
+    await withCtx(() =>
+      settleSupplier({
+        tercero_id: proveedorId,
+        amount: '500.0000',
+        method: 'transferencia',
+        fecha: '2026-08-05',
+      })
+    );
+
+    // Julio: se compró, no salió plata. Y al cierre de julio se debía.
+    const julio = await withCtx(() => getExpenseSummary('2026-07-01', '2026-08-01'));
+    expect(Number(julio.total)).toBe(0);
+    expect(Number(julio.impago_total)).toBe(500);
+
+    // Agosto: salió la plata. Sin esto, el gasto no aparece en NINGÚN mes.
+    const agosto = await withCtx(() => getExpenseSummary('2026-08-01', '2026-09-01'));
+    expect(Number(agosto.total)).toBe(500);
+    // Y ya no se debe nada: `impago` es una foto del LIBRO al cierre del rango.
+    // Si fuera "nació a crédito", esta deuda ya saldada seguiría figurando para
+    // siempre, y contradiría al reporte de acreedores.
+    expect(Number(agosto.impago_total)).toBe(0);
+    expect(Number(agosto.impago_cantidad)).toBe(0);
+  });
+
+  it('el gráfico de ingresos vs gastos muestra el egreso en el mes del pago', async () => {
+    await compraACredito('2026-07-15', '500.0000');
+    await withCtx(() =>
+      settleSupplier({
+        tercero_id: proveedorId,
+        amount: '500.0000',
+        method: 'transferencia',
+        fecha: '2026-08-05',
+      })
+    );
+
+    const meses = await withCtx(() => getIngresosVsGastos(6));
+    const julio = meses.find((m) => m.mes.startsWith('2026-07'));
+    const agosto = meses.find((m) => m.mes.startsWith('2026-08'));
+
+    expect(Number(julio?.gastos ?? 0)).toBe(0);
+    expect(Number(agosto?.gastos ?? 0)).toBe(500);
   });
 
   it('el pago en efectivo sale de la caja; la transferencia no', async () => {
@@ -330,15 +388,46 @@ describe('T-PROV-01 — cuenta corriente de proveedores', () => {
 
     // Fail-closed: primero se revierte la plata, después se anula. Dejar anular
     // arrastrando los pagos deja movimientos apuntando a un comprobante que ya
-    // no cuenta.
+    // no cuenta. Sacando este cargo el saldo daría -200: plata pagada sin deuda.
     await expect(
       withCtx(() =>
         annulExpense({ expense_id: gasto.id, motivo: 'cargado por duplicado' })
       )
-    ).rejects.toThrow(/ya hubo pagos/i);
+    ).rejects.toThrow(/se le pagó más de lo que quedaría debiéndole/i);
 
     const saldo = await withCtx(() => getSupplierBalance(proveedorId));
     expect(saldo.toFixed(2)).toBe('300.00');
+  });
+
+  /**
+   * El reverso, y la razón por la que el bloqueo NO puede ser "¿este proveedor
+   * tuvo pagos?".
+   *
+   * Un proveedor tiene muchas facturas. Si alcanza con que haya habido un pago
+   * cualquiera, entonces apenas le pagás algo ya no podés borrar nunca más un
+   * duplicado cargado por error — que es justo el agujero que ya apareció una
+   * vez del lado de gastos. Acá el pago lo absorbe la OTRA factura.
+   */
+  it('un duplicado SÍ se anula si el pago lo respalda otra factura', async () => {
+    const duplicado = await compraACredito('2026-07-15', '500.0000');
+    await compraACredito('2026-07-16', '500.0000'); // la buena
+    await withCtx(() =>
+      settleSupplier({
+        tercero_id: proveedorId,
+        amount: '500.0000',
+        method: 'transferencia',
+        fecha: '2026-07-20',
+      })
+    );
+
+    // Debe 1000, pagó 500 → saldo 500. Sacando el duplicado queda 0: ningún
+    // peso pagado se queda sin deuda contra qué ir.
+    await withCtx(() =>
+      annulExpense({ expense_id: duplicado.id, motivo: 'cargado por duplicado' })
+    );
+
+    const saldo = await withCtx(() => getSupplierBalance(proveedorId));
+    expect(saldo.toFixed(2)).toBe('0.00');
   });
 
   it('anular un gasto SIN pagos hace desaparecer la deuda', async () => {

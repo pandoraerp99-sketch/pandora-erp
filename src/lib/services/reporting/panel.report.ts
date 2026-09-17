@@ -325,11 +325,27 @@ export async function getIngresosVsGastos(meses = 6): Promise<MesIngresoGasto[]>
           -- compra a 30 dias todavia no salio: si sumara aca, el mes en que se
           -- compro se veria carisimo y el mes en que se paga, gratis — dos
           -- meses mal por un gasto bien cargado.
-          SELECT date_trunc('month', fecha)::date AS mes, sum(total) AS monto
-          FROM expenses
-          WHERE tenant_id = ${tenantId}
-            AND ${GASTO_VIGENTE_SQL}
-            AND ${GASTO_PAGADO_SQL}
+          --
+          -- La primera version tenia solo la mitad de arriba: excluia la compra
+          -- a credito y NUNCA la volvia a sumar, asi que el mes del pago
+          -- quedaba gratis igual y el gasto no aparecia en ningun mes. El
+          -- comentario ya decia que eso estaria mal; el codigo lo hacia.
+          --
+          -- Por eso la UNION: el egreso entra el mes en que se PAGO. Solo
+          -- 'payment' — un 'adjustment' corrige lo que se debe, no mueve plata,
+          -- y si entrara inventaria un gasto.
+          SELECT mes, sum(monto) AS monto FROM (
+            SELECT date_trunc('month', fecha)::date AS mes, total AS monto
+            FROM expenses
+            WHERE tenant_id = ${tenantId}
+              AND ${GASTO_VIGENTE_SQL}
+              AND ${GASTO_PAGADO_SQL}
+            UNION ALL
+            SELECT date_trunc('month', fecha)::date AS mes, amount AS monto
+            FROM supplier_account_movements
+            WHERE tenant_id = ${tenantId}
+              AND type = 'payment'
+          ) egresos
           GROUP BY 1
         )
         SELECT m.mes::text                        AS mes,

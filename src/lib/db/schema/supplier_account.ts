@@ -142,3 +142,69 @@ export const CARGO_VIGENTE_SQL = sql`
     )
   )
 `;
+
+/**
+ * Plata que SALIÓ hacia proveedores en un rango. Escalar, para sumar al total
+ * de gastos de un período.
+ *
+ * Existe porque "gastos del mes = plata que salió" (decisión del owner
+ * 2026-09-17) tiene DOS lados y el primer intento sólo implementó uno: excluir
+ * el gasto a cuenta corriente del mes en que se compró. Sin esto, el mes en que
+ * se paga queda gratis y el gasto no aparece en NINGÚN mes — un comercio que
+ * compra a 30 días vería sus gastos en cero para siempre.
+ *
+ * Sólo `payment`: un `adjustment` corrige lo que se DEBE, no mueve un peso. Si
+ * entrara acá, un ajuste inventaría un gasto que nunca se pagó.
+ *
+ * Tampoco se filtra por `CARGO_VIGENTE`: un pago ya hecho no se deshace porque
+ * después se anule un comprobante (y anular con pagos aplicados está bloqueado).
+ */
+export const pagosAProveedoresSql = (tenantId: string, desde: string, hasta: string) => sql`
+  (SELECT coalesce(sum(p.amount), 0)
+     FROM supplier_account_movements p
+    WHERE p.tenant_id = ${tenantId}::uuid
+      AND p.type = 'payment'
+      AND p.fecha >= ${desde}::date
+      AND p.fecha <  ${hasta}::date)
+`;
+
+/**
+ * Lo que se le DEBE a proveedores a una fecha de corte (exclusiva).
+ *
+ * Es una FOTO, como la caja (ítem 1) y los deudores (ítem 5) — no un flujo del
+ * período. Y es la MISMA regla que usa `getAcreedoresAlCierre`: saldo por
+ * proveedor, sólo cargos vigentes, y sólo los positivos.
+ *
+ * Los negativos quedan afuera a propósito: pagarle de más a un proveedor es una
+ * seña, un crédito NUESTRO. Si entrara, restaría del total adeudado como si
+ * fuera menos pasivo.
+ *
+ * Se comparte en vez de reescribirse en cada lector porque la alternativa era
+ * tener dos definiciones de "impago" que se contradicen (CLAUDE.md §20.26): la
+ * primera versión calculaba "nació a crédito", que sigue contando una deuda ya
+ * saldada porque `medio_pago` no cambia cuando se paga.
+ */
+export const deudaAProveedoresSql = (tenantId: string, hasta: string) => sql`
+  (SELECT coalesce(sum(s.saldo), 0) FROM (
+     SELECT ${SALDO_PROVEEDOR_SQL} AS saldo
+       FROM supplier_account_movements
+      WHERE supplier_account_movements.tenant_id = ${tenantId}::uuid
+        AND supplier_account_movements.fecha < ${hasta}::date
+        AND ${CARGO_VIGENTE_SQL}
+      GROUP BY supplier_account_movements.tercero_id
+     HAVING ${SALDO_PROVEEDOR_SQL} > 0
+   ) s)
+`;
+
+/** Cuántos proveedores quedan con saldo a favor suyo al corte. */
+export const cantidadAcreedoresSql = (tenantId: string, hasta: string) => sql`
+  (SELECT count(*) FROM (
+     SELECT 1
+       FROM supplier_account_movements
+      WHERE supplier_account_movements.tenant_id = ${tenantId}::uuid
+        AND supplier_account_movements.fecha < ${hasta}::date
+        AND ${CARGO_VIGENTE_SQL}
+      GROUP BY supplier_account_movements.tercero_id
+     HAVING ${SALDO_PROVEEDOR_SQL} > 0
+   ) s)
+`;

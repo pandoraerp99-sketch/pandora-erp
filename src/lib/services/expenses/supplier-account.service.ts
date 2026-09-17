@@ -347,48 +347,62 @@ export async function adjustSupplier(input: {
 }
 
 /**
- * ¿Este gasto tiene pagos aplicados?
+ * Si se anulara este gasto, ¿quedaría plata pagada sin deuda que la respalde?
  *
- * Se usa para BLOQUEAR la anulación o corrección de un gasto que ya tiene
- * plata encima. La alternativa —dejar anular y arrastrar los pagos— deja
- * movimientos apuntando a un comprobante que dejó de estar vigente, y el
- * saldo pasa a depender de caminar la cadena de `corrects_id`. Fail-closed:
- * primero se deshace el pago, con su motivo, y después se anula.
+ * Se usa para BLOQUEAR la anulación o corrección de un gasto a cuenta corriente
+ * (fail-closed, decisión del owner 2026-09-17). La alternativa —dejar anular y
+ * arrastrar los pagos— deja movimientos apuntando a un comprobante que dejó de
+ * estar vigente, y el saldo pasa a depender de caminar la cadena de
+ * `corrects_id`. Primero se deshace el pago, con su motivo, y después se anula.
  *
- * Los pagos NO se atan a un gasto puntual (se le paga AL PROVEEDOR, no a una
- * factura), así que la pregunta real es si el proveedor tuvo movimiento de
- * pago después de que esta deuda nació.
+ * ── POR QUÉ ESTA PREGUNTA Y NO "¿TIENE PAGOS?" ────────────────────────────
+ * Los pagos NO se atan a una factura: se le paga AL PROVEEDOR. La primera
+ * versión preguntaba si ese proveedor había tenido CUALQUIER pago o ajuste
+ * después de que naciera este cargo — y eso bloquea de más, justo en el caso
+ * que más importa: cargaste dos veces la misma factura, le pagaste otra, y ya
+ * no podés borrar el duplicado nunca más. Es el mismo agujero que ya apareció
+ * una vez con los gastos ("un gasto de más no se podía deshacer por ningún
+ * camino"), y el mensaje encima daba un remedio equivocado: revertir un pago
+ * que era de OTRA factura.
+ *
+ * La pregunta correcta no necesita imputar pagos a comprobantes: alcanza con
+ * mirar el saldo. Si al sacar este cargo el proveedor queda en negativo, esa
+ * plata pagada no tiene contra qué ir. Si queda en cero o positivo, los pagos
+ * los absorben las otras facturas y anular es seguro.
+ *
+ * ⚠️ Caso declarado: si el proveedor YA tenía saldo a favor nuestro (una seña
+ * previa), anular vuelve a dejarlo en negativo y esto bloquea, aunque ese
+ * anticipo sea anterior y legítimo. Se deja fail-closed a propósito — en ese
+ * caso el camino es registrar el ajuste, que queda auditado.
  */
-export async function tienePagosPosteriores(
+export async function anularDejariaPagosSinRespaldo(
   expenseId: string,
   txOrDb: DbOrTx = db
 ): Promise<boolean> {
   const { tenantId } = ctx();
-  const filas = await txOrDb.execute<{ hay: boolean }>(
-    sql`SELECT EXISTS (
-          SELECT 1
-          FROM supplier_account_movements p
-          WHERE p.tenant_id = ${tenantId}
-            AND p.type IN ('payment', 'adjustment')
-            AND p.tercero_id = (
-              SELECT c.tercero_id
-              FROM supplier_account_movements c
-              WHERE c.tenant_id = ${tenantId}
-                AND c.expense_id = ${expenseId}
-                AND c.type = 'charge'
-              LIMIT 1
-            )
-            AND p.created_at >= (
-              SELECT c.created_at
-              FROM supplier_account_movements c
-              WHERE c.tenant_id = ${tenantId}
-                AND c.expense_id = ${expenseId}
-                AND c.type = 'charge'
-              LIMIT 1
-            )
-        ) AS hay`
+  const filas = await txOrDb.execute<{ queda_negativo: boolean }>(
+    // El cargo de ESTE gasto se excluye de la suma: eso es exactamente "el
+    // saldo como quedaría si lo anulamos".
+    sql`SELECT coalesce(
+          (SELECT ${SALDO_PROVEEDOR_SQL}
+             FROM supplier_account_movements
+            WHERE supplier_account_movements.tenant_id = ${tenantId}
+              AND supplier_account_movements.tercero_id = (
+                SELECT c.tercero_id
+                  FROM supplier_account_movements c
+                 WHERE c.tenant_id = ${tenantId}
+                   AND c.expense_id = ${expenseId}
+                   AND c.type = 'charge'
+                 LIMIT 1
+              )
+              AND (
+                supplier_account_movements.expense_id IS DISTINCT FROM ${expenseId}::uuid
+                OR supplier_account_movements.type <> 'charge'
+              )
+              AND ${CARGO_VIGENTE_SQL}
+          ) < 0, false) AS queda_negativo`
   );
-  return filas[0]?.hay ?? false;
+  return filas[0]?.queda_negativo ?? false;
 }
 
 /** Movimientos de un proveedor, del más nuevo al más viejo. */
