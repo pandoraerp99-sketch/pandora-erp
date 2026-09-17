@@ -18,6 +18,7 @@ import Decimal from 'decimal.js';
 import { db } from '../../db/client.js';
 import {
   expenses,
+  GASTO_PAGADO_SQL,
   GASTO_VIGENTE,
   GASTO_VIGENTE_SQL,
   EXPENSE_CATEGORIES,
@@ -27,6 +28,10 @@ import {
   type ExpensePaymentMethod,
 } from '../../db/schema/expenses.js';
 import { expense_items, type ExpenseItem } from '../../db/schema/expense_items.js';
+import {
+  registerChargeFromExpense,
+  tienePagosPosteriores,
+} from './supplier-account.service.js';
 import { products } from '../../db/schema/products.js';
 import { terceros } from '../../db/schema/terceros.js';
 import { cash_movements } from '../../db/schema/cash_movements.js';
@@ -157,6 +162,17 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
     throw new ExpenseError(
       'cash_needs_session',
       'Un gasto pagado en efectivo necesita una caja abierta: la plata sale del cajón'
+    );
+  }
+
+  // Un gasto a cuenta corriente es una DEUDA, y una deuda sin acreedor
+  // identificado no se puede ni pagar ni informar. `payee_name` como texto
+  // suelto no alcanza: dos tipeos del mismo nombre serían dos acreedores
+  // distintos en el listado que va al estudio.
+  if (input.medio_pago === 'cuenta_corriente' && !input.tercero_id) {
+    throw new ExpenseError(
+      'cta_cte_needs_tercero',
+      'Un gasto a cuenta corriente necesita el proveedor elegido de la lista: es a quién se le debe'
     );
   }
 
@@ -304,6 +320,24 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
       .returning();
 
     if (!fila) throw new Error('Insert de gasto no devolvio fila');
+
+    // ── La compra a crédito genera la deuda, en la MISMA transacción ──
+    //
+    // Mismo motivo que el stock de abajo: si el gasto queda y la deuda no, el
+    // proveedor desaparece del listado de acreedores y nadie se entera hasta
+    // que reclama. La fecha es la DEL GASTO, no la de hoy — el corte al cierre
+    // depende de ella.
+    if (input.medio_pago === 'cuenta_corriente') {
+      await registerChargeFromExpense(
+        {
+          tercero_id: input.tercero_id!,
+          expense_id: fila.id,
+          amount: total.toFixed(4),
+          fecha: input.fecha,
+        },
+        tx
+      );
+    }
 
     // ── La mercadería entra al stock, en la MISMA transacción ──
     //
@@ -577,6 +611,26 @@ export async function annulExpense(input: AnulacionGasto): Promise<Expense> {
         'no_anulable',
         'Esa fila ya es una anulación: no se anula una anulación'
       );
+    }
+
+    // ── Un gasto a cuenta corriente con plata ya aplicada no se anula ──
+    //
+    // Decisión del owner (2026-09-17), fail-closed. Las alternativas eran peores:
+    //   - arrastrar los pagos a la fila corregida obliga a caminar la cadena de
+    //     `corrects_id` en CADA cálculo de saldo, y una cadena larga es donde
+    //     se esconden los errores;
+    //   - compensar con un `adjustment` automático inventa un movimiento que
+    //     nadie registró, en un libro append-only que después nadie entiende.
+    // Primero se deshace el pago —con su motivo, que queda auditado— y recién
+    // ahí se anula.
+    if (original.medio_pago === 'cuenta_corriente') {
+      if (await tienePagosPosteriores(original.id, tx)) {
+        throw new ExpenseError(
+          'tiene_pagos',
+          'Este gasto está en la cuenta del proveedor y ya hubo pagos o ajustes posteriores. ' +
+            'Registrá primero el ajuste que revierte esa plata, y después anulalo.'
+        );
+      }
     }
 
     // ── Deshacer la entrada de mercadería, si la hubo ──
@@ -943,10 +997,14 @@ export async function listExpenses(
 export interface TotalPorCategoria {
   [k: string]: string;
   categoria: string;
+  /** Plata que SALIÓ. No incluye lo comprado a cuenta corriente y sin pagar. */
   total: string;
   neto: string;
   iva: string;
   cantidad: string;
+  /** Comprometido y todavía impago (cuenta corriente de proveedores). */
+  impago: string;
+  impago_cantidad: string;
 }
 
 /**
@@ -964,11 +1022,17 @@ export async function getExpenseTotals(
 ): Promise<TotalPorCategoria[]> {
   const { tenantId } = ctx();
   return db.execute<TotalPorCategoria>(
+    // `total` es la plata que SALIÓ (decisión del owner 2026-09-17): un gasto a
+    // cuenta corriente todavía no se pagó, así que no suma acá. Se devuelve
+    // aparte en `impago` para que la pantalla lo muestre como lo que es —una
+    // deuda—, sin cambiar de valor el número que el comercio ya venía leyendo.
     sql`SELECT categoria,
-               sum(total)::text AS total,
-               sum(neto)::text  AS neto,
-               sum(iva)::text   AS iva,
-               count(*)::text   AS cantidad
+               sum(total) FILTER (WHERE ${GASTO_PAGADO_SQL})::text AS total,
+               sum(neto)  FILTER (WHERE ${GASTO_PAGADO_SQL})::text AS neto,
+               sum(iva)   FILTER (WHERE ${GASTO_PAGADO_SQL})::text AS iva,
+               count(*)   FILTER (WHERE ${GASTO_PAGADO_SQL})::text AS cantidad,
+               COALESCE(sum(total) FILTER (WHERE NOT ${GASTO_PAGADO_SQL}), 0)::text AS impago,
+               count(*) FILTER (WHERE NOT ${GASTO_PAGADO_SQL})::text AS impago_cantidad
         FROM expenses
         WHERE tenant_id = ${tenantId}
           AND fecha >= ${desde}::date AND fecha < ${hasta}::date
@@ -987,9 +1051,12 @@ export async function getExpenseTotals(
 
 export interface ResumenGastos {
   [k: string]: string;
-  /** Todo el período. */
+  /** Plata que SALIÓ en el período. No incluye lo impago a proveedores. */
   total: string;
   cantidad: string;
+  /** Comprometido y todavía sin pagar (cuenta corriente de proveedores). */
+  impago_total: string;
+  impago_cantidad: string;
   /** Los que el estudio YA baja de ARCA. */
   arca_total: string;
   arca_cantidad: string;
@@ -1015,8 +1082,17 @@ export async function getExpenseSummary(
 ): Promise<ResumenGastos> {
   const { tenantId } = ctx();
   const [fila] = await db.execute<ResumenGastos>(
-    sql`SELECT coalesce(sum(total), 0)::text AS total,
-               count(*)::text                AS cantidad,
+    // `total` = plata que salió. Lo comprado a cuenta corriente y sin pagar va
+    // en `impago_total`, aparte y con su nombre (decisión del owner 2026-09-17).
+    //
+    // OJO con `arca_credito`: el IVA de una compra a crédito se computa por
+    // DEVENGADO —la fecha de la factura, esté paga o no— así que sigue entrando
+    // entero. Eso NO es una decisión nuestra: es criterio del estudio, y está
+    // preguntado como A-29. Si la contadora dice lo contrario, se cambia acá.
+    sql`SELECT coalesce(sum(total) FILTER (WHERE ${GASTO_PAGADO_SQL}), 0)::text AS total,
+               count(*) FILTER (WHERE ${GASTO_PAGADO_SQL})::text                AS cantidad,
+               coalesce(sum(total) FILTER (WHERE NOT ${GASTO_PAGADO_SQL}), 0)::text AS impago_total,
+               count(*) FILTER (WHERE NOT ${GASTO_PAGADO_SQL})::text            AS impago_cantidad,
                coalesce(sum(total) FILTER (WHERE en_iva_compras), 0)::text AS arca_total,
                count(*)   FILTER (WHERE en_iva_compras)::text              AS arca_cantidad,
                coalesce(sum(iva)   FILTER (WHERE en_iva_compras), 0)::text AS arca_credito,
@@ -1030,6 +1106,8 @@ export async function getExpenseSummary(
   const cero: ResumenGastos = {
     total: '0',
     cantidad: '0',
+    impago_total: '0',
+    impago_cantidad: '0',
     arca_total: '0',
     arca_cantidad: '0',
     arca_credito: '0',

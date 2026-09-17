@@ -18,7 +18,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { GASTO_VIGENTE_SQL } from '../../db/schema/expenses.js';
+import { GASTO_PAGADO_SQL, GASTO_VIGENTE_SQL } from '../../db/schema/expenses.js';
 import { requireTracingContext } from '../../tracing/context.js';
 import { CrossTenantAccessError } from '../../multi_tenant/errors.js';
 import { csvArmar, csvNum, csvTxt } from './csv.js';
@@ -256,8 +256,12 @@ export interface ResumenContable {
    * por mas IVA que tenga adentro el precio.
    */
   gastos: {
+    /** Plata que SALIÓ. No incluye lo comprado a cuenta corriente sin pagar. */
     total: string;
     cantidad: number;
+    /** Comprometido y todavía impago (cuenta corriente de proveedores). */
+    impago: string;
+    impagoCantidad: number;
     credito: string;
     /** Cuantos gastos aportan credito fiscal. */
     comprobantes: number;
@@ -362,11 +366,24 @@ export async function getResumenContable(
   const [gastos] = await db.execute<{
     total: string;
     cantidad: number;
+    impago: string;
+    impago_cantidad: number;
     credito: string;
     comprobantes: number;
   }>(
-    sql`SELECT coalesce(sum(total), 0)::text AS total,
-               count(*)::int                 AS cantidad,
+    // `total` = plata que SALIÓ. Lo comprado a cuenta corriente y todavía sin
+    // pagar va aparte, en `impago` (decisión del owner 2026-09-17): así el
+    // número que la contadora ya venía leyendo no cambia de valor el día que
+    // aparece la primera compra a 30 días, y lo adeudado se ve como lo que es.
+    //
+    // `credito` (IVA computable) NO se filtra: el crédito fiscal de una compra
+    // se computa por DEVENGADO, no al pagarla. Eso es criterio del estudio, no
+    // nuestro — está preguntado como A-29. Si la contadora dice lo contrario,
+    // se cambia acá y en getExpenseSummary, que lleva la misma nota.
+    sql`SELECT coalesce(sum(total) FILTER (WHERE ${GASTO_PAGADO_SQL}), 0)::text AS total,
+               count(*) FILTER (WHERE ${GASTO_PAGADO_SQL})::int                 AS cantidad,
+               coalesce(sum(total) FILTER (WHERE NOT ${GASTO_PAGADO_SQL}), 0)::text AS impago,
+               count(*) FILTER (WHERE NOT ${GASTO_PAGADO_SQL})::int             AS impago_cantidad,
                coalesce(sum(iva) FILTER (WHERE en_iva_compras), 0)::text AS credito,
                count(*) FILTER (WHERE en_iva_compras)::int              AS comprobantes
         FROM expenses
@@ -401,6 +418,8 @@ export async function getResumenContable(
     gastos: {
       total: gastos?.total ?? '0',
       cantidad: gastos?.cantidad ?? 0,
+      impago: gastos?.impago ?? '0',
+      impagoCantidad: gastos?.impago_cantidad ?? 0,
       credito: gastos?.credito ?? '0',
       comprobantes: gastos?.comprobantes ?? 0,
     },

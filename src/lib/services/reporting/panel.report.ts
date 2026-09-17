@@ -21,7 +21,7 @@
 import { sql } from 'drizzle-orm';
 import Decimal from 'decimal.js';
 import { db } from '../../db/client.js';
-import { GASTO_VIGENTE_SQL } from '../../db/schema/expenses.js';
+import { GASTO_PAGADO_SQL, GASTO_VIGENTE_SQL } from '../../db/schema/expenses.js';
 import { requireTracingContext } from '../../tracing/context.js';
 import { CrossTenantAccessError } from '../../multi_tenant/errors.js';
 import { getBalancesByCustomer } from '../customers/account.service.js';
@@ -320,10 +320,16 @@ export async function getIngresosVsGastos(meses = 6): Promise<MesIngresoGasto[]>
         gas AS (
           -- expenses.fecha es un date (la del gasto, no la de la carga): no
           -- lleva conversion de zona, y convertirlo seria un error.
+          --
+          -- Este grafico compara plata que ENTRO contra plata que SALIO. Una
+          -- compra a 30 dias todavia no salio: si sumara aca, el mes en que se
+          -- compro se veria carisimo y el mes en que se paga, gratis — dos
+          -- meses mal por un gasto bien cargado.
           SELECT date_trunc('month', fecha)::date AS mes, sum(total) AS monto
           FROM expenses
           WHERE tenant_id = ${tenantId}
             AND ${GASTO_VIGENTE_SQL}
+            AND ${GASTO_PAGADO_SQL}
           GROUP BY 1
         )
         SELECT m.mes::text                        AS mes,

@@ -35,14 +35,36 @@ export const EXPENSE_CATEGORIES = [
 ] as const;
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 
-/** Sólo `efectivo` genera movimiento de caja. */
+/**
+ * Sólo `efectivo` genera movimiento de caja.
+ *
+ * `cuenta_corriente` (migration 0039) es el gasto que TODAVÍA NO SE PAGÓ: no
+ * mueve plata, genera una deuda con el proveedor en
+ * `supplier_account_movements`. Exige `tercero_id` — una deuda sin acreedor
+ * identificado no se puede informar ni pagar.
+ *
+ * ⚠️ Son DOS checks: esta lista y `expenses_medio_pago_check` en la migración
+ * 0039. Actualizar uno solo hace que el gasto falle al guardarse con un error
+ * de constraint que no dice nada del negocio.
+ */
 export const EXPENSE_PAYMENT_METHODS = [
   'efectivo',
   'transferencia',
   'debito',
   'credito',
   'otro',
+  'cuenta_corriente',
 ] as const;
+
+/**
+ * El gasto que movió plata de verdad.
+ *
+ * Decisión del owner (2026-09-17): el número grande de "gastos del mes" sigue
+ * siendo **lo que salió**, no lo comprometido. Lo impago se muestra aparte y
+ * declarado. Así ningún número ya entregado cambia de valor en silencio el día
+ * que aparece la primera compra a 30 días.
+ */
+export const GASTO_PAGADO_SQL = sql`expenses.medio_pago <> 'cuenta_corriente'`;
 export type ExpensePaymentMethod = (typeof EXPENSE_PAYMENT_METHODS)[number];
 
 export const expenses = pgTable(

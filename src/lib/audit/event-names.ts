@@ -1,5 +1,5 @@
 /**
- * Catalogo canonico de event_names F0 — EVENT-TAXONOMY.md §5 v2.1.0.
+ * Catalogo canonico de event_names F0 — EVENT-TAXONOMY.md §5 v2.2.0.
  *
  * REGLA J1 (catalogo CERRADO): agregar evento aqui = agregar a EVENT-TAXONOMY +
  * PR review + actualizar DECISION-LEDGER. No agregar event names "on the fly".
@@ -70,9 +70,19 @@ export const AUDIT_EVENT_NAMES = [
   'customer.account.settled',
   'customer.account.adjusted',
 
-  // Domain: expense (2) — v2.1.0. Plata que sale; en mercadería, stock que entra
+  // Domain: expense (4) — v2.1.0. Plata que sale; en mercadería, stock que entra
   'expense.registered',
   'expense.annulled',
+  // v2.2.0 — cuenta corriente de PROVEEDORES (ítem 9 del pedido de la
+  // contadora), espejo de customer.account.*. Aprobado por el owner el
+  // 2026-09-17: el catálogo es cerrado y agregar un nombre no es decisión del
+  // que escribe el código.
+  //
+  // `settled` es plata que sale del cajón FUERA de una venta: si el arqueo no
+  // cierra, es de los primeros movimientos a mirar. `adjusted` toca un saldo
+  // a mano, que es justo lo que hay que poder auditar después.
+  'supplier.account.settled',
+  'supplier.account.adjusted',
 
   // Domain: subscription (2)
   'subscription.activated',

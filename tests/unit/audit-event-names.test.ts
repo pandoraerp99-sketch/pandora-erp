@@ -5,10 +5,25 @@ import {
   isAuditEventName,
 } from '@/lib/audit/event-names';
 
-describe('Catalogo canonico audit event names (EVENT-TAXONOMY §5 v2.1.0)', () => {
-  it('total 49 eventos auditables F0', () => {
-    expect(TOTAL_AUDIT_EVENTS_F0).toBe(49);
-    expect(AUDIT_EVENT_NAMES).toHaveLength(49);
+describe('Catalogo canonico audit event names (EVENT-TAXONOMY §5 v2.2.0)', () => {
+  it('total 51 eventos auditables F0', () => {
+    // 49 + los dos de la cuenta corriente de PROVEEDORES (v2.2.0, aprobados
+    // por el owner el 2026-09-17). El número va a mano y no derivado del array
+    // a propósito: es lo que obliga a pasar por EVENT-TAXONOMY.md antes de
+    // agregar un evento, que es la regla J1.
+    expect(TOTAL_AUDIT_EVENTS_F0).toBe(51);
+    expect(AUDIT_EVENT_NAMES).toHaveLength(51);
+  });
+
+  it('v2.2.0: el otro lado del mostrador (aprobados por el owner 2026-09-17)', () => {
+    // Espejo de customer.account.*: pagarle a un proveedor en efectivo saca
+    // plata del cajón FUERA de una venta, y tocar un saldo a mano es
+    // justamente lo que hay que poder auditar después.
+    expect(isAuditEventName('supplier.account.settled')).toBe(true);
+    expect(isAuditEventName('supplier.account.adjusted')).toBe(true);
+    // Excluido por el mismo motivo que `customer.account.charged`: la deuda
+    // nace del gasto, y ese ya emite `expense.registered`.
+    expect(isAuditEventName('supplier.account.charged')).toBe(false);
   });
 
   it('v2.1.0: plata y acceso (aprobados por el owner 2026-09-14)', () => {
@@ -83,6 +98,11 @@ describe('Catalogo canonico audit event names (EVENT-TAXONOMY §5 v2.1.0)', () =
       'cash_session',
       'customer',
       'expense',
+      // v2.2.0. Dominio propio y no `expense.supplier_*` por simetría con
+      // `customer.account.*`: es la misma cuenta corriente del otro lado del
+      // mostrador, y leer los dos pares juntos es lo que hace obvio que uno
+      // sea el espejo del otro.
+      'supplier',
       'subscription',
       'system',
       'security',
