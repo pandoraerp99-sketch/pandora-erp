@@ -28,6 +28,7 @@ import {
   armarCsvAcreedores,
   getAcreedoresAlCierre,
 } from '@/lib/services/reporting/cierre.report';
+import { fechaDeLaFoto } from '@/lib/domain/inventario';
 import { searchProducts } from '@/lib/services/products/product.service';
 import { getActiveCashSession } from '@/lib/cash/sessions';
 import { diaDelComercio } from '@/lib/domain/fecha-comercio';
@@ -367,9 +368,9 @@ export async function exportarAcreedoresCsvAction(
     });
 
     const periodo = periodoDe(g, new Date(), mesCierre);
-    const alCierre = new Date(periodo.hasta.getTime() - 86400000)
-      .toISOString()
-      .slice(0, 10);
+    // El MISMO helper que la pantalla (acota a hoy y lee el día en la zona del
+    // comercio): el archivo tiene que decir la fecha que dice la tarjeta.
+    const alCierre = fechaDeLaFoto(periodo.hasta);
 
     const csv = await withServerActionTracing(
       async () => armarCsvAcreedores(alCierre, await getAcreedoresAlCierre(alCierre)),

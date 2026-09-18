@@ -169,11 +169,17 @@ export const pagosAProveedoresSql = (tenantId: string, desde: string, hasta: str
 `;
 
 /**
- * Lo que se le DEBE a proveedores a una fecha de corte (exclusiva).
+ * Lo que se le DEBE a proveedores a una fecha de corte (INCLUSIVA).
  *
  * Es una FOTO, como la caja (ítem 1) y los deudores (ítem 5) — no un flujo del
  * período. Y es la MISMA regla que usa `getAcreedoresAlCierre`: saldo por
  * proveedor, sólo cargos vigentes, y sólo los positivos.
+ *
+ * El corte es inclusivo (`<=`) como el de `getAcreedoresAlCierre`, y recibe el
+ * ÚLTIMO DÍA del período —no el `hasta` exclusivo— porque la pantalla se lo
+ * pasa desde `fechaDeLaFoto`, que además lo acota a hoy. Con el `hasta` crudo,
+ * en el mes en curso la tarjeta decía "Acreedores al 30 sep" un 18 de
+ * septiembre: la deuda de hoy con etiqueta de una fecha futura.
  *
  * Los negativos quedan afuera a propósito: pagarle de más a un proveedor es una
  * seña, un crédito NUESTRO. Si entrara, restaría del total adeudado como si
@@ -184,12 +190,12 @@ export const pagosAProveedoresSql = (tenantId: string, desde: string, hasta: str
  * primera versión calculaba "nació a crédito", que sigue contando una deuda ya
  * saldada porque `medio_pago` no cambia cuando se paga.
  */
-export const deudaAProveedoresSql = (tenantId: string, hasta: string) => sql`
+export const deudaAProveedoresSql = (tenantId: string, alCierre: string) => sql`
   (SELECT coalesce(sum(s.saldo), 0) FROM (
      SELECT ${SALDO_PROVEEDOR_SQL} AS saldo
        FROM supplier_account_movements
       WHERE supplier_account_movements.tenant_id = ${tenantId}::uuid
-        AND supplier_account_movements.fecha < ${hasta}::date
+        AND supplier_account_movements.fecha <= ${alCierre}::date
         AND ${CARGO_VIGENTE_SQL}
       GROUP BY supplier_account_movements.tercero_id
      HAVING ${SALDO_PROVEEDOR_SQL} > 0
@@ -197,12 +203,12 @@ export const deudaAProveedoresSql = (tenantId: string, hasta: string) => sql`
 `;
 
 /** Cuántos proveedores quedan con saldo a favor suyo al corte. */
-export const cantidadAcreedoresSql = (tenantId: string, hasta: string) => sql`
+export const cantidadAcreedoresSql = (tenantId: string, alCierre: string) => sql`
   (SELECT count(*) FROM (
      SELECT 1
        FROM supplier_account_movements
       WHERE supplier_account_movements.tenant_id = ${tenantId}::uuid
-        AND supplier_account_movements.fecha < ${hasta}::date
+        AND supplier_account_movements.fecha <= ${alCierre}::date
         AND ${CARGO_VIGENTE_SQL}
       GROUP BY supplier_account_movements.tercero_id
      HAVING ${SALDO_PROVEEDOR_SQL} > 0

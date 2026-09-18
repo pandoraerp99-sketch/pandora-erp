@@ -609,10 +609,15 @@ describe('T-PROV-01 — cuenta corriente de proveedores', () => {
     expect(filas[0]?.nombre).toBe('Distribuidora del Fin del Mundo');
     expect(filas[0]?.doc).toBe('30712345678');
     expect(Number(filas[0]?.saldo)).toBe(300);
+    // El id viaja para que la pantalla pueda pagarle desde la fila.
+    expect(filas[0]?.tercero_id).toBe(proveedorId);
 
     const csv = armarCsvAcreedores('2026-07-31', filas);
     expect(csv).toContain('Proveedor');
     expect(csv).toContain('30712345678');
+    // …pero NO al archivo: al estudio le importa la razón social, no nuestro
+    // UUID. Se agregó a la interfaz para la UI y esto fija que no se filtre.
+    expect(csv).not.toContain(proveedorId);
     // La nota dice qué NO incluye: un total suelto no puede comunicar eso.
     expect(csv).toMatch(/NO incluye deudas que no se hayan cargado/i);
     expect(csv).toMatch(/Todos los proveedores tienen CUIT/i);

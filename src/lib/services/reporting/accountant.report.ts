@@ -29,6 +29,7 @@ import { CrossTenantAccessError } from '../../multi_tenant/errors.js';
 import { csvArmar, csvNum, csvTxt } from './csv.js';
 import { TZ_COMERCIO } from './panel.report.js';
 import { diaDelComercio } from '../../domain/fecha-comercio.js';
+import { fechaDeLaFoto } from '../../domain/inventario.js';
 
 function requireTenantId(): string {
   const ctx = requireTracingContext();
@@ -296,6 +297,11 @@ export async function getResumenContable(
   // error que no menciona la fecha ni la consulta. Se castea en el SQL.
   const desde = periodo.desde.toISOString();
   const hasta = periodo.hasta.toISOString();
+  // La deuda a proveedores es una FOTO, no un flujo: corta al último día del
+  // período ACOTADO A HOY, la misma regla y el mismo día que usan las tarjetas
+  // al cierre de `/contador` (caja, deudores, inventario). Con el `hasta`
+  // exclusivo, en el mes en curso el número saldría fechado en el futuro.
+  const alCierre = fechaDeLaFoto(periodo.hasta);
 
   const [ventas] = await db.execute<{
     cantidad: number;
@@ -400,8 +406,8 @@ export async function getResumenContable(
     sql`SELECT (coalesce(sum(total) FILTER (WHERE ${GASTO_PAGADO_SQL}), 0)
                 + ${pagosAProveedoresSql(tenantId, desde, hasta)})::text        AS total,
                count(*) FILTER (WHERE ${GASTO_PAGADO_SQL})::int                 AS cantidad,
-               ${deudaAProveedoresSql(tenantId, hasta)}::text                   AS deuda_al_cierre,
-               ${cantidadAcreedoresSql(tenantId, hasta)}::int                   AS acreedores_al_cierre,
+               ${deudaAProveedoresSql(tenantId, alCierre)}::text                AS deuda_al_cierre,
+               ${cantidadAcreedoresSql(tenantId, alCierre)}::int                AS acreedores_al_cierre,
                coalesce(sum(iva) FILTER (WHERE en_iva_compras), 0)::text AS credito,
                count(*) FILTER (WHERE en_iva_compras)::int              AS comprobantes
         FROM expenses

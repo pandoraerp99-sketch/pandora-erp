@@ -26,6 +26,7 @@ import {
   cambiarEmpresaAction,
   exportarCajaCsvAction,
   exportarDeudoresCsvAction,
+  exportarAcreedoresCsvAction,
   exportarInventarioCsvAction,
   exportarVentasCsvAction,
 } from './actions';
@@ -68,6 +69,18 @@ interface Props {
     nombre: string;
     doc_tipo: string;
     doc_numero: string;
+    saldo: string;
+  }>;
+  /**
+   * Ítem 9: lo que se le DEBE a cada proveedor al cierre (ADR-0028).
+   *
+   * Incluye proveedores dados de baja a propósito: a uno desactivado se le
+   * sigue debiendo, y el balance lo tiene que listar igual.
+   */
+  acreedores: Array<{
+    tercero_id: string;
+    nombre: string;
+    doc: string;
     saldo: string;
   }>;
   inventario: InventarioDTO;
@@ -212,10 +225,12 @@ const PENDIENTES: Array<{ que: string; porque: string }> = [
     que: 'Retenciones y percepciones · SICORE',
     porque: 'no se registran todavía',
   },
-  {
-    que: 'Detalle de proveedores/acreedores al cierre',
-    porque: 'el gasto se registra pagado; no hay cuenta corriente de proveedores',
-  },
+  // "Detalle de proveedores/acreedores al cierre" estaba acá, con el motivo
+  // "el gasto se registra pagado; no hay cuenta corriente de proveedores".
+  // Se entregó el 2026-09-18 (migration 0039, ADR-0028) y la tarjeta está más
+  // arriba en esta misma pantalla: dejarlo listado declaraba como faltante algo
+  // que se ve dos secciones antes. Esta lista tiene que encogerse cuando algo
+  // se construye, o se vuelve el lugar donde las cosas viejas sobreviven.
   {
     que: 'IIBB · Tierra del Fuego (AREF)',
     porque: 'falta la parametrización provincial',
@@ -262,6 +277,7 @@ export function ContadorClient({
   fechaCierre,
   caja,
   deudores,
+  acreedores,
   inventario,
   usuario,
 }: Props) {
@@ -276,6 +292,11 @@ export function ContadorClient({
     .reduce((acc, d) => acc.plus(new Decimal(d.saldo)), new Decimal(0))
     .toFixed(4);
   const sinDocumento = deudores.filter((d) => d.doc_numero === '').length;
+
+  const totalAcreedores = acreedores
+    .reduce((acc, a) => acc.plus(new Decimal(a.saldo)), new Decimal(0))
+    .toFixed(4);
+  const acreedoresSinCuit = acreedores.filter((a) => a.doc === '').length;
 
   // Cambiar de período es NAVEGAR: vive en la URL. Antes esto asignaba
   // `window.location.href`, que recarga la app entera (y el linter lo marcaba,
@@ -1029,6 +1050,89 @@ export function ContadorClient({
               disabled={pending}
             >
               {pending ? 'Generando…' : 'Exportar deudores (CSV)'}
+            </button>
+          ) : null}
+        </section>
+
+        {/* La otra cara del mismo mostrador: allá nos deben, acá debemos.
+            Ítem 9 de la carta (ADR-0028). Va al lado de Deudores a propósito —
+            son las dos columnas de cuentas corrientes del balance.
+
+            NO tiene botón de pagar, y no es un olvido: el rol `accountant` mira
+            y exporta (Ley 20.488 — Pandora prepara, la matriculada firma). El
+            pago se registra desde /gastos, que es la pantalla del comercio. */}
+        <section className="card glass" id="acreedores-al-cierre">
+          <div className="card-title">
+            <h3>Acreedores</h3>
+            <span className="upper-mini">al {fechaLarga(fechaCierre)}</span>
+          </div>
+          <div className="cc-2">
+            <div className="cc-box">
+              <div className="cc-bk">Total a pagar</div>
+              <div
+                className={acreedores.length > 0 ? 'cc-bv tnum debe' : 'cc-bv tnum'}
+              >
+                {plata(totalAcreedores)}
+              </div>
+            </div>
+            <div className="cc-box">
+              <div className="cc-bk">Proveedores con saldo</div>
+              <div className="cc-bv tnum">{acreedores.length}</div>
+            </div>
+          </div>
+          {acreedores.length === 0 ? (
+            <p className="label-sm">
+              No había deudas con proveedores registradas a esa fecha.
+            </p>
+          ) : (
+            <div className="cc-list">
+              {acreedores.map((a) => (
+                <div className="cc-row" key={a.tercero_id}>
+                  <span className="cc-av">{iniciales(a.nombre)}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {a.nombre}
+                    <span className="label-sm">
+                      {' · '}
+                      {a.doc === '' ? 'sin CUIT cargado' : a.doc}
+                    </span>
+                  </div>
+                  <span className="cc-m">{plata(a.saldo)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {acreedoresSinCuit > 0 ? (
+            <p className="label-sm alerta" style={{ marginTop: 10 }}>
+              ⚠️ {acreedoresSinCuit}{' '}
+              {acreedoresSinCuit === 1
+                ? 'proveedor no tiene'
+                : 'proveedores no tienen'}{' '}
+              CUIT cargado. El estudio lo pide: se completa en la ficha del
+              proveedor.
+            </p>
+          ) : null}
+
+          {/* Los dos caveats, distintos a los de Deudores y por eso escritos
+              acá y no compartidos: este libro SÍ guarda la fecha del hecho. */}
+          <p className="label-sm" style={{ marginTop: 10 }}>
+            El corte usa la fecha <b>del comprobante</b>, no la de la carga: una
+            factura del 30/07 cargada en septiembre cuenta en el ejercicio
+            correcto.
+          </p>
+          <p className="label-sm">
+            Es lo <b>registrado</b>, no todo lo que se debe: una factura que
+            nunca se cargó en el sistema no aparece acá.
+          </p>
+
+          {acreedores.length > 0 ? (
+            <button
+              type="button"
+              className="exp-btn"
+              onClick={() => bajar(() => exportarAcreedoresCsvAction(fechaCierre))}
+              disabled={pending}
+            >
+              {pending ? 'Generando…' : 'Exportar acreedores (CSV)'}
             </button>
           ) : null}
         </section>

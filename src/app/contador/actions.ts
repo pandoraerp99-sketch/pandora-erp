@@ -24,8 +24,10 @@ import {
   getInventarioAlCierre,
 } from '@/lib/services/reporting/inventario.report';
 import {
+  armarCsvAcreedores,
   armarCsvCaja,
   armarCsvDeudores,
+  getAcreedoresAlCierre,
   getCajaAlCierre,
   getDeudoresAlCierre,
 } from '@/lib/services/reporting/cierre.report';
@@ -163,6 +165,33 @@ export async function exportarDeudoresCsvAction(
       { requireAuth: true }
     );
     return { ok: true, csv, nombre: `deudores-al-${fecha}.csv` };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : 'No se pudo exportar',
+    };
+  }
+}
+
+/**
+ * CSV de acreedores a la fecha de cierre — ítem 9 (ADR-0028).
+ *
+ * La otra columna del mismo balance que `exportarDeudoresCsvAction`. Toma la
+ * fecha ya resuelta por la pantalla, igual que sus hermanas, para que las
+ * cuatro tarjetas del cierre hablen del MISMO día.
+ */
+export async function exportarAcreedoresCsvAction(
+  fecha: string
+): Promise<{ ok: true; csv: string; nombre: string } | { ok: false; error: string }> {
+  try {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      return { ok: false, error: 'Fecha inválida' };
+    }
+    const csv = await withServerActionTracing(
+      async () => armarCsvAcreedores(fecha, await getAcreedoresAlCierre(fecha)),
+      { requireAuth: true }
+    );
+    return { ok: true, csv, nombre: `acreedores-al-${fecha}.csv` };
   } catch (e) {
     return {
       ok: false,

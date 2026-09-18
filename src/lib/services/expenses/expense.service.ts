@@ -1076,6 +1076,19 @@ export async function getExpenseTotals(
   );
 }
 
+/**
+ * El último día de un período, dado su `hasta` EXCLUSIVO ('AAAA-MM-DD').
+ *
+ * Es sólo el default de `getExpenseSummary` para quien no pase la fecha de
+ * corte. La regla buena —que además acota a hoy— es `fechaDeLaFoto`, y es la
+ * que usan las pantallas; acá no se puede importar porque vive en `domain` y
+ * arrastraría Decimal al lugar equivocado.
+ */
+function ultimoDiaDe(hastaExclusivo: string): string {
+  const d = new Date(`${hastaExclusivo}T00:00:00Z`);
+  return new Date(d.getTime() - 86_400_000).toISOString().slice(0, 10);
+}
+
 export interface ResumenGastos {
   [k: string]: string;
   /**
@@ -1118,8 +1131,20 @@ export interface ResumenGastos {
  */
 export async function getExpenseSummary(
   desde: string,
-  hasta: string
+  hasta: string,
+  /**
+   * Día de corte de la deuda (INCLUSIVO). La pantalla lo saca de
+   * `fechaDeLaFoto`, que devuelve el último día del período **acotado a hoy**:
+   * en el mes en curso, "lo que se debe hoy" y no una etiqueta con fecha
+   * futura. Viaja como parámetro para que la tarjeta y este KPI no puedan
+   * mostrar dos días distintos — ya pasó, y eran dos números correctos
+   * contradiciéndose.
+   *
+   * El default mantiene el comportamiento viejo para quien no lo pase.
+   */
+  alCierre?: string
 ): Promise<ResumenGastos> {
+  const corte = alCierre ?? ultimoDiaDe(hasta);
   const { tenantId } = ctx();
   const [fila] = await db.execute<ResumenGastos>(
     // `total` = plata que salió, y eso son DOS cosas: el gasto que se pagó de
@@ -1141,8 +1166,8 @@ export async function getExpenseSummary(
     sql`SELECT (coalesce(sum(total) FILTER (WHERE ${GASTO_PAGADO_SQL}), 0)
                 + ${pagosAProveedoresSql(tenantId, desde, hasta)})::text       AS total,
                count(*) FILTER (WHERE ${GASTO_PAGADO_SQL})::text                AS cantidad,
-               ${deudaAProveedoresSql(tenantId, hasta)}::text                   AS deuda_al_cierre,
-               ${cantidadAcreedoresSql(tenantId, hasta)}::text                  AS acreedores_al_cierre,
+               ${deudaAProveedoresSql(tenantId, corte)}::text                   AS deuda_al_cierre,
+               ${cantidadAcreedoresSql(tenantId, corte)}::text                  AS acreedores_al_cierre,
                coalesce(sum(total) FILTER (WHERE en_iva_compras), 0)::text AS arca_total,
                count(*)   FILTER (WHERE en_iva_compras)::text              AS arca_cantidad,
                coalesce(sum(iva)   FILTER (WHERE en_iva_compras), 0)::text AS arca_credito,

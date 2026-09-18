@@ -16,6 +16,7 @@ import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
 import { db } from '@/lib/db/client';
 import { companies } from '@/lib/db/schema/companies';
 import { periodoDe, GRANOS, type Grano } from '@/lib/services/reporting/accountant.report';
+import { fechaDeLaFoto } from '@/lib/domain/inventario';
 import { getAcreedoresAlCierre } from '@/lib/services/reporting/cierre.report';
 import {
   getExpenseSummary,
@@ -60,13 +61,19 @@ export default async function GastosPage({
   const periodo = periodoDe(grano, new Date(), mesCierre);
   const desde = soloFecha(periodo.desde);
   const hasta = soloFecha(periodo.hasta);
-  // `hasta` es EXCLUSIVO (el primer día del período siguiente), pero
-  // `getAcreedoresAlCierre` corta con `fecha <= fechaCierre`. Si le pasara
-  // `hasta` derecho, la tarjeta mostraría un día más que el KPI que sale del
-  // resumen —que usa `fecha < hasta`— y la pantalla se contradiría sola por 24
-  // horas: dos números correctos, visiblemente distintos, y ningún test lo ve
+  // La deuda a proveedores es una FOTO: vale a un día, no a un rango.
+  //
+  // Sale de `fechaDeLaFoto` —el mismo helper probado que usan las tarjetas al
+  // cierre de `/contador`— y no de restarle un día a `hasta` a mano, que es lo
+  // que hacía la primera versión. Dos diferencias que se ven en pantalla: el
+  // helper acota a HOY (si no, en el mes en curso la tarjeta decía "Acreedores
+  // al 30 sep" un 18 de septiembre, o sea la deuda de hoy con fecha futura) y
+  // lee el día en la zona del comercio.
+  //
+  // La MISMA fecha va a la tarjeta, al CSV y al KPI del resumen: si cada uno
+  // calculara la suya, mostrarían dos días distintos y ningún test lo vería,
   // porque los tests usan un solo rango.
-  const alCierre = soloFecha(new Date(periodo.hasta.getTime() - 86_400_000));
+  const alCierre = fechaDeLaFoto(periodo.hasta);
 
   const [
     gastos,
@@ -84,7 +91,7 @@ export default async function GastosPage({
           // Los totales salen de SQL y NO de sumar en el navegador: es plata
           // (CLAUDE.md §9.8), y sumar strings con `+=` da bien con importes
           // redondos y mal con centavos, que es la peor forma de estar mal.
-          getExpenseSummary(desde, hasta),
+          getExpenseSummary(desde, hasta, alCierre),
           getExpenseTotals(desde, hasta),
           // Ítem 9 de la carta: razón social, CUIT e importe. Va en pantalla y
           // no sólo en el export para poder REVISARLO antes de mandarlo — es

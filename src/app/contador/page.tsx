@@ -22,6 +22,7 @@ import {
 import { getInventarioAlCierre } from '@/lib/services/reporting/inventario.report';
 import {
   getCajaAlCierre,
+  getAcreedoresAlCierre,
   getDeudoresAlCierre,
 } from '@/lib/services/reporting/cierre.report';
 import { fechaDeLaFoto } from '@/lib/domain/inventario';
@@ -58,20 +59,23 @@ export default async function ContadorPage({
   // no a un rango. La regla (último día del período acotado a hoy, con "hoy"
   // leído en la zona del comercio) vive en `fechaDeLaFoto`, que se prueba sola.
   //
-  // Las tres usan LA MISMA fecha a propósito: son las tres columnas de un mismo
+  // Las CUATRO usan LA MISMA fecha a propósito: son cuatro columnas de un mismo
   // balance, y con fechas distintas no cerrarían entre sí.
   const fechaCierre = fechaDeLaFoto(periodo.hasta);
 
-  const [resumen, inventario, caja, deudores] = await withServerActionTracing(
-    async () =>
-      Promise.all([
-        getResumenContable(periodo),
-        getInventarioAlCierre(fechaCierre),
-        getCajaAlCierre(fechaCierre),
-        getDeudoresAlCierre(fechaCierre),
-      ]),
-    { requireAuth: true }
-  );
+  const [resumen, inventario, caja, deudores, acreedores] =
+    await withServerActionTracing(
+      async () =>
+        Promise.all([
+          getResumenContable(periodo),
+          getInventarioAlCierre(fechaCierre),
+          getCajaAlCierre(fechaCierre),
+          getDeudoresAlCierre(fechaCierre),
+          // Ítem 9 (ADR-0028): la otra cara de los deudores.
+          getAcreedoresAlCierre(fechaCierre),
+        ]),
+      { requireAuth: true }
+    );
 
   const activa = empresas.find((e) => e.id === session.active_company_id);
 
@@ -86,6 +90,7 @@ export default async function ContadorPage({
       fechaCierre={fechaCierre}
       caja={caja}
       deudores={deudores}
+      acreedores={acreedores}
       inventario={{
         fecha: inventario.fecha,
         metodo: inventario.metodo,
