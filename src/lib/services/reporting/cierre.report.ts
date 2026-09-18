@@ -271,6 +271,13 @@ export function armarCsvCaja(caja: CajaAlCierre): string {
 
 export interface AcreedorAlCierre {
   [k: string]: string;
+  /**
+   * Id del proveedor. No va al CSV —al estudio le importa la razón social, no
+   * nuestro UUID— pero la pantalla lo necesita para poder pagarle desde ahí.
+   * El GROUP BY ya era por `t.id`, así que exponerlo no cambia el agrupamiento:
+   * dos proveedores distintos con el mismo nombre siguen siendo dos filas.
+   */
+  tercero_id: string;
   nombre: string;
   /** CUIT del proveedor. Vacío si nunca se cargó. */
   doc: string;
@@ -300,7 +307,8 @@ export async function getAcreedoresAlCierre(
   const tenantId = requireTenantId();
 
   return db.execute<AcreedorAlCierre>(sql`
-    SELECT t.name                     AS nombre,
+    SELECT t.id::text                 AS tercero_id,
+           t.name                     AS nombre,
            COALESCE(t.doc, '')        AS doc,
            SUM(CASE WHEN m.type = 'payment' THEN -m.amount ELSE m.amount END)::text AS saldo
       FROM supplier_account_movements m

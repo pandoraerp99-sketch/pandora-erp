@@ -16,6 +16,7 @@ import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
 import { db } from '@/lib/db/client';
 import { companies } from '@/lib/db/schema/companies';
 import { periodoDe, GRANOS, type Grano } from '@/lib/services/reporting/accountant.report';
+import { getAcreedoresAlCierre } from '@/lib/services/reporting/cierre.report';
 import {
   getExpenseSummary,
   getExpenseTotals,
@@ -59,6 +60,13 @@ export default async function GastosPage({
   const periodo = periodoDe(grano, new Date(), mesCierre);
   const desde = soloFecha(periodo.desde);
   const hasta = soloFecha(periodo.hasta);
+  // `hasta` es EXCLUSIVO (el primer día del período siguiente), pero
+  // `getAcreedoresAlCierre` corta con `fecha <= fechaCierre`. Si le pasara
+  // `hasta` derecho, la tarjeta mostraría un día más que el KPI que sale del
+  // resumen —que usa `fecha < hasta`— y la pantalla se contradiría sola por 24
+  // horas: dos números correctos, visiblemente distintos, y ningún test lo ve
+  // porque los tests usan un solo rango.
+  const alCierre = soloFecha(new Date(periodo.hasta.getTime() - 86_400_000));
 
   const [
     gastos,
@@ -68,6 +76,7 @@ export default async function GastosPage({
     proveedores,
     cajaAbierta,
     anulados,
+    acreedores,
   ] = await withServerActionTracing(
       async () =>
         Promise.all([
@@ -88,6 +97,10 @@ export default async function GastosPage({
           // comerciante lo ve desaparecer y no puede distinguir "lo anulé" de
           // "apreté mal y borré algo".
           listAnnulledExpenses(desde, hasta),
+          // La otra mitad del ítem 9: lo que se les DEBE al cierre. Incluye
+          // proveedores dados de baja a propósito — a un proveedor desactivado
+          // se le sigue debiendo, y el balance lo tiene que listar igual.
+          getAcreedoresAlCierre(alCierre),
         ]),
       { requireAuth: true }
     );
@@ -137,6 +150,8 @@ export default async function GastosPage({
       resumen={resumen}
       porCategoria={porCategoria}
       porProveedor={porProveedor}
+      acreedores={acreedores}
+      fechaAlCierre={alCierre}
       proveedores={proveedores.map((p) => ({
         id: p.id,
         name: p.name,

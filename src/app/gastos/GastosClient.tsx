@@ -29,14 +29,19 @@ import { GASTOS_CSS } from './gastosCss';
 import {
   anularGastoAction,
   buscarProductosAction,
+  exportarAcreedoresCsvAction,
   exportarGastosCsvAction,
   exportarProveedoresCsvAction,
   getDetalleAction,
+  pagarProveedorAction,
   registrarGastoAction,
   type GastoFormInput,
   type LineaDTO,
   type ProductoBuscadoDTO,
 } from './actions';
+
+/** Los medios con los que se le puede pagar a un proveedor (ADR-0028 §7). */
+type MedioPagoProveedor = 'efectivo' | 'transferencia' | 'debito' | 'credito';
 
 export interface GastoDTO {
   id: string;
@@ -112,6 +117,20 @@ interface ProveedorDTO {
   doc: string | null;
 }
 
+/**
+ * Un acreedor al cierre. Viene de `getAcreedoresAlCierre`, que NO filtra
+ * proveedores dados de baja: a un proveedor desactivado se le sigue debiendo, y
+ * el balance lo tiene que listar. Por eso el alta de deuda sólo ofrece los
+ * activos, pero esta lista los muestra a todos.
+ */
+export interface AcreedorDTO {
+  tercero_id: string;
+  nombre: string;
+  /** CUIT. Vacío si nunca se cargó. */
+  doc: string;
+  saldo: string;
+}
+
 type Grano = 'mes' | 'trimestre' | 'anio' | 'ejercicio';
 
 interface Props {
@@ -120,6 +139,14 @@ interface Props {
   resumen: ResumenGastosDTO;
   porCategoria: TotalCategoriaDTO[];
   porProveedor: ProveedorPeriodoDTO[];
+  /** Lo que se les DEBE al cierre del período (ítem 9, ADR-0028). */
+  acreedores: AcreedorDTO[];
+  /**
+   * El último día del período, no el `hasta` exclusivo: es la fecha con la que
+   * se cortó `acreedores`, y la que la tarjeta muestra. Viene del servidor para
+   * que la pantalla no vuelva a calcularla y las dos no puedan discrepar.
+   */
+  fechaAlCierre: string;
   proveedores: ProveedorDTO[];
   grano: Grano;
   periodoEtiqueta: string;
@@ -172,11 +199,20 @@ const catLabel = (v: string) =>
 const catClase = (v: string) =>
   CATEGORIAS.some((c) => c.valor === v) ? `cat-${v}` : 'cat-otros';
 
+/**
+ * Esta lista NO deriva de `EXPENSE_PAYMENT_METHODS` a propósito: el const del
+ * servidor es el contrato de la base, y la pantalla necesita además la etiqueta
+ * en castellano y el orden en que se ofrece. Lo que sí hay que sostener a mano
+ * es que ningún medio del servidor quede sin ofrecerse — que es exactamente lo
+ * que pasó con `cuenta_corriente` entre el 17 y el 18 de septiembre: el libro
+ * de proveedores estaba entero y la deuda no podía nacer desde ninguna pantalla.
+ */
 const MEDIOS: Array<{ valor: string; label: string }> = [
   { valor: 'efectivo', label: 'Efectivo' },
   { valor: 'transferencia', label: 'Transferencia' },
   { valor: 'debito', label: 'Débito' },
   { valor: 'credito', label: 'Crédito' },
+  { valor: 'cuenta_corriente', label: 'A cuenta corriente (queda debiendo)' },
   { valor: 'otro', label: 'Otro' },
 ];
 const medioLabel = (v: string) => MEDIOS.find((m) => m.valor === v)?.label ?? v;
@@ -215,6 +251,8 @@ export function GastosClient({
   resumen,
   porCategoria,
   porProveedor,
+  acreedores,
+  fechaAlCierre,
   proveedores,
   grano,
   periodoEtiqueta,
@@ -231,6 +269,32 @@ export function GastosClient({
   const [viendo, setViendo] = useState<GastoDTO | null>(null);
   /** Gasto que se está por anular. */
   const [anulando, setAnulando] = useState<GastoDTO | null>(null);
+  /** Proveedor al que se le está por pagar. */
+  const [pagando, setPagando] = useState<AcreedorDTO | null>(null);
+
+  // Suma con Decimal, no con `+=` sobre strings: es plata (CLAUDE.md §9.8).
+  const totalAdeudado = useMemo(
+    () =>
+      acreedores
+        .reduce((acc, a) => acc.plus(new Decimal(a.saldo)), new Decimal(0))
+        .toFixed(2),
+    [acreedores]
+  );
+
+  const pagar = (monto: string, medio: MedioPagoProveedor) => {
+    const a = pagando;
+    if (a === null) return;
+    setError(null);
+    startTransition(async () => {
+      const res = await pagarProveedorAction(a.tercero_id, monto, medio);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setPagando(null);
+      router.refresh();
+    });
+  };
 
   // El período vive en la URL, así que cambiarlo es NAVEGAR. Con
   // `window.location.href = ...` el navegador recarga la app entera (y el
@@ -312,6 +376,8 @@ export function GastosClient({
   const exportarProveedores = () =>
     bajar(() => exportarProveedoresCsvAction(grano));
 
+  const exportarAcreedores = () => bajar(() => exportarAcreedoresCsvAction(grano));
+
   // Selector de período, en la topbar — igual que /contador.
   const topbarIzq = (
     <div className="seg glass">
@@ -355,8 +421,10 @@ export function GastosClient({
             cantidadFuera={Number(resumen.fuera_cantidad)}
             cantidadTotal={Number(resumen.cantidad)}
             cantidadProveedores={porProveedor.length}
+            cantidadAcreedores={acreedores.length}
             onExportar={exportar}
             onExportarProveedores={exportarProveedores}
+            onExportarAcreedores={exportarAcreedores}
           />
           <button
             type="button"
@@ -590,6 +658,19 @@ export function GastosClient({
                 </div>
               ))
             )}
+            {/* Decisión del owner (2026-09-18): este listado queda DEVENGADO y
+                se declara. No puede seguir el criterio de caja porque agrupa
+                por rubro y un pago se le hace al proveedor, no a una factura
+                (ADR-0028 §5). Sin este texto, el que compare los dos números
+                cree que uno está roto. */}
+            {porCategoria.length > 0 ? (
+              <p className="label-sm" style={{ marginTop: 10, lineHeight: 1.5 }}>
+                Es lo que se <b>gastó</b> en cada rubro, pagado o no. Puede{' '}
+                <b>no coincidir</b> con el total de arriba, que es la plata que
+                salió: una compra a cuenta corriente entra acá cuando se compra y
+                allá cuando se paga.
+              </p>
+            ) : null}
           </div>
 
           {/* Ítem 9 de la carta. Va en pantalla y no sólo en el export para
@@ -627,12 +708,62 @@ export function GastosClient({
                 </div>
               ))}
               <p className="label-sm" style={{ marginTop: 10, lineHeight: 1.5 }}>
-                Es lo que se le pagó a cada uno. <b>No</b> es el detalle de
-                acreedores al cierre: acá todo gasto se registra ya pagado, así
-                que Pandora no sabe qué quedó debiendo.
+                Es lo que se le <b>pagó</b> a cada uno en el período. Lo que se
+                les <b>debe</b> está abajo, en Acreedores.
               </p>
             </div>
           ) : null}
+
+          {/* La otra mitad del ítem 9. Antes acá había un párrafo diciendo que
+              "todo gasto se registra ya pagado, así que Pandora no sabe qué
+              quedó debiendo" — dejó de ser cierto con la 0039 (ADR-0028). */}
+          <div className="card glass" id="acreedores">
+            <div className="card-title">
+              <h3>Acreedores al {fechaCorta(fechaAlCierre)}</h3>
+              {acreedores.length > 0 ? (
+                <span className="gcatv">{plata(totalAdeudado)}</span>
+              ) : null}
+            </div>
+            {acreedores.length === 0 ? (
+              <p className="label-sm" style={{ lineHeight: 1.55 }}>
+                No hay deudas con proveedores registradas a esa fecha. Un gasto
+                queda como deuda cuando se carga con el medio{' '}
+                <b>«A cuenta corriente»</b>.
+              </p>
+            ) : (
+              <>
+                {acreedores.map((a) => (
+                  <div key={a.tercero_id} className="gprov">
+                    <div className="gprov-id">
+                      <div className="gprov-n" title={a.nombre}>
+                        {a.nombre}
+                      </div>
+                      <div className="gprov-c">
+                        {a.doc === '' ? (
+                          <span className="gprov-sin">sin CUIT</span>
+                        ) : (
+                          a.doc
+                        )}
+                      </div>
+                    </div>
+                    <span className="gcatv">{plata(a.saldo)}</span>
+                    <button
+                      type="button"
+                      className="gprov-pagar"
+                      onClick={() => setPagando(a)}
+                    >
+                      Pagar
+                    </button>
+                  </div>
+                ))}
+                <p className="label-sm" style={{ marginTop: 10, lineHeight: 1.5 }}>
+                  Es lo <b>registrado</b>, no todo lo que se debe: una factura que
+                  nunca se cargó no aparece acá. El corte usa la fecha{' '}
+                  <b>del comprobante</b>.
+                </p>
+              </>
+            )}
+          </div>
 
           <div className="card glass">
             <div className="card-title">
@@ -710,6 +841,19 @@ export function GastosClient({
           onConfirmar={anular}
         />
       ) : null}
+
+      {pagando !== null ? (
+        <PagoProveedorModal
+          acreedor={pagando}
+          hayCajaAbierta={hayCajaAbierta}
+          pending={pending}
+          onCancelar={() => {
+            setPagando(null);
+            setError(null);
+          }}
+          onPagar={pagar}
+        />
+      ) : null}
     </AppShell>
   );
 }
@@ -739,15 +883,19 @@ function MenuExportar({
   cantidadFuera,
   cantidadTotal,
   cantidadProveedores,
+  cantidadAcreedores,
   onExportar,
   onExportarProveedores,
+  onExportarAcreedores,
 }: {
   pending: boolean;
   cantidadFuera: number;
   cantidadTotal: number;
   cantidadProveedores: number;
+  cantidadAcreedores: number;
   onExportar: (soloFueraDeArca: boolean) => void;
   onExportarProveedores: () => void;
+  onExportarAcreedores: () => void;
 }) {
   const [abierto, setAbierto] = useState(false);
   const caja = useRef<HTMLDivElement>(null);
@@ -861,8 +1009,32 @@ function MenuExportar({
         >
           <span className="tt">Proveedores ({cantidadProveedores})</span>
           <span className="ss">
-            Razón social, CUIT e importe. <b>No</b> incluye saldos pendientes de
-            pago — el archivo lo aclara adentro.
+            Razón social, CUIT e importe de lo que se les <b>pagó</b> en el
+            período.
+          </span>
+        </button>
+
+        <div className="tm-div" />
+
+        <button
+          type="button"
+          role="menuitem"
+          className="tm-item"
+          onClick={() => {
+            setAbierto(false);
+            onExportarAcreedores();
+          }}
+          disabled={cantidadAcreedores === 0}
+          title={
+            cantidadAcreedores === 0
+              ? 'No hay deudas con proveedores registradas a la fecha de cierre'
+              : undefined
+          }
+        >
+          <span className="tt">Acreedores al cierre ({cantidadAcreedores})</span>
+          <span className="ss">
+            Lo que se les <b>debe</b>. Es lo que pide el balance, y el archivo
+            lleva adentro con qué fecha se cortó.
           </span>
         </button>
       </div>
@@ -1183,6 +1355,166 @@ interface BorradorLinea {
  * (precio de venta, alícuota, rubro, exención Ley 19.640) metida adentro de la
  * carga de una factura son dos decisiones distintas en el mismo formulario.
  */
+/** Con qué se le puede pagar a un proveedor. Sólo el efectivo toca la caja. */
+const MEDIOS_PAGO_PROV: Array<{ valor: MedioPagoProveedor; label: string }> = [
+  { valor: 'efectivo', label: 'Efectivo' },
+  { valor: 'transferencia', label: 'Transferencia' },
+  { valor: 'debito', label: 'Débito' },
+  { valor: 'credito', label: 'Crédito' },
+];
+
+/**
+ * Pagarle a un proveedor. Espejo del "Cobrar cuenta" de /clientes.
+ *
+ * No pide fecha: el pago es HOY, y la pone el servidor con el calendario del
+ * comercio. Tampoco pide a qué factura imputarlo, porque el libro no las imputa
+ * — se le paga al proveedor (ADR-0028).
+ */
+function PagoProveedorModal({
+  acreedor,
+  hayCajaAbierta,
+  pending,
+  onCancelar,
+  onPagar,
+}: {
+  acreedor: AcreedorDTO;
+  hayCajaAbierta: boolean;
+  pending: boolean;
+  onCancelar: () => void;
+  onPagar: (monto: string, medio: MedioPagoProveedor) => void;
+}) {
+  // Arranca con la deuda ENTERA, que es el caso común y además el que no puede
+  // pasarse de largo: tipear el importe a mano es la vía natural a un saldo
+  // negativo, y un saldo negativo bloquea anular cualquier cargo de ese
+  // proveedor (ADR-0028 §6).
+  const [monto, setMonto] = useState(new Decimal(acreedor.saldo).toFixed(2));
+  const [medio, setMedio] = useState<MedioPagoProveedor>(
+    hayCajaAbierta ? 'efectivo' : 'transferencia'
+  );
+
+  const deuda = new Decimal(acreedor.saldo);
+  const ingresado = (() => {
+    try {
+      return new Decimal(monto.replace(',', '.') === '' ? '0' : monto.replace(',', '.'));
+    } catch {
+      return null;
+    }
+  })();
+
+  const montoInvalido =
+    ingresado === null || !ingresado.isFinite() || ingresado.lte(0);
+  const pagaDeMas = ingresado !== null && !montoInvalido && ingresado.gt(deuda);
+  const restante =
+    ingresado !== null && !montoInvalido ? deuda.minus(ingresado) : deuda;
+
+  const efectivoBloqueado = medio === 'efectivo' && !hayCajaAbierta;
+  const puedePagar = !montoInvalido && !efectivoBloqueado && !pending;
+
+  return (
+    <div className="pmov open" onClick={onCancelar}>
+      <div
+        className="pmod"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Pagarle a ${acreedor.nombre}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="pm-head">
+          <div>
+            <div className="pm-title">Pagarle al proveedor</div>
+            <div className="pm-sub">
+              {acreedor.nombre} · se le debe <b>{plata(acreedor.saldo)}</b>
+            </div>
+          </div>
+          <button type="button" className="pm-x" onClick={onCancelar} aria-label="Cerrar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="pm-fld">
+          <label htmlFor="ppMonto">Cuánto se le paga</label>
+          <input
+            id="ppMonto"
+            className="big"
+            value={monto}
+            onChange={(e) => setMonto(e.target.value)}
+            inputMode="decimal"
+            autoFocus
+            aria-describedby="ppResto"
+          />
+          <div
+            id="ppResto"
+            className={`pm-note${pagaDeMas ? ' err' : ''}`}
+            style={{ margin: '6px 0 0' }}
+          >
+            {montoInvalido ? (
+              'Poné un importe mayor a cero.'
+            ) : pagaDeMas ? (
+              <>
+                Son <b>{plata(ingresado!.minus(deuda).toFixed(2))}</b> de más de
+                lo que se le debe. Queda como saldo a favor tuyo —{' '}
+                <b>y mientras esté así no vas a poder anular sus facturas</b>.
+              </>
+            ) : restante.lte(0) ? (
+              'Con esto queda saldado.'
+            ) : (
+              <>
+                Le va a quedar debiendo <b>{plata(restante.toFixed(2))}</b>.
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="pm-fld">
+          <label htmlFor="ppMedio">Con qué se le paga</label>
+          <select
+            id="ppMedio"
+            value={medio}
+            onChange={(e) => setMedio(e.target.value as MedioPagoProveedor)}
+          >
+            {MEDIOS_PAGO_PROV.map((m) => (
+              <option key={m.valor} value={m.valor}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {medio === 'efectivo' ? (
+          hayCajaAbierta ? (
+            <p className="pm-note">
+              Sale de la <b>caja del día</b> y se descuenta del arqueo.
+            </p>
+          ) : (
+            <p className="pm-note err">
+              <b>No hay una caja abierta.</b> Pagar en efectivo saca plata del
+              cajón del día. Abrila desde Caja, o pagá por otro medio.
+            </p>
+          )
+        ) : (
+          <p className="pm-note">No toca la caja: no es plata del cajón.</p>
+        )}
+
+        <div className="pm-acts">
+          <button type="button" className="pm-btn ghost" onClick={onCancelar}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className="pm-btn primary"
+            disabled={!puedePagar}
+            onClick={() => onPagar(ingresado!.toFixed(2), medio)}
+          >
+            {pending ? 'Registrando…' : 'Registrar pago'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BuscadorProducto({
   onElegir,
 }: {
@@ -1321,6 +1653,10 @@ function GastoModal({
   const faltaDiscriminar = discrimina && (dNeto === null || dIva === null);
   const faltaComprobante = enIvaCompras && compNumero.trim() === '';
   const efectivoBloqueado = medio === 'efectivo' && !hayCajaAbierta;
+  // Un gasto a cuenta corriente NO es plata que salió: es una deuda. Cambia las
+  // etiquetas del formulario y exige proveedor de la lista (ADR-0028 §3).
+  const esCtaCte = medio === 'cuenta_corriente';
+  const faltaProveedor = esCtaCte && proveedorId === '';
 
   // ── El detalle ──
   const esMercaderia = categoria === 'mercaderia';
@@ -1367,6 +1703,7 @@ function GastoModal({
     !faltaDiscriminar &&
     !faltaComprobante &&
     !efectivoBloqueado &&
+    !faltaProveedor &&
     !lineasIncompletas &&
     !detalleNoCierra &&
     !pending;
@@ -1465,14 +1802,23 @@ function GastoModal({
           </div>
         </div>
 
+        {/* Con `cuenta_corriente` esto deja de ser "a quién se le pagó": no se
+            pagó nada todavía. Y el proveedor pasa a ser OBLIGATORIO y de la
+            lista — una deuda sin acreedor identificado no se puede ni pagar ni
+            informar, y dos tipeos del mismo nombre serían dos acreedores
+            distintos en el listado que va al estudio. El servidor lo rechaza
+            igual (`cta_cte_needs_tercero`); acá se evita que el comerciante
+            llegue a ese error apretando Guardar. */}
         <div className="pm-fld">
-          <label htmlFor="gProv">A quién se le pagó</label>
+          <label htmlFor="gProv">{esCtaCte ? 'A quién se le debe' : 'A quién se le pagó'}</label>
           <select
             id="gProv"
             value={proveedorId}
             onChange={(e) => setProveedorId(e.target.value)}
           >
-            <option value="">Escribir el nombre…</option>
+            <option value="">
+              {esCtaCte ? 'Elegí el proveedor…' : 'Escribir el nombre…'}
+            </option>
             {proveedores.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -1480,7 +1826,7 @@ function GastoModal({
               </option>
             ))}
           </select>
-          {proveedorId === '' ? (
+          {proveedorId === '' && !esCtaCte ? (
             <input
               style={{ marginTop: 8 }}
               value={payeeName}
@@ -1489,10 +1835,16 @@ function GastoModal({
               aria-label="Nombre del proveedor"
             />
           ) : null}
+          {proveedorId === '' && esCtaCte ? (
+            <p className="pm-note err" style={{ marginTop: 8 }}>
+              Una deuda necesita saber a quién. Si el proveedor no está en la
+              lista, cargalo primero desde Clientes y proveedores.
+            </p>
+          ) : null}
         </div>
 
         <div className="pm-fld">
-          <label htmlFor="gTotal">Cuánto se pagó</label>
+          <label htmlFor="gTotal">{esCtaCte ? 'Cuánto es' : 'Cuánto se pagó'}</label>
           <input
             id="gTotal"
             className="big"
@@ -1769,6 +2121,12 @@ function GastoModal({
               con el que realmente se pagó.
             </p>
           )
+        ) : esCtaCte ? (
+          <p className="pm-warn amber">
+            <b>No sale plata ahora.</b> Queda como <b>deuda con el proveedor</b> y
+            aparece en Acreedores. Va a contar como gasto del mes{' '}
+            <b>en que se lo pagues</b>, no de este.
+          </p>
         ) : (
           <p className="pm-note">No toca la caja: no es plata del cajón.</p>
         )}

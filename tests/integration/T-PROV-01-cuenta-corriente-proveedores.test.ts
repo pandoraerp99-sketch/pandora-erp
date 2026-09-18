@@ -405,6 +405,15 @@ describe('T-PROV-01 — cuenta corriente de proveedores', () => {
     expect(movs).toHaveLength(1);
     expect(movs[0]?.type).toBe('provider_payment');
     expect(Number(movs[0]?.amount)).toBe(300);
+
+    // Los DOS pagos quedan auditados. Pagarle a un proveedor es una mutación de
+    // plata, y desde la UI pasa a ser una acción de todos los días: sin la fila
+    // de audit no hay forma de reconstruir quién sacó plata del cajón.
+    const eventos = await db.execute<{ event_name: string }>(
+      sql`SELECT event_name FROM audit_log WHERE tenant_id = ${tenantId}
+          AND event_name = 'supplier.account.settled'`
+    );
+    expect(eventos).toHaveLength(2);
   });
 
   it('pagar en efectivo sin caja abierta falla, y no deja el libro a medias', async () => {

@@ -35,7 +35,12 @@ const chrome = spawn(
     '--headless=new',
     '--remote-debugging-port=9333',
     `--user-data-dir=${perfil}`,
-    '--window-size=1600,1000',
+    // El alto se puede subir (VENTANA=1600x2200) para que una pantalla larga
+    // entre ENTERA en la foto. El shell scrollea adentro de `main`, no en
+    // `window`, así que un `scrollIntoView` mueve el contenedor pero la captura
+    // sigue saliendo desde arriba: agrandar la ventana es lo que funciona.
+    // El ancho no baja de 1500 — abajo de eso el layout colapsa.
+    `--window-size=${process.env.VENTANA || '1600,1000'}`,
     '--no-sandbox',
     '--disable-gpu',
     '--hide-scrollbars',
@@ -247,12 +252,48 @@ if (ACCION === 'gasto') {
   const QTY = process.env.QTY || '10';
   const COSTO = process.env.COSTO || '1000';
   const TOTAL = process.env.TOTAL || '12100';
+  // Esperar la HIDRATACION antes de clickear. Sin esto el click sale antes de
+  // que React escuche y el modal no abre — y todo lo que sigue reporta "sin
+  // selector", que se lee como "el campo no existe" en vez de "llegue temprano".
+  for (let i = 0; i < 24; i++) {
+    const listo = await evaluar(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>/Nuevo gasto/i.test(b.textContent||''));
+      return !!b && Object.keys(b).some(k=>k.startsWith('__react'));})()`);
+    if (listo === true) break;
+    await dormir(250);
+  }
   await evaluar(`[...document.querySelectorAll('button')].find(b=>/Nuevo gasto/i.test(b.textContent||''))?.click(), true`);
-  await dormir(900);
+  await dormir(1200);
+  if ((await evaluar(`!!document.querySelector('#gMedio')`)) !== true) {
+    console.log('🔴 el alta de gasto NO abrio: todo lo que sigue es ruido');
+  }
   await evaluar(`((set) => { set('#gCat','mercaderia'); set('#gTotal',${JSON.stringify(TOTAL)});
     ${process.env.FECHA ? `set('#gFecha', ${JSON.stringify(process.env.FECHA)});` : ''}
     return true; })(${set})`);
   await dormir(500);
+  // MEDIO=cuenta_corriente + PROVEEDOR=<parte del nombre>: carga la compra A
+  // CUENTA CORRIENTE por la pantalla. Es la única forma de probar que el camino
+  // del usuario existe de verdad — el service tenía 20 tests en verde mientras
+  // el desplegable no ofrecía la opción y la deuda no podía nacer.
+  if (process.env.MEDIO) {
+    await evaluar(`((set) => set('#gMedio', ${JSON.stringify(process.env.MEDIO)}))(${set})`);
+    await dormir(500);
+  }
+  if (process.env.PROVEEDOR) {
+    console.log('PROVEEDOR>>>', await evaluar(`((set) => {
+      const s = document.querySelector('#gProv'); if (!s) return 'sin selector';
+      const o = [...s.options].find(o => o.textContent.includes(${JSON.stringify(process.env.PROVEEDOR)}));
+      if (!o) return 'NO ESTA EN LA LISTA: ' + [...s.options].map(o=>o.textContent).join(' / ');
+      set('#gProv', o.value); return 'elegido: ' + o.textContent;
+    })(${set})`));
+    await dormir(500);
+  }
+  console.log('FORM>>>', await evaluar(`JSON.stringify({
+    etiquetaProv: document.querySelector('label[for="gProv"]')?.textContent ?? null,
+    etiquetaTotal: document.querySelector('label[for="gTotal"]')?.textContent ?? null,
+    medios: [...document.querySelectorAll('#gMedio option')].map(o=>o.value),
+    avisoCaja: [...document.querySelectorAll('.pm-warn, .pm-note')].map(e=>e.textContent.replace(/\\s+/g,' ').slice(0,110)),
+    guardarHabilitado: !([...document.querySelectorAll('.pm-btn.primary')].pop()?.disabled ?? true),
+  })`));
   await evaluar(`((set) => set('.det-busc input', ${JSON.stringify(PROD)}))(${set})`);
   await dormir(1500);
   console.log('OPCIONES>>>', await evaluar(`JSON.stringify([...document.querySelectorAll('.det-opi .det-opn')].map(e=>e.textContent))`));
@@ -464,6 +505,19 @@ if (ACCION === 'modal') {
 // herramienta de diagnostico no puede mover lo que esta midiendo.
 if (process.env.FONDO) {
   await evaluar(`(()=>{ const b=document.querySelector('.quick'); b && b.scrollIntoView({block:'center'}); return true; })()`);
+  await dormir(700);
+}
+// VER=<selector>: traer a cuadro algo que quedo abajo del pliegue.
+//
+// Sin esto, una tarjeta al pie de una pantalla larga sale fuera de la captura y
+// "no se ve en la foto" se confunde con "no existe" — que es la misma trampa
+// que tuvo lo que vive detras de un click. Dice explicitamente si lo encontro.
+if (process.env.VER) {
+  const hallado = await evaluar(
+    `(()=>{const e=document.querySelector(${JSON.stringify(process.env.VER)});
+           if(!e) return false; e.scrollIntoView({block:'center'}); return true;})()`
+  );
+  console.log(`VER>>> ${process.env.VER}: ${hallado === true ? 'en cuadro' : '🔴 NO ENCONTRADO'}`);
   await dormir(700);
 }
 console.log('SCROLL>>>', await evaluar(`JSON.stringify({

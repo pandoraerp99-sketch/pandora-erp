@@ -19,8 +19,18 @@ import {
   ExpenseError,
   type NuevoGasto,
 } from '@/lib/services/expenses/expense.service';
+import {
+  settleSupplier,
+  SupplierAccountError,
+} from '@/lib/services/expenses/supplier-account.service';
+import type { SupplierPaymentMethod } from '@/lib/db/schema/supplier_account';
+import {
+  armarCsvAcreedores,
+  getAcreedoresAlCierre,
+} from '@/lib/services/reporting/cierre.report';
 import { searchProducts } from '@/lib/services/products/product.service';
 import { getActiveCashSession } from '@/lib/cash/sessions';
+import { diaDelComercio } from '@/lib/domain/fecha-comercio';
 import {
   getMesCierreEjercicio,
   periodoDe,
@@ -86,6 +96,52 @@ export async function registrarGastoAction(
     revalidatePath('/gastos');
     // El panel de la contadora lee el IVA crédito de acá: si no se revalida,
     // sigue mostrando la posición de IVA vieja.
+    revalidatePath('/contador');
+    return null;
+  });
+}
+
+/**
+ * Pagarle a un proveedor.
+ *
+ * Espejo de `cobrarAction` en /clientes: la caja la resuelve el SERVIDOR (si el
+ * navegador pudiera elegir a qué sesión imputar la salida, podría mandarla a un
+ * arqueo ya cerrado), y sólo el efectivo la toca.
+ *
+ * La `fecha` es HOY, del calendario del comercio, y no viaja desde el
+ * navegador: el pago es el acto de pagar, pasa ahora. Un `new Date()` en el
+ * cliente además tomaría la zona de la máquina, que a las 22:00 en Ushuaia ya
+ * está en el día siguiente en UTC.
+ */
+export async function pagarProveedorAction(
+  terceroId: string,
+  monto: string,
+  medio: SupplierPaymentMethod
+): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    let cashSessionId: string | undefined;
+    if (medio === 'efectivo') {
+      const sesion = await getActiveCashSession(SALE_POINT);
+      if (sesion === null) {
+        throw new SupplierAccountError(
+          'cash_needs_session',
+          'No hay una caja abierta. Pagarle a un proveedor en efectivo saca plata del cajón del día.'
+        );
+      }
+      cashSessionId = sesion.id;
+    }
+
+    await settleSupplier({
+      tercero_id: terceroId,
+      amount: monto,
+      method: medio,
+      fecha: diaDelComercio(),
+      ...(cashSessionId !== undefined ? { cash_session_id: cashSessionId } : {}),
+    });
+
+    revalidatePath('/gastos');
+    // Es plata que sale del cajón: el arqueo de /caja lo tiene que ver ya.
+    revalidatePath('/caja');
     revalidatePath('/contador');
     return null;
   });
@@ -247,12 +303,11 @@ export async function exportarGastosCsvAction(
 }
 
 /**
- * CSV de proveedores del período — ítem 9 de la carta de la contadora
+ * CSV de proveedores del período — la primera mitad del ítem 9 de la carta
  * ("detalle de proveedores... razón social, CUIT e importe").
  *
- * Es MEDIO ítem: la carta pide "proveedores **y/o acreedores** a la fecha de
- * cierre", y los acreedores —lo que se debe y no se pagó— Pandora no los sabe.
- * El propio CSV lo aclara adentro; ver `armarCsvProveedores`.
+ * Es lo que se les PAGÓ. La otra mitad —lo que se les debe a la fecha de
+ * cierre— sale de `exportarAcreedoresCsvAction`, acá abajo.
  */
 export async function exportarProveedoresCsvAction(
   grano?: string
@@ -284,6 +339,44 @@ export async function exportarProveedoresCsvAction(
       csv,
       nombre: `proveedores-${desde}_a_${ultimo}.csv`,
     };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : 'No se pudo exportar',
+    };
+  }
+}
+
+/**
+ * CSV de ACREEDORES al cierre — la otra mitad del ítem 9, y la que el balance
+ * pide de verdad: razón social, CUIT e importe de lo que se les DEBE.
+ *
+ * El corte es el último día del período, no el `hasta` exclusivo, para que el
+ * archivo diga la misma fecha que la tarjeta de la pantalla.
+ *
+ * El CSV lleva adentro sus dos caveats (el corte por fecha de comprobante y que
+ * sólo informa lo registrado): un archivo viaja solo, sin la pantalla al lado.
+ */
+export async function exportarAcreedoresCsvAction(
+  grano?: string
+): Promise<{ ok: true; csv: string; nombre: string } | { ok: false; error: string }> {
+  try {
+    const g: Grano = GRANOS.includes(grano as Grano) ? (grano as Grano) : 'mes';
+    const mesCierre = await withServerActionTracing(getMesCierreEjercicio, {
+      requireAuth: true,
+    });
+
+    const periodo = periodoDe(g, new Date(), mesCierre);
+    const alCierre = new Date(periodo.hasta.getTime() - 86400000)
+      .toISOString()
+      .slice(0, 10);
+
+    const csv = await withServerActionTracing(
+      async () => armarCsvAcreedores(alCierre, await getAcreedoresAlCierre(alCierre)),
+      { requireAuth: true }
+    );
+
+    return { ok: true, csv, nombre: `acreedores-al-${alCierre}.csv` };
   } catch (e) {
     return {
       ok: false,

@@ -107,8 +107,21 @@ html[data-theme="dark"] .cat-otros           { --gcat-fg:#98a2be; --gcat-bg:rgba
 /* Dos CUIT en el mismo proveedor no es un error del sistema, es algo que hay
    que mirar antes de mandarlo. Ambar, como "hay que mandar": es una tarea. */
 .gprov-ojo{ color:#8a520c; font-weight:700; }
+/* Pagarle a un proveedor desde la tarjeta de acreedores. Discreto a proposito:
+   compite con "Nuevo gasto", que es la accion principal de la pantalla. */
+.gprov-pagar{
+  flex:none; padding:5px 11px; border-radius:8px; cursor:pointer;
+  border:1px solid rgba(107,95,255,0.30); background:rgba(107,95,255,0.10);
+  color:#4a3fd0; font-size:11.5px; font-weight:700; font-family:inherit;
+  transition:background 140ms ease, border-color 140ms ease;
+}
+.gprov-pagar:hover{ background:rgba(107,95,255,0.18); border-color:rgba(107,95,255,0.45); }
 html[data-theme="dark"] .gprov{ border-top-color:rgba(255,255,255,0.06); }
 html[data-theme="dark"] .gprov-ojo{ color:#ffc79a; }
+html[data-theme="dark"] .gprov-pagar{
+  background:rgba(124,113,255,0.22); border-color:rgba(124,113,255,0.44); color:#d5d0ff;
+}
+html[data-theme="dark"] .gprov-pagar:hover{ background:rgba(124,113,255,0.32); }
 
 /* Vacio con MOTIVO. Un cero pelado se lee como "no hubo gastos"; el texto
    distingue "todavia no cargaste ninguno" de "en este periodo no hubo". */
