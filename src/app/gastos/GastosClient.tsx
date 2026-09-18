@@ -929,7 +929,14 @@ function MenuExportar({
     onExportar(soloFueraDeArca);
   };
 
-  const nada = cantidadTotal === 0;
+  // `cantidadTotal` cuenta los gastos PAGADOS de una. Un comercio cuyo período
+  // sea todo compra a cuenta corriente tiene cantidadTotal = 0 — y con el guard
+  // viejo el menú entero quedaba deshabilitado, dejando el CSV de acreedores
+  // inalcanzable justo cuando la tarjeta de al lado lista las deudas. Es la
+  // misma trampa de "existe y no se puede bajar", un nivel más arriba.
+  const nada = cantidadTotal === 0 && cantidadAcreedores === 0;
+  // Sólo los tres items de GASTOS dependen de que haya gastos; acreedores no.
+  const sinGastos = cantidadTotal === 0;
 
   return (
     <div className={abierto ? 'tipo-dd open' : 'tipo-dd'} ref={caja}>
@@ -942,7 +949,7 @@ function MenuExportar({
         disabled={pending || nada}
         title={
           nada
-            ? 'En este período no hay gastos cargados: no hay nada que exportar'
+            ? 'En este período no hay gastos cargados ni deudas con proveedores: no hay nada que exportar'
             : 'Bajar un CSV para mandarle al estudio'
         }
         onClick={() => setAbierto((v) => !v)}
@@ -985,7 +992,7 @@ function MenuExportar({
           role="menuitem"
           className="tm-item"
           onClick={() => elegir(false)}
-          disabled={nada}
+          disabled={sinGastos}
         >
           <span className="tt">Todos los gastos ({cantidadTotal})</span>
           <span className="ss">
@@ -1005,7 +1012,7 @@ function MenuExportar({
             setAbierto(false);
             onExportarProveedores();
           }}
-          disabled={nada}
+          disabled={sinGastos}
         >
           <span className="tt">Proveedores ({cantidadProveedores})</span>
           <span className="ss">

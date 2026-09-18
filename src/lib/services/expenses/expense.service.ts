@@ -1295,11 +1295,14 @@ export function armarCsvProveedores(
     ])
   );
 
+  // OJO: esta nota decía "en este sistema todo gasto se registra ya pagado".
+  // Dejó de ser cierto con la migration 0039 (ADR-0028), y un archivo que
+  // afirma eso le está diciendo al estudio que no hace falta pedir la lista de
+  // acreedores — justo cuando esa lista existe y sale al lado.
   const nota =
     `Gastos PAGADOS en el período (${periodoEtiqueta}). ` +
-    'NO incluye saldos pendientes de pago: en este sistema todo gasto se ' +
-    'registra ya pagado, así que esta lista no es el detalle de acreedores al ' +
-    'cierre.';
+    'NO incluye lo que se les debe: para eso está el archivo de acreedores al ' +
+    'cierre, que sale del mismo menú.';
   return `${tabla}\r\n${csvTxt(nota)}\r\n`;
 }
 

@@ -275,8 +275,13 @@ describe('T-GASTO-03 — proveedores del período', () => {
         'septiembre de 2026'
       );
       expect(csv).toContain('PAGADOS');
-      expect(csv).toContain('NO incluye saldos pendientes');
-      expect(csv).toContain('acreedores');
+      expect(csv).toContain('NO incluye lo que se les debe');
+      // Y manda al archivo que SÍ lo tiene. La nota vieja decía "en este
+      // sistema todo gasto se registra ya pagado": con la 0039 (ADR-0028) eso
+      // pasó a ser falso, y un archivo que lo afirma le está diciendo al
+      // estudio que no hace falta pedir la lista de acreedores.
+      expect(csv).toContain('acreedores al cierre');
+      expect(csv).not.toContain('todo gasto se ');
       // Y lleva el período adentro, no sólo en el nombre del archivo.
       expect(csv).toContain('septiembre de 2026');
     });
