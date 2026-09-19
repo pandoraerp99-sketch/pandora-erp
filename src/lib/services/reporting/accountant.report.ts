@@ -267,6 +267,12 @@ export interface ResumenContable {
      * a proveedores (por compras de cualquier mes).
      */
     total: string;
+    /**
+     * Cuántos comprobantes se cargaron en el período, pagados o no. La pantalla
+     * le resta `comprobantes` para decir cuántos hay que mandarle al estudio,
+     * así que tiene que estar en la MISMA base que ese campo (devengado): con
+     * `cantidad` filtrada por pago, esa resta daba 3 donde eran 5.
+     */
     cantidad: number;
     /**
      * Lo que se le DEBE a proveedores al cierre del período — una FOTO, no un
@@ -405,7 +411,7 @@ export async function getResumenContable(
     // se cambia acá y en getExpenseSummary, que lleva la misma nota.
     sql`SELECT (coalesce(sum(total) FILTER (WHERE ${GASTO_PAGADO_SQL}), 0)
                 + ${pagosAProveedoresSql(tenantId, desde, hasta)})::text        AS total,
-               count(*) FILTER (WHERE ${GASTO_PAGADO_SQL})::int                 AS cantidad,
+               count(*)::int                                                    AS cantidad,
                ${deudaAProveedoresSql(tenantId, alCierre)}::text                AS deuda_al_cierre,
                ${cantidadAcreedoresSql(tenantId, alCierre)}::int                AS acreedores_al_cierre,
                coalesce(sum(iva) FILTER (WHERE en_iva_compras), 0)::text AS credito,

@@ -1097,9 +1097,19 @@ export interface ResumenGastos {
    */
   total: string;
   /**
-   * Cantidad de GASTOS pagados de una. A propósito NO cuenta los pagos a
-   * proveedores: un pago puede saldar tres facturas o media, así que sumarlo
-   * acá rompería cualquier promedio por gasto que la pantalla derive.
+   * Cuántos gastos se CARGARON en el período — pagados o no.
+   *
+   * Va deliberadamente sin filtrar, porque los tres lugares donde se muestra
+   * encabezan listas que traen todos los vigentes: el pie del KPI ("N gastos
+   * cargados"), la pestaña "Todos" de /gastos y "Comprobantes" en /contador.
+   * Además tiene que cerrar con `arca_cantidad + fuera_cantidad`, que son
+   * DEVENGADO (el estudio baja el comprobante esté pago o no). Filtrada por
+   * pago, la fila de KPIs mostraba 9 · 5 · 6 y /contador restaba mal en voz
+   * alta: "los otros 3 son los que hay que mandarle", cuando eran 5.
+   *
+   * NO cuenta pagos a proveedores, aunque `total` sí los sume: un pago puede
+   * saldar tres facturas o media, y contarlo como "un gasto más" rompería
+   * cualquier promedio por gasto que la pantalla derive.
    */
   cantidad: string;
   /**
@@ -1165,7 +1175,7 @@ export async function getExpenseSummary(
     // preguntado como A-29. Si la contadora dice lo contrario, se cambia acá.
     sql`SELECT (coalesce(sum(total) FILTER (WHERE ${GASTO_PAGADO_SQL}), 0)
                 + ${pagosAProveedoresSql(tenantId, desde, hasta)})::text       AS total,
-               count(*) FILTER (WHERE ${GASTO_PAGADO_SQL})::text                AS cantidad,
+               count(*)::text                                                   AS cantidad,
                ${deudaAProveedoresSql(tenantId, corte)}::text                   AS deuda_al_cierre,
                ${cantidadAcreedoresSql(tenantId, corte)}::text                  AS acreedores_al_cierre,
                coalesce(sum(total) FILTER (WHERE en_iva_compras), 0)::text AS arca_total,

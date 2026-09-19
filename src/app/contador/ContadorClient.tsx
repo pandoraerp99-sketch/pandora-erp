@@ -819,7 +819,11 @@ export function ContadorClient({
             <>
               <div className="conc-stats">
                 <div>
-                  <div className="cs-k">Total</div>
+                  {/* "Pagado", no "Total": este importe es plata que SALIÓ en
+                      el período, mientras que los dos contadores de al lado son
+                      devengados. Son dos criterios en la misma tarjeta, y la
+                      etiqueta es lo único que lo dice. */}
+                  <div className="cs-k">Total pagado</div>
                   <div className="cs-v tnum">{plata(resumen.gastos.total)}</div>
                 </div>
                 <div>
@@ -831,6 +835,12 @@ export function ContadorClient({
                   <div className="cs-v tnum">{resumen.gastos.comprobantes}</div>
                 </div>
               </div>
+              {/* Esta resta se muestra HECHA, así que los dos contadores tienen
+                  que estar en la misma base. Estuvo mal una vez: `cantidad`
+                  contaba sólo los gastos pagados y `comprobantes` todos los del
+                  período, así que con dos compras a cuenta corriente la frase
+                  decía 3 donde eran 5 — y es la frase con la que la contadora
+                  reclama los comprobantes que le faltan. */}
               <p className="label-sm">
                 Los que tienen factura el estudio ya los baja de ARCA; los otros{' '}
                 <b>

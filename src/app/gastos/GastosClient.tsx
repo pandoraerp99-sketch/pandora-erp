@@ -455,8 +455,12 @@ export function GastosClient({
             Gastado en el período
           </div>
           <div className="k-v">{plata(resumen.total)}</div>
+          {/* El pie cuenta los CARGADOS y el importe es lo que SALIÓ: con una
+              compra a cuenta corriente adentro, no son la misma pregunta, y
+              callarlo deja al lector restando mal. Va en una línea a propósito
+              (ver el comentario del KPI de al lado). */}
           <div className="k-f">
-            {resumen.cantidad} {Number(resumen.cantidad) === 1 ? 'gasto' : 'gastos'} cargados
+            {resumen.cantidad} {Number(resumen.cantidad) === 1 ? 'gasto' : 'gastos'} cargados · el total es lo que salió
           </div>
         </div>
 
@@ -929,11 +933,11 @@ function MenuExportar({
     onExportar(soloFueraDeArca);
   };
 
-  // `cantidadTotal` cuenta los gastos PAGADOS de una. Un comercio cuyo período
-  // sea todo compra a cuenta corriente tiene cantidadTotal = 0 — y con el guard
-  // viejo el menú entero quedaba deshabilitado, dejando el CSV de acreedores
-  // inalcanzable justo cuando la tarjeta de al lado lista las deudas. Es la
-  // misma trampa de "existe y no se puede bajar", un nivel más arriba.
+  // `cantidadTotal` cuenta los gastos CARGADOS en el período, que es lo mismo
+  // que exporta "Todos los gastos": si contara sólo los pagados, la etiqueta
+  // diría 9 y el archivo traería 11. Un comercio que compra todo a cuenta
+  // corriente tampoco queda afuera — antes daba 0 y deshabilitaba el item de
+  // un CSV que sí tenía filas.
   const nada = cantidadTotal === 0 && cantidadAcreedores === 0;
   // Sólo los tres items de GASTOS dependen de que haya gastos; acreedores no.
   const sinGastos = cantidadTotal === 0;
@@ -996,9 +1000,9 @@ function MenuExportar({
         >
           <span className="tt">Todos los gastos ({cantidadTotal})</span>
           <span className="ss">
-            Para el balance: son los comprobantes de <b>pago</b> de alquiler,
-            seguros, servicios, tasas y honorarios, que se piden con factura o
-            sin ella.
+            Para el balance: son los comprobantes de alquiler, seguros,
+            servicios, tasas y honorarios, que se piden con factura o sin ella.
+            Van todos los del período, pagados o no.
           </span>
         </button>
 

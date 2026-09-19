@@ -243,12 +243,49 @@ describe('T-PROV-01 — cuenta corriente de proveedores', () => {
 
     // El número grande es lo que salió: sólo la transferencia.
     expect(resumen.total).toBe('200.0000');
-    expect(resumen.cantidad).toBe('1');
+    // Pero CARGADOS hay dos. `cantidad` cuenta los gastos del período, no los
+    // pagados: es el pie del KPI ("N gastos cargados"), el número de la pestaña
+    // "Todos" y el de "Comprobantes" en /contador. Los tres encabezan listas
+    // que traen los dos.
+    expect(resumen.cantidad).toBe('2');
     // Y lo adeudado se ve aparte: 500 a UN proveedor. Ojo que `acreedores_al_cierre`
     // cuenta PROVEEDORES con saldo, no gastos impagos — acá da lo mismo porque
     // hay uno de cada, pero son dos preguntas distintas.
     expect(Number(resumen.deuda_al_cierre)).toBe(500);
     expect(Number(resumen.acreedores_al_cierre)).toBe(1);
+  });
+
+  /**
+   * Los tres contadores que la pantalla muestra JUNTOS tienen que cerrar.
+   *
+   * `cantidad` se filtraba por gasto pagado y `arca_cantidad`/`fuera_cantidad`
+   * no, así que con una sola compra a cuenta corriente la fila de KPIs decía
+   * "9 gastos cargados", "5 sin factura" y "6 con factura" — y 5 + 6 no es 9.
+   * En /contador era peor porque la resta está escrita en la frase: "los otros
+   * 3 son los que hay que mandarle", cuando eran 5. Esa frase es la que la
+   * contadora usa para reclamar comprobantes.
+   *
+   * El criterio: el corte ARCA/mandar es DEVENGADO —el estudio baja el
+   * comprobante esté pago o no— así que esos dos no se filtran, y `cantidad`,
+   * que va al lado, tampoco.
+   */
+  it('los contadores de la pantalla cierran: cantidad = arca + fuera', async () => {
+    await compraACredito('2026-07-10', '500.0000');
+    await withCtx(() =>
+      registerExpense({
+        fecha: '2026-07-11',
+        categoria: 'servicios',
+        total: '200.0000',
+        medio_pago: 'transferencia',
+      })
+    );
+
+    const r = await withCtx(() => getExpenseSummary('2026-07-01', '2026-08-01'));
+
+    expect(Number(r.cantidad)).toBe(
+      Number(r.arca_cantidad) + Number(r.fuera_cantidad)
+    );
+    expect(r.cantidad).toBe('2');
   });
 
   /**
