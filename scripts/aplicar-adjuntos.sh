@@ -17,6 +17,8 @@ if [ -z "$CONT" ]; then echo "🔴 no hay container supabase_db levantado"; exit
 
 docker exec -i "$CONT" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
   < drizzle/migrations/post_initial/0040_adjuntos_comprobantes.sql || exit 1
+docker exec -i "$CONT" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+  < drizzle/migrations/post_initial/0041_adjuntos_fk_con_tenant.sql || exit 1
 
 echo "== verificación =="
 docker exec -i "$CONT" psql -U postgres -d postgres -P pager=off -v ON_ERROR_STOP=1 -c "
@@ -37,6 +39,13 @@ docker exec -i "$CONT" psql -U postgres -d postgres -P pager=off -v ON_ERROR_STO
 
   SELECT 'triggers: ' || count(*)::text FROM pg_trigger
    WHERE tgrelid = 'attachments'::regclass AND NOT tgisinternal;
+
+  -- 0041: las FK tienen que llevar el TENANT adentro. Con la FK sólo por id,
+  -- un adjunto de A podía colgar del gasto de B (T-ADJ-01 lo demostró).
+  SELECT 'FK con tenant: ' || count(*)::text || ' (tienen que ser 2)'
+    FROM pg_constraint
+   WHERE conrelid = 'attachments'::regclass AND contype = 'f'
+     AND array_length(conkey, 1) = 2;
 " || exit 1
 
 echo "== los CHECK rechazan de verdad (no alcanza con que existan) =="
@@ -49,7 +58,10 @@ docker exec -i "$CONT" psql -U postgres -d postgres -P pager=off -c "
     SELECT id INTO u FROM users LIMIT 1;
     SELECT id INTO e FROM expenses WHERE tenant_id = t LIMIT 1;
     IF t IS NULL OR u IS NULL OR e IS NULL THEN
-      RAISE NOTICE 'sin datos de dev para probar los CHECK (saltado)';
+      -- Lo DICE y no se lo come: un script que saltea la verificación y
+      -- después imprime "aplicada" es el mismo falso verde que la semilla que
+      -- escupía un ERROR, devolvía 0 y decía "sembrado".
+      RAISE WARNING '⚠️  SIN VERIFICAR: no hay datos de dev, los CHECK no se probaron';
       RETURN;
     END IF;
 
@@ -84,8 +96,11 @@ docker exec -i "$CONT" psql -U postgres -d postgres -P pager=off -c "
     EXCEPTION WHEN check_violation THEN ok := ok + 1;
     END;
 
+    IF ok < 3 THEN
+      RAISE EXCEPTION 'solo % de 3 CHECKs rechazaron — la tabla acepta filas imposibles', ok;
+    END IF;
     RAISE NOTICE 'CHECKs que rechazaron: %/3', ok;
   END
   \$\$;
-"
-echo "0040 aplicada"
+" || { echo "🔴 la verificación de CHECKs falló"; exit 1; }
+echo "0040 + 0041 aplicadas"

@@ -21,9 +21,14 @@ if [ -z "$CONT" ]; then echo "🔴 no hay container supabase_db levantado"; exit
 psql_() { docker exec -i "$CONT" psql -U postgres -d postgres -q "$@"; }
 
 restaurar() {
-  echo "-- restaurando la 0040 --"
-  docker exec -i "$CONT" psql -U postgres -d postgres -q -v ON_ERROR_STOP=1 \
-    < drizzle/migrations/post_initial/0040_adjuntos_comprobantes.sql >/dev/null
+  echo "-- restaurando 0040 + 0041 --"
+  for m in 0040_adjuntos_comprobantes 0041_adjuntos_fk_con_tenant; do
+    docker exec -i "$CONT" psql -U postgres -d postgres -q -v ON_ERROR_STOP=1 \
+      < "drizzle/migrations/post_initial/${m}.sql" >/dev/null || {
+        echo "🔴 no se pudo restaurar ${m} — la base queda DESPROTEGIDA"
+        return 1
+      }
+  done
 }
 trap restaurar EXIT
 

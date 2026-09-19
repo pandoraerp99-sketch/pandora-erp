@@ -50,6 +50,7 @@ describe('T-ADJ-01 — adjuntos: aislamiento cross-tenant y baja lógica', () =>
   const userA = crypto.randomUUID();
   const userB = crypto.randomUUID();
   const expenseA = crypto.randomUUID();
+  const expenseB = crypto.randomUUID();
   const adjuntoA = crypto.randomUUID();
   const pathA = `${tenantA}/${adjuntoA}`;
 
@@ -83,14 +84,24 @@ describe('T-ADJ-01 — adjuntos: aislamiento cross-tenant y baja lógica', () =>
     await armar(tenantA, userA);
     await armar(tenantB, userB);
 
-    await db.insert(expenses).values({
-      id: expenseA,
-      tenant_id: tenantA,
-      fecha: '2026-03-01',
-      categoria: 'alquiler',
-      total: '400000.0000',
-      medio_pago: 'transferencia',
-    });
+    await db.insert(expenses).values([
+      {
+        id: expenseA,
+        tenant_id: tenantA,
+        fecha: '2026-03-01',
+        categoria: 'alquiler',
+        total: '400000.0000',
+        medio_pago: 'transferencia',
+      },
+      {
+        id: expenseB,
+        tenant_id: tenantB,
+        fecha: '2026-03-01',
+        categoria: 'alquiler',
+        total: '400000.0000',
+        medio_pago: 'transferencia',
+      },
+    ]);
 
     // El adjunto de A, con su objeto en el bucket. El INSERT va como service
     // role (sin RLS) a propósito: acá se arma el escenario, no se prueba.
@@ -191,6 +202,30 @@ describe('T-ADJ-01 — adjuntos: aislamiento cross-tenant y baja lógica', () =>
           `)
         )
       ).rejects.toThrow();
+    });
+
+    it('🔴 un adjunto NO puede apuntar al gasto de OTRO comercio', async () => {
+      // El agujero que los otros tests no ven: todos prueban LECTURAS cruzadas.
+      // Esto es una ESCRITURA que localmente parece válida — la fila lleva
+      // tenant_id = A, así que pasa el WITH CHECK del RLS sin despeinarse — y
+      // sin embargo su `expense_id` es de B. El resultado sería el comprobante
+      // de un comercio colgando del gasto de otro, sin que nada avise.
+      //
+      // Las FK apuntaban a `expenses(id)` a secas, sin el tenant, así que el
+      // único que podía impedirlo era el código que arma el INSERT. Eso es
+      // justo lo que CLAUDE.md §7.2 dice que no alcanza.
+      //
+      // Va como service role (sin RLS) a propósito: se prueba la BASE, no el
+      // service. Si esto pasa, un bug de un service futuro lo reproduce.
+      const motivo = await motivoDelRechazo(() =>
+        db.execute(sql`
+          INSERT INTO attachments (tenant_id, tipo, expense_id, nombre_original,
+                                   content_type, bytes, sha256, storage_path, uploaded_by)
+          VALUES (${tenantA}, 'comprobante', ${expenseB}, 'ajeno.pdf',
+                  'application/pdf', 10, 'h', ${`${tenantA}/${crypto.randomUUID()}`}, ${userA})
+        `)
+      );
+      expect(motivo).toMatch(/foreign key|llave foránea|violates/i);
     });
 
     it('la contadora multi-empresa SÍ ve los de las empresas que la invitaron', async () => {
