@@ -5,14 +5,26 @@ import {
   isAuditEventName,
 } from '@/lib/audit/event-names';
 
-describe('Catalogo canonico audit event names (EVENT-TAXONOMY §5 v2.2.0)', () => {
-  it('total 51 eventos auditables F0', () => {
-    // 49 + los dos de la cuenta corriente de PROVEEDORES (v2.2.0, aprobados
-    // por el owner el 2026-09-17). El número va a mano y no derivado del array
-    // a propósito: es lo que obliga a pasar por EVENT-TAXONOMY.md antes de
-    // agregar un evento, que es la regla J1.
-    expect(TOTAL_AUDIT_EVENTS_F0).toBe(51);
-    expect(AUDIT_EVENT_NAMES).toHaveLength(51);
+describe('Catalogo canonico audit event names (EVENT-TAXONOMY §5 v2.3.0)', () => {
+  it('total 53 eventos auditables F0', () => {
+    // 51 + los dos de ADJUNTOS del comprobante (v2.3.0, ítem 12 del pedido de
+    // la contadora, aprobados por el owner el 2026-09-19).
+    //
+    // El que obliga a pasar por EVENT-TAXONOMY.md (regla J1) es el LITERAL de
+    // acá: `TOTAL_AUDIT_EVENTS_F0` es `AUDIT_EVENT_NAMES.length`, o sea
+    // derivado, y por sí solo acompañaría cualquier agregado en silencio. El
+    // comentario anterior decía que ese número iba "a mano"; de la constante
+    // no era cierto.
+    expect(TOTAL_AUDIT_EVENTS_F0).toBe(53);
+    expect(AUDIT_EVENT_NAMES).toHaveLength(53);
+  });
+
+  it('v2.3.0: adjuntos del comprobante (aprobados por el owner 2026-09-19)', () => {
+    // `removed` es el que importa: si la copia digital resulta ser el respaldo
+    // (A-31, pendiente de la contadora), borrar un adjunto destruye el respaldo
+    // de un gasto y no puede pasar sin huella.
+    expect(isAuditEventName('expense.attachment_added')).toBe(true);
+    expect(isAuditEventName('expense.attachment_removed')).toBe(true);
   });
 
   it('v2.2.0: el otro lado del mostrador (aprobados por el owner 2026-09-17)', () => {

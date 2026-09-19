@@ -70,7 +70,7 @@ export const AUDIT_EVENT_NAMES = [
   'customer.account.settled',
   'customer.account.adjusted',
 
-  // Domain: expense (4) — v2.1.0. Plata que sale; en mercadería, stock que entra
+  // Domain: expense (6) — v2.1.0. Plata que sale; en mercadería, stock que entra
   'expense.registered',
   'expense.annulled',
   // v2.2.0 — cuenta corriente de PROVEEDORES (ítem 9 del pedido de la
@@ -83,6 +83,15 @@ export const AUDIT_EVENT_NAMES = [
   // a mano, que es justo lo que hay que poder auditar después.
   'supplier.account.settled',
   'supplier.account.adjusted',
+  // v2.3.0 — adjuntar el comprobante (ítem 12 del pedido de la contadora).
+  // Aprobado por el owner el 2026-09-19; el catálogo es cerrado.
+  //
+  // `removed` es el que importa: si la contadora confirma que la copia digital
+  // ES el respaldo (A-31), borrar un adjunto destruye el respaldo de un gasto y
+  // eso tiene que dejar huella. `added` va para poder contestar "quién lo
+  // subió" sin abrir el archivo — que puede tener datos de un tercero (B-11).
+  'expense.attachment_added',
+  'expense.attachment_removed',
 
   // Domain: subscription (2)
   'subscription.activated',
@@ -112,8 +121,13 @@ export function isAuditEventName(value: string): value is AuditEventName {
 }
 
 /**
- * Total: 49 eventos auditables F0 (43 hasta v2.0.3 + 6 de v2.1.0, aprobados por
- * el owner el 2026-09-14).
+ * Total: 53 eventos auditables F0 = 43 hasta v2.0.3 + 6 de v2.1.0 (owner
+ * 2026-09-14) + 2 de v2.2.0 (owner 2026-09-17) + 2 de v2.3.0 (owner
+ * 2026-09-19).
+ *
+ * Este desglose decía "49" y ya se había sumado la v2.2.0: un total declarado
+ * que no cerraba con su propia lista, justo debajo de ella. Al agregar un
+ * evento, este comentario se actualiza en el mismo edit.
  *
  * Lo que va a Pino log (NO audit_log):
  * - sale.draft.* (lifecycle items, customer set durante draft)
