@@ -35,6 +35,7 @@ import {
   registerExpense,
   annulExpense,
   getExpenseSummary,
+  getExpenseTotals,
   ExpenseError,
 } from '@/lib/services/expenses/expense.service';
 import {
@@ -286,6 +287,37 @@ describe('T-PROV-01 — cuenta corriente de proveedores', () => {
       Number(r.arca_cantidad) + Number(r.fuera_cantidad)
     );
     expect(r.cantidad).toBe('2');
+  });
+
+  /**
+   * El listado POR RUBRO es devengado y la tarjeta lo declara con todas las
+   * letras ("Es lo que se gastó en cada rubro, pagado o no"). Los números
+   * estaban filtrados por pago, así que el texto prometía un criterio y la
+   * columna mostraba el otro: un rubro con una compra a 30 días adentro
+   * informaba de menos, abajo de una leyenda que decía lo contrario.
+   *
+   * Ningún test lo agarraba porque ninguno tenía un gasto impago en el
+   * período — que es la única forma de que los dos criterios difieran.
+   */
+  it('el listado por rubro es devengado: incluye lo comprado a crédito', async () => {
+    await compraACredito('2026-07-10', '500.0000');
+    await withCtx(() =>
+      registerExpense({
+        fecha: '2026-07-11',
+        categoria: 'mercaderia',
+        total: '200.0000',
+        medio_pago: 'transferencia',
+      })
+    );
+
+    const [merca] = await withCtx(() => getExpenseTotals('2026-07-01', '2026-08-01'));
+
+    // Los dos gastos del rubro, no sólo el pagado.
+    expect(merca?.cantidad).toBe('2');
+    expect(Number(merca?.total)).toBe(700);
+    // Y lo impago va ADENTRO de ese total, no al lado: sumarlos daría 1200.
+    expect(Number(merca?.impago)).toBe(500);
+    expect(merca?.impago_cantidad).toBe('1');
   });
 
   /**

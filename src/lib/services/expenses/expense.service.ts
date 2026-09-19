@@ -1008,17 +1008,36 @@ export interface TotalPorCategoria {
   [k: string]: string;
   categoria: string;
   /**
-   * DEVENGADO: lo pagado de una en el período. Ojo — esta función NO puede
-   * informar "plata que salió" (ver el comentario de la consulta): un pago a
-   * proveedor no tiene rubro. No tiene por qué coincidir con el total del
-   * resumen, y no es un bug.
+   * DEVENGADO: lo que se gastó en el rubro durante el período, pagado o no.
+   *
+   * (Decía "DEVENGADO: lo pagado de una en el período" — las dos mitades de esa
+   * frase son criterios opuestos, y el SQL seguía la segunda mientras la
+   * pantalla anunciaba la primera.)
+   *
+   * Esta función NO puede informar "plata que salió", que es lo que informa
+   * `getExpenseSummary`: un pago se le hace al proveedor, no a una factura, así
+   * que no tiene rubro donde caer. Los dos totales no tienen por qué coincidir
+   * y la tarjeta lo declara — la diferencia es lo comprado a crédito y todavía
+   * impago, menos lo que se les pagó a proveedores en el período.
    */
   total: string;
   neto: string;
   iva: string;
+  /** Cuántos gastos se cargaron en el rubro, pagados o no. */
   cantidad: string;
-  /** Comprado a crédito EN ESTE PERÍODO. No es la deuda que queda hoy. */
+  /**
+   * ⚠️ Es una PARTE de `total`, no algo que se le sume: de lo gastado en el
+   * rubro, cuánto se compró a crédito y sigue sin pagarse. Sumarlos da el rubro
+   * dos veces.
+   *
+   * (Fue el complemento mientras `total` contaba sólo lo pagado. Al pasar la
+   * fila a devengado quedó adentro, y el nombre no cambia solo.)
+   *
+   * Tampoco es la deuda que queda HOY: es lo impago de ESTE período. La deuda
+   * viva sale del libro, en el reporte de acreedores.
+   */
   impago: string;
+  /** Cuántos de los `cantidad` de arriba siguen impagos. */
   impago_cantidad: string;
 }
 
@@ -1053,11 +1072,18 @@ export async function getExpenseTotals(
     //
     // Es una vista legítima, pero es otra pregunta que la del resumen: los dos
     // números no tienen por qué coincidir, y no es un bug cuando no coinciden.
+    //
+    // Y si es devengado, las columnas van SIN filtrar. Estuvieron filtradas por
+    // pago mientras la leyenda de la tarjeta decía "pagado o no": Mercadería
+    // mostraba 2 / $270.800 en un período que tuvo 4 / $502.600. El `ORDER BY`
+    // de abajo ya era el devengado, así que la tarjeta encima ordenaba por un
+    // número que no mostraba — Mercadería salía arriba de Alquiler ($400.000)
+    // sin que nada en pantalla lo explicara.
     sql`SELECT categoria,
-               sum(total) FILTER (WHERE ${GASTO_PAGADO_SQL})::text AS total,
-               sum(neto)  FILTER (WHERE ${GASTO_PAGADO_SQL})::text AS neto,
-               sum(iva)   FILTER (WHERE ${GASTO_PAGADO_SQL})::text AS iva,
-               count(*)   FILTER (WHERE ${GASTO_PAGADO_SQL})::text AS cantidad,
+               sum(total)::text AS total,
+               sum(neto)::text  AS neto,
+               sum(iva)::text   AS iva,
+               count(*)::text   AS cantidad,
                COALESCE(sum(total) FILTER (WHERE NOT ${GASTO_PAGADO_SQL}), 0)::text AS impago,
                count(*) FILTER (WHERE NOT ${GASTO_PAGADO_SQL})::text AS impago_cantidad
         FROM expenses
