@@ -26,6 +26,7 @@ import {
   listAnnulledExpenses,
   listExpenses,
 } from '@/lib/services/expenses/expense.service';
+import { contarAdjuntosPorGasto } from '@/lib/services/expenses/attachment.service';
 import { listTerceros } from '@/lib/cash/terceros';
 import { getActiveCashSession } from '@/lib/cash/sessions';
 import { GastosClient, type GastoDTO } from './GastosClient';
@@ -119,6 +120,14 @@ export default async function GastosPage({
     { requireAuth: true }
   );
 
+  // Cuáles ya tienen el comprobante cargado (ítem 12). Va en la LISTA y no
+  // sólo adentro del modal porque la pregunta de la contadora es "¿cuáles me
+  // faltan?", y eso se contesta mirando, no abriendo gasto por gasto.
+  const adjuntos = await withServerActionTracing(
+    () => contarAdjuntosPorGasto(gastos.map((g) => g.id)),
+    { requireAuth: true }
+  );
+
   // DTO explícito, no la fila de Drizzle: `cash_movement_id` es un BigInt y
   // React no lo puede serializar hacia el cliente. Además la pantalla no
   // necesita el id — sólo si salió o no del cajón.
@@ -138,6 +147,7 @@ export default async function GastosPage({
     medio_pago: g.medio_pago,
     salio_de_caja: g.cash_movement_id !== null,
     renglones: renglones[g.id] ?? 0,
+    adjuntos: adjuntos[g.id] ?? 0,
     created_at: g.created_at.toISOString(),
   }));
 

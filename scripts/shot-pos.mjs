@@ -380,6 +380,53 @@ if (ACCION === 'anular') {
   })`));
 }
 
+if (ACCION === 'comprobantes') {
+  // /gastos: abrir los comprobantes de la primera fila (item 12).
+  // Vive DETRAS DE UN CLICK, que es justo lo que en este proyecto nunca se
+  // habia medido: el input del alta de cliente era #fff con texto casi blanco
+  // en una pantalla que figuraba OK. Por eso esto no saca la foto nomas —
+  // imprime los colores COMPUTADOS de lo que el modal dibuja.
+  console.log('CLIP>>>', await evaluar(`JSON.stringify((() => {
+    const b = [...document.querySelectorAll('.gclip')][0];
+    b && b.click();
+    return { habia: !!b, total: document.querySelectorAll('.gclip').length };
+  })())`));
+  // 3500 y no 900: en dev el chunk del modal se compila recien en el primer
+  // render, y con 900 la sonda volvia con TODO en null — que es justo el
+  // "vacio que parece que paso algo" contra el que avisa la memoria.
+  await dormir(3500);
+  console.log('COMPROBANTES>>>', await evaluar(`JSON.stringify((()=>{
+    const col = (sel, prop) => {
+      const e = document.querySelector(sel);
+      return e ? getComputedStyle(e)[prop] : null;
+    };
+    return {
+      titulo: document.querySelector('.pmod .pm-title')?.textContent ?? null,
+      zona: document.querySelector('.cmp-zona-txt')?.textContent?.replace(/\\s+/g,' ') ?? null,
+      ocr: /OCR/i.test(document.querySelector('.pmod')?.textContent ?? '') ? 'HAY BADGE OCR' : 'sin OCR',
+      boton: document.querySelector('.cmp-zona .pm-btn')?.textContent ?? null,
+      filas: [...document.querySelectorAll('.cmp-fila')].map(e=>e.textContent.replace(/\\s+/g,' ').slice(0,90)),
+      // Lo que se mide, no lo que se cree: el texto de la zona sobre su fondo.
+      zona_fg: col('.cmp-zona-txt small', 'color'),
+      zona_bg: col('.cmp-zona', 'backgroundColor'),
+      zona_borde: col('.cmp-zona', 'borderTopColor'),
+      titulo_fg: col('.cmp-zona-txt b', 'color'),
+      falta_fg: col('.cmp-falta', 'color'),
+      modal_bg: col('.pmod', 'backgroundColor'),
+      // Rectangulos para medir el contraste sobre PIXELES con
+      // scripts/contraste-png.ps1. El CSS miente cuando atras hay degradado y
+      // vidrio: en esta pantalla el fondo del modal es translucido.
+      rects: Object.fromEntries(['.cmp-zona-txt small', '.cmp-zona-txt b', '.cmp-falta', '.cmp-datos b']
+        .map(s => {
+          const e = document.querySelector(s);
+          if (!e) return [s, null];
+          const r = e.getBoundingClientRect();
+          return [s, [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]];
+        })),
+    };
+  })())`));
+}
+
 if (ACCION === 'ajuste' || ACCION === 'historial') {
   // /productos: seleccionar el producto PROD (por nombre) en la lista.
   const PROD = process.env.PROD || 'Yerba';

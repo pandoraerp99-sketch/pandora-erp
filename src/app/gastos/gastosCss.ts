@@ -289,4 +289,71 @@ html[data-theme="dark"] .det-in,
 html[data-theme="dark"] .det-busc input{ background:rgba(255,255,255,0.07); border-color:rgba(255,255,255,0.13); }
 html[data-theme="dark"] .det-x{ background:rgba(255,255,255,0.07); }
 html[data-theme="dark"] .det-op{ background:rgba(26,33,60,0.98); border-color:rgba(255,255,255,0.12); }
+
+/* ══════════════ Comprobantes adjuntos (ítem 12) ══════════════
+   Cada color tiene su variante oscura abajo. En esta pantalla ya pasó dos
+   veces que un color entrara sin par y quedara ilegible con el tema oscuro
+   (ver memoria del toggle): acá no hay ningún literal que no se repita. */
+.cmp-lista{ display:flex; flex-direction:column; gap:7px; margin:2px 0 12px; }
+.cmp-fila{ display:flex; align-items:center; gap:10px; padding:9px 11px;
+  border:1px solid rgba(13,20,36,0.10); border-radius:12px;
+  background:rgba(13,20,36,0.025); }
+.cmp-fila.falta{ border-style:dashed; border-color:rgba(214,110,110,0.45);
+  background:rgba(214,110,110,0.06); }
+.cmp-ic{ width:17px; height:17px; flex:0 0 auto; color:var(--ink-3); }
+.cmp-ic svg{ width:100%; height:100%; display:block; }
+.cmp-datos{ flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.cmp-datos b{ font-size:12.5px; font-weight:600; color:var(--ink-1);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cmp-datos small{ font-size:10.5px; color:var(--ink-2); font-family:var(--mono); }
+/* #96322c y no #b4453f: medido, el anterior daba 3,48:1 sobre el fondo rosado
+   de la fila en tema claro. Es la frase que avisa que el archivo no está — si
+   hay una que tiene que leerse, es esa. */
+.cmp-falta{ color:#96322c; font-family:inherit; font-weight:600; }
+.cmp-acts, .cmp-quitar{ display:flex; align-items:center; gap:6px; flex:0 0 auto; }
+/* Los botones de la fila son secundarios: el del bloque de subir es el que
+   manda. Sin esto ocupaban lo mismo y la jerarquía se perdía. */
+.pm-btn.chico{ font-size:12px; padding:7px 12px; border-radius:9px; }
+.cmp-quitar input{ width:180px; font-family:inherit; font-size:12px; color:var(--ink-1);
+  background:rgba(13,20,36,0.04); border:1px solid rgba(13,20,36,0.10);
+  border-radius:9px; padding:7px 9px; outline:none; }
+.cmp-quitar input:focus{ border-color:var(--purple); }
+
+/* La zona de la maqueta: punteada, clip, texto y botón a la derecha. */
+.cmp-zona{ display:flex; align-items:center; gap:12px; padding:15px 14px;
+  border:1.5px dashed rgba(13,20,36,0.18); border-radius:14px;
+  background:rgba(13,20,36,0.02); margin:2px 0 4px;
+  transition:border-color 140ms ease, background 140ms ease; }
+.cmp-zona:hover{ border-color:var(--purple); background:rgba(107,95,255,0.05); }
+.cmp-zona-ic{ width:22px; height:22px; flex:0 0 auto; color:var(--ink-3); }
+.cmp-zona-ic svg{ width:100%; height:100%; display:block; }
+.cmp-zona-txt{ flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; }
+.cmp-zona-txt b{ font-size:13px; font-weight:600; color:var(--ink-1); }
+/* --ink-2 y no --ink-3: medido sobre los PÍXELES de la captura, --ink-3 daba
+   3,87:1 en tema oscuro contra el vidrio del modal (el token ya venía con una
+   deuda declarada de 4,28 en superficies más claras). Esta línea es contenido
+   —dice qué se puede subir—, no decoración, así que va a AA. */
+.cmp-zona-txt small{ font-size:11.5px; color:var(--ink-2); line-height:1.4; }
+
+html[data-theme="dark"] .cmp-fila{ border-color:rgba(255,255,255,0.11);
+  background:rgba(255,255,255,0.04); }
+html[data-theme="dark"] .cmp-fila.falta{ border-color:rgba(255,150,143,0.42);
+  background:rgba(255,120,113,0.09); }
+html[data-theme="dark"] .cmp-falta{ color:#ff9f98; }
+html[data-theme="dark"] .cmp-quitar input{ background:rgba(255,255,255,0.07);
+  border-color:rgba(255,255,255,0.13); }
+html[data-theme="dark"] .cmp-zona{ border-color:rgba(255,255,255,0.18);
+  background:rgba(255,255,255,0.03); }
+html[data-theme="dark"] .cmp-zona:hover{ border-color:var(--purple);
+  background:rgba(124,113,255,0.10); }
+
+/* El clip de la fila de gastos: dice si ese gasto ya tiene respaldo. */
+.gclip{ width:28px; height:26px; flex:0 0 auto; display:inline-flex; align-items:center;
+  justify-content:center; gap:2px; border:none; background:transparent; cursor:pointer;
+  color:var(--ink-4); border-radius:8px; padding:0; }
+.gclip:hover{ background:rgba(107,95,255,0.10); color:var(--purple); }
+.gclip svg{ width:14px; height:14px; display:block; }
+.gclip.con{ color:var(--purple); }
+.gclip b{ font-size:10px; font-family:var(--mono); font-weight:700; }
+html[data-theme="dark"] .gclip:hover{ background:rgba(124,113,255,0.20); }
 `;

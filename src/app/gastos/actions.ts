@@ -23,6 +23,15 @@ import {
   settleSupplier,
   SupplierAccountError,
 } from '@/lib/services/expenses/supplier-account.service';
+import {
+  adjuntarComprobante,
+  listarAdjuntosDeGasto,
+  quitarComprobante,
+  urlParaDescargar,
+  AttachmentError,
+  type AdjuntoDeGasto,
+} from '@/lib/services/expenses/attachment.service';
+import { almacenSupabase } from '@/lib/services/expenses/attachment.storage';
 import type { SupplierPaymentMethod } from '@/lib/db/schema/supplier_account';
 import {
   armarCsvAcreedores,
@@ -391,4 +400,72 @@ export async function exportarAcreedoresCsvAction(
       error: e instanceof Error ? e.message : 'No se pudo exportar',
     };
   }
+}
+
+// ── Comprobantes adjuntos (ítem 12) ─────────────────────────────────────────
+//
+// El archivo llega por `FormData` a una Server Action. No es una elección:
+// CLAUDE.md §6.2 prohíbe Multer y formidable justamente para que el upload no
+// tenga un endpoint propio con reglas propias. La consecuencia buena es que el
+// path lo arma el SERVIDOR y el navegador nunca propone dónde se guarda.
+
+export async function adjuntarComprobanteAction(
+  formData: FormData
+): Promise<ActionResult<{ id: string }>> {
+  return runAction(async () => {
+    const expenseId = String(formData.get('expense_id') ?? '');
+    const archivo = formData.get('archivo');
+
+    if (!(archivo instanceof File)) {
+      throw new AttachmentError('No llegó ningún archivo', 'SIN_ARCHIVO');
+    }
+
+    const { id } = await adjuntarComprobante(
+      {
+        expense_id: expenseId,
+        archivo: {
+          nombre: archivo.name,
+          // Lo que declara el navegador. El service lo valida contra la lista
+          // permitida, pero no inspecciona el contenido — ver su comentario.
+          contentType: archivo.type,
+          bytes: new Uint8Array(await archivo.arrayBuffer()),
+        },
+      },
+      await almacenSupabase()
+    );
+
+    revalidatePath('/gastos');
+    return { id };
+  });
+}
+
+export async function listarComprobantesAction(
+  expenseId: string
+): Promise<ActionResult<AdjuntoDeGasto[]>> {
+  return runAction(async () =>
+    listarAdjuntosDeGasto(expenseId, await almacenSupabase())
+  );
+}
+
+/**
+ * Devuelve un link firmado de vida corta, o el estado "el archivo no está".
+ *
+ * La URL no se loguea ni se guarda: es un bearer token con los datos de un
+ * tercero adentro (CLAUDE.md §10.5).
+ */
+export async function urlDeComprobanteAction(
+  attachmentId: string
+): Promise<ActionResult<{ url: string; nombre: string } | { falta: true }>> {
+  return runAction(async () => urlParaDescargar(attachmentId, await almacenSupabase()));
+}
+
+export async function quitarComprobanteAction(
+  attachmentId: string,
+  motivo: string
+): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    await quitarComprobante({ attachment_id: attachmentId, motivo });
+    revalidatePath('/gastos');
+    return null;
+  });
 }

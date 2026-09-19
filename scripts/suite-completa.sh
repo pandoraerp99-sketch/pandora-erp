@@ -12,14 +12,49 @@ export PATH="$HOME/.nvm/versions/node/v22.22.3/bin:$PATH"
 # check decía "6" y no miraba supplier-account.service.ts, así que los dos
 # eventos de proveedores estaban emitidos y NO aparecían acá. Si agregás un
 # service que emite, agregalo también en esta lista y en el dominio de la regex.
-echo "== eventos cableados (tienen que ser 8 nombres propios, no mutados) =="
-grep -hoE "event_name: '(expense|customer\.account|supplier\.account|auth\.accountant)\.[a-z_]+'" \
+#
+# ⚠️⚠️ Hasta el 2026-09-19 esto IMPRIMÍA los nombres y decía "tienen que ser 8"
+# sin contar nada: el número vivía en un `echo` y ninguna salida cambiaba si
+# dejaban de ser 8. Misma forma que el "Total: 49" escrito arriba de 51 eventos
+# que se corrigió esta misma semana — un número declarado que no verifica nadie.
+# Ahora se cuenta y se falla.
+EVENTOS_ESPERADOS=10
+echo "== eventos cableados (tienen que ser $EVENTOS_ESPERADOS nombres propios, no mutados) =="
+EVENTOS_CABLEADOS=$(grep -hoE "event_name: '(expense|customer\.account|supplier\.account|auth\.accountant)\.[a-z_]+'" \
   src/lib/services/expenses/expense.service.ts \
   src/lib/services/expenses/supplier-account.service.ts \
+  src/lib/services/expenses/attachment.service.ts \
   src/lib/services/customers/account.service.ts \
-  src/lib/services/identity/accountant.service.ts | sort
+  src/lib/services/identity/accountant.service.ts | sort)
+echo "$EVENTOS_CABLEADOS"
 
 FALLA=0
+
+EVENTOS_CONTADOS=$(printf '%s' "$EVENTOS_CABLEADOS" | grep -c . || true)
+if [ "$EVENTOS_CONTADOS" -ne "$EVENTOS_ESPERADOS" ]; then
+  echo "🔴 eventos cableados: $EVENTOS_CONTADOS, se esperaban $EVENTOS_ESPERADOS"
+  echo "   Si sumaste un service que emite, agregalo a la lista de archivos de"
+  echo "   acá arriba y subí EVENTOS_ESPERADOS. Si uno dejó de emitir, hay un"
+  echo "   evento en el catálogo que no lo usa nadie."
+  FALLA=1
+fi
+
+# Los adjuntos se suben con el cliente del USUARIO, no con el service role.
+# No es una preferencia: el service role IGNORA el RLS, así que si alguien lo
+# usara acá, la policy del bucket —que es la segunda capa que protege el path—
+# dejaría de correr sin un solo error visible, y todos los tests seguirían en
+# verde porque prueban el service con un almacén falso. El comentario de
+# `attachment.storage.ts` afirma que esto pasa; acá se verifica.
+echo "== adjuntos: nadie sube con el service role =="
+if grep -rln 'createSupabaseServiceRoleClient' \
+     src/lib/services/expenses/attachment.service.ts \
+     src/lib/services/expenses/attachment.storage.ts \
+     src/app/gastos/ 2>/dev/null; then
+  echo "🔴 un archivo de adjuntos importa el service role — se pierde el RLS del bucket"
+  FALLA=1
+else
+  echo "ok"
+fi
 
 # El catálogo del CÓDIGO contra el DOC. Los tests no pueden hacerlo: corren en
 # WSL y EVENT-TAXONOMY.md vive en el filesystem de Windows, así que el "coincide

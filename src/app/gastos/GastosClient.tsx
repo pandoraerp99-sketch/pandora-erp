@@ -26,6 +26,7 @@ import Decimal from 'decimal.js';
 import { AppShell } from '@/components/shell/AppShell';
 import { diaDelComercio } from '@/lib/domain/fecha-comercio';
 import { GASTOS_CSS } from './gastosCss';
+import { ComprobantesModal } from './ComprobantesModal';
 import {
   anularGastoAction,
   buscarProductosAction,
@@ -62,6 +63,11 @@ export interface GastoDTO {
   salio_de_caja: boolean;
   /** Renglones del detalle. 0 = no hay nada que mostrar. */
   renglones: number;
+  /**
+   * Comprobantes cargados. Cuenta FICHAS, no archivos verificados en el
+   * bucket: si el archivo no está, lo dice el modal al abrirlo.
+   */
+  adjuntos: number;
   created_at: string;
 }
 
@@ -271,6 +277,16 @@ export function GastosClient({
   const [anulando, setAnulando] = useState<GastoDTO | null>(null);
   /** Proveedor al que se le está por pagar. */
   const [pagando, setPagando] = useState<AcreedorDTO | null>(null);
+  /** Gasto cuyos comprobantes se están mirando. */
+  const [comprobantesDe, setComprobantesDe] = useState<GastoDTO | null>(null);
+  /**
+   * Cuántos comprobantes tiene cada gasto. Arranca con lo que trajo el server
+   * y se corrige sola cuando el modal sube o quita uno, para que el clip de la
+   * fila no quede diciendo un número viejo hasta el próximo refresh.
+   */
+  const [adjuntos, setAdjuntos] = useState<Record<string, number>>(() =>
+    Object.fromEntries(gastos.map((g) => [g.id, g.adjuntos]))
+  );
 
   // Suma con Decimal, no con `+=` sobre strings: es plata (CLAUDE.md §9.8).
   const totalAdeudado = useMemo(
@@ -613,6 +629,34 @@ export function GastosClient({
                     <span className="gmedio">{medioLabel(g.medio_pago)}</span>
                     <span className="gtotal">{plata(g.total)}</span>
                     <span className="gacts">
+                      {/* El clip va en TODAS las filas, no sólo en las que
+                          tienen renglones: el ítem 12 pide justamente los
+                          gastos sin renglones (alquiler, seguros, tasas). */}
+                      <button
+                        type="button"
+                        className={
+                          (adjuntos[g.id] ?? 0) > 0 ? 'gclip con' : 'gclip'
+                        }
+                        onClick={() => {
+                          setViendo(null);
+                          setComprobantesDe(g);
+                        }}
+                        title={
+                          (adjuntos[g.id] ?? 0) > 0
+                            ? `${adjuntos[g.id]} comprobante(s) adjunto(s)`
+                            : 'Adjuntar el comprobante'
+                        }
+                        aria-label={
+                          (adjuntos[g.id] ?? 0) > 0
+                            ? `Comprobantes del gasto (${adjuntos[g.id]})`
+                            : 'Adjuntar comprobante a este gasto'
+                        }
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                        </svg>
+                        {(adjuntos[g.id] ?? 0) > 0 ? <b>{adjuntos[g.id]}</b> : null}
+                      </button>
                       {g.renglones > 0 ? (
                         <button
                           type="button"
@@ -831,6 +875,19 @@ export function GastosClient({
 
       {viendo !== null ? (
         <DetalleModal gasto={viendo} onCerrar={() => setViendo(null)} />
+      ) : null}
+
+      {comprobantesDe !== null ? (
+        <ComprobantesModal
+          expenseId={comprobantesDe.id}
+          titulo={`${comprobantesDe.payee_name ?? 'Sin proveedor'} · ${fechaCorta(
+            comprobantesDe.fecha
+          )} · ${plata(comprobantesDe.total)}`}
+          onCerrar={() => setComprobantesDe(null)}
+          onCambio={(cantidad) =>
+            setAdjuntos((prev) => ({ ...prev, [comprobantesDe.id]: cantidad }))
+          }
+        />
       ) : null}
 
       {anulando !== null ? (

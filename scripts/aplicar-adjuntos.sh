@@ -103,4 +103,28 @@ docker exec -i "$CONT" psql -U postgres -d postgres -P pager=off -c "
   END
   \$\$;
 " || { echo "🔴 la verificación de CHECKs falló"; exit 1; }
+
+# ── La lista de tipos está DOS veces y eso es a propósito ──────────────────
+# El bucket rechaza del lado del storage; `TIPOS_DE_ARCHIVO_PERMITIDOS` del
+# lado del service, para poder decirlo en castellano antes de subir nada.
+# Dos listas que tienen que coincidir es exactamente la forma que se
+# desincroniza sola, y el comentario del código AFIRMA que coinciden. Acá se
+# verifica esa afirmación, que es el aprendizaje de esta semana: un "coincide
+# exacto" que no chequea nadie es una declaración, no un hecho.
+echo "== tipos permitidos: bucket vs service =="
+EN_BUCKET=$(docker exec -i "$CONT" psql -U postgres -d postgres -tAX -c \
+  "SELECT unnest(allowed_mime_types) FROM storage.buckets WHERE id = 'comprobantes';" \
+  | sort | tr -d '\r')
+EN_CODIGO=$(grep -oE "'(application|image)/[a-z]+'" \
+  src/lib/db/schema/attachments.ts | tr -d "'" | sort -u)
+
+if [ "$EN_BUCKET" = "$EN_CODIGO" ]; then
+  echo "coinciden ($(printf '%s\n' "$EN_BUCKET" | grep -c .) tipos)"
+else
+  echo "🔴 el bucket y el service NO permiten lo mismo"
+  echo "-- sólo en el bucket --"; comm -23 <(printf '%s\n' "$EN_BUCKET") <(printf '%s\n' "$EN_CODIGO")
+  echo "-- sólo en el código --"; comm -13 <(printf '%s\n' "$EN_BUCKET") <(printf '%s\n' "$EN_CODIGO")
+  exit 1
+fi
+
 echo "0040 + 0041 aplicadas"
