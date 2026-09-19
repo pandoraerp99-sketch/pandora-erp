@@ -480,6 +480,28 @@ if (ACCION === 'anulados') {
   })`));
 }
 
+if (ACCION === 'export') {
+  // /gastos: abrir "Exportar para el estudio" y leer los cuatro items como los
+  // ve quien exporta. Sus subtextos describen QUE LLEVA cada archivo, y uno de
+  // ellos decia "lo que se les pago" sobre una consulta que no filtra por pago.
+  // Sin abrir el menu eso no se mide nunca — vive detras de un click.
+  for (let i = 0; i < 5; i++) {
+    const abierto = await evaluar(`document.querySelector('.tipo-dd.open') ? '1' : ''`);
+    if (abierto === '1') break;
+    await evaluar(`[...document.querySelectorAll('button')].find(b=>/Exportar para el estudio/.test(b.textContent||''))?.click(), true`);
+    await dormir(700);
+  }
+  const abierto = await evaluar(`document.querySelector('.tipo-dd.open') ? '1' : ''`);
+  if (abierto !== '1') console.log('🔴 el menu de export NO abrio');
+  console.log('EXPORT>>>', await evaluar(`JSON.stringify(
+    [...document.querySelectorAll('.tipo-menu .tm-item')].map(b => ({
+      titulo: b.querySelector('.tt')?.textContent ?? null,
+      sub: (b.querySelector('.ss')?.textContent ?? '').replace(/\\s+/g,' ').trim(),
+      deshabilitado: b.disabled,
+    }))
+  )`));
+}
+
 if (ACCION === 'modal') {
   // Abrir el alta y cargar precio/costo para ver el calculo en vivo.
   await evaluar(`[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Nuevo producto'))?.click(), true`);

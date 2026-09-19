@@ -307,8 +307,15 @@ export async function exportarGastosCsvAction(
  * CSV de proveedores del período — la primera mitad del ítem 9 de la carta
  * ("detalle de proveedores... razón social, CUIT e importe").
  *
- * Es lo que se les PAGÓ. La otra mitad —lo que se les debe a la fecha de
- * cierre— sale de `exportarAcreedoresCsvAction`, acá abajo.
+ * Es lo que se les COMPRÓ en el período, pagado o no: `getProveedoresDelPeriodo`
+ * no filtra por pago. Decía "lo que se les PAGÓ", que además daba a entender que
+ * este archivo y el de acreedores son disjuntos — y no lo son: una compra a 30
+ * días impaga sale en los dos.
+ *
+ * La otra mitad —lo que se les debe a la fecha de cierre— sale de
+ * `exportarAcreedoresCsvAction`, acá abajo. Es una FOTO del libro, así que una
+ * compra ya saldada figura acá y no allá: los dos archivos se pisan en lo
+ * impago, nada más.
  */
 export async function exportarProveedoresCsvAction(
   grano?: string

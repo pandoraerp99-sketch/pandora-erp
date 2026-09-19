@@ -274,21 +274,33 @@ describe('T-GASTO-03 — proveedores del período', () => {
         ],
         'septiembre de 2026'
       );
-      expect(csv).toContain('PAGADOS');
-      expect(csv).toContain('NO incluye lo que se les debe');
-      // Y manda al archivo que SÍ lo tiene. La nota vieja decía "en este
-      // sistema todo gasto se registra ya pagado": con la 0039 (ADR-0028) eso
-      // pasó a ser falso, y un archivo que lo afirma le está diciendo al
-      // estudio que no hace falta pedir la lista de acreedores.
-      expect(csv).toContain('acreedores al cierre');
+      // La nota estuvo mal DOS veces, y este test congeló las dos:
+      //
+      //  1. "en este sistema todo gasto se registra ya pagado" — falso desde
+      //     la 0039 (ADR-0028): le decía al estudio que no hacía falta pedir
+      //     la lista de acreedores.
+      //  2. "Gastos PAGADOS… NO incluye lo que se les debe" — la consulta no
+      //     filtra por pago. Declarar los dos archivos disjuntos invita a
+      //     sumarlos y cuenta dos veces lo impago.
+      //
+      // Por eso ahora se afirma el SOLAPAMIENTO, que es lo que la contadora
+      // necesita para no sumar de más.
+      expect(csv).toContain('pagado o no');
+      expect(csv).toContain('no se suman');
+      expect(csv).toContain('acreedores');
       expect(csv).not.toContain('todo gasto se ');
+      expect(csv).not.toContain('PAGADOS');
+      expect(csv).not.toContain('NO incluye lo que se les debe');
       // Y lleva el período adentro, no sólo en el nombre del archivo.
       expect(csv).toContain('septiembre de 2026');
     });
 
     it('lleva las columnas que pide la carta', async () => {
       const csv = armarCsvProveedores([], 'x');
-      expect(csv).toContain('Proveedor;CUIT;Comprobantes;Total pagado');
+      // "Total comprado": el encabezado va adentro de la tabla, así que es el
+      // que hereda una fórmula de planilla. Decía "Total pagado" sobre una
+      // suma que no filtra por pago.
+      expect(csv).toContain('Proveedor;CUIT;Comprobantes;Total comprado');
     });
 
     it('usa la misma receta que los otros CSV', async () => {

@@ -1019,9 +1019,12 @@ function MenuExportar({
           disabled={sinGastos}
         >
           <span className="tt">Proveedores ({cantidadProveedores})</span>
+          {/* Decía "lo que se les pagó" y la consulta no filtra por pago. Lo
+              impago sale acá Y en acreedores, así que el subtexto tiene que
+              decir dónde se pisan: si no, el estudio los suma. */}
           <span className="ss">
-            Razón social, CUIT e importe de lo que se les <b>pagó</b> en el
-            período.
+            Razón social, CUIT e importe de lo que se les <b>compró</b> en el
+            período, pagado o no.
           </span>
         </button>
 

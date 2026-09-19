@@ -36,6 +36,8 @@ import {
   annulExpense,
   getExpenseSummary,
   getExpenseTotals,
+  getProveedoresDelPeriodo,
+  armarCsvProveedores,
   ExpenseError,
 } from '@/lib/services/expenses/expense.service';
 import {
@@ -318,6 +320,44 @@ describe('T-PROV-01 — cuenta corriente de proveedores', () => {
     // Y lo impago va ADENTRO de ese total, no al lado: sumarlos daría 1200.
     expect(Number(merca?.impago)).toBe(500);
     expect(merca?.impago_cantidad).toBe('1');
+  });
+
+  /**
+   * Los DOS archivos que recibe el estudio se pisan, y el de proveedores tiene
+   * que decirlo.
+   *
+   * La nota al pie afirmaba "Gastos PAGADOS en el período. NO incluye lo que se
+   * les debe: para eso está el archivo de acreedores". La consulta no filtra
+   * por pago, así que una compra a 30 días impaga sale en los DOS — y una nota
+   * que los declara disjuntos invita a sumarlos, con ese importe contado dos
+   * veces. Iba adentro del archivo, junto a una columna que decía "Total
+   * pagado".
+   *
+   * Ojo: los dos archivos igual NO son el mismo conjunto. Acreedores es una
+   * FOTO del libro, así que una compra ya saldada figura en proveedores y no
+   * en acreedores. Lo único que se pisa es lo impago, y eso es lo que se
+   * afirma acá.
+   */
+  it('lo impago sale en el CSV de proveedores Y en el de acreedores', async () => {
+    await compraACredito('2026-07-10', '500.0000');
+
+    const proveedores = await withCtx(() =>
+      getProveedoresDelPeriodo('2026-07-01', '2026-08-01')
+    );
+    const acreedores = await withCtx(() => getAcreedoresAlCierre('2026-07-31'));
+
+    // El mismo importe, en los dos lados.
+    expect(Number(proveedores[0]?.total)).toBe(500);
+    expect(Number(acreedores[0]?.saldo)).toBe(500);
+
+    const csv = armarCsvProveedores(proveedores, 'julio de 2026');
+    // La columna es "comprado", no "pagado": es la que hereda una fórmula.
+    expect(csv).toContain('Total comprado');
+    expect(csv).not.toContain('Total pagado');
+    // Y el pie avisa del solapamiento en vez de negarlo.
+    expect(csv).toContain('pagado o no');
+    expect(csv).toContain('no se suman');
+    expect(csv).not.toContain('NO incluye lo que se les debe');
   });
 
   /**

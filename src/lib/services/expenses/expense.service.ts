@@ -1347,7 +1347,10 @@ export function armarCsvProveedores(
   periodoEtiqueta: string
 ): string {
   const tabla = csvArmar(
-    ['Proveedor', 'CUIT', 'Comprobantes', 'Total pagado'],
+    // "Total comprado", NO "Total pagado": la consulta no filtra por pago y
+    // nunca lo hizo. El encabezado va ADENTRO de la tabla, así que es el que
+    // hereda una fórmula de planilla — es la mentira más cara de las cuatro.
+    ['Proveedor', 'CUIT', 'Comprobantes', 'Total comprado'],
     filas.map((p) => [
       csvTxt(p.nombre),
       csvTxt(Number(p.cuits) > 1 ? `${p.cuit} (revisar: ${p.cuits} CUIT)` : p.cuit),
@@ -1356,14 +1359,24 @@ export function armarCsvProveedores(
     ])
   );
 
-  // OJO: esta nota decía "en este sistema todo gasto se registra ya pagado".
-  // Dejó de ser cierto con la migration 0039 (ADR-0028), y un archivo que
-  // afirma eso le está diciendo al estudio que no hace falta pedir la lista de
-  // acreedores — justo cuando esa lista existe y sale al lado.
+  // Esta nota ya estuvo mal DOS veces, y la segunda la escribí yo arreglando
+  // la primera:
+  //
+  //  1. "en este sistema todo gasto se registra ya pagado" — falso desde la
+  //     migration 0039 (ADR-0028), y le decía al estudio que no hacía falta
+  //     pedir la lista de acreedores.
+  //  2. "Gastos PAGADOS… NO incluye lo que se les debe" — la consulta no
+  //     filtra por pago, así que una compra a 30 días impaga sale en ESTE
+  //     archivo Y en el de acreedores. Afirmar que son disjuntos invita a
+  //     sumarlos, y ese importe se cuenta dos veces.
+  //
+  // Los dos archivos igual NO son el mismo conjunto —una compra de julio ya
+  // saldada está acá y no en acreedores—, así que lo que hay que decir es
+  // dónde SE PISAN, no que uno contenga al otro.
   const nota =
-    `Gastos PAGADOS en el período (${periodoEtiqueta}). ` +
-    'NO incluye lo que se les debe: para eso está el archivo de acreedores al ' +
-    'cierre, que sale del mismo menú.';
+    `Comprado a proveedores en el período (${periodoEtiqueta}), pagado o no. ` +
+    'Lo que siga impago a la fecha de cierre figura también en el archivo de ' +
+    'acreedores: son dos preguntas distintas y no se suman.';
   return `${tabla}\r\n${csvTxt(nota)}\r\n`;
 }
 
