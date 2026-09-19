@@ -56,6 +56,14 @@ else
   echo "ok"
 fi
 
+# La vuelta REAL contra el Storage. Los tests no la cubren y no pueden:
+# T-ADJ-01 escribe las filas de `storage.objects` a mano y T-ADJ-02 usa un
+# almacén falso, así que `almacenSupabase()` —el único camino que corre en
+# producción— nunca se ejecutaba. Así se pasó que `remove()` devolvía
+# `data: [], error: null` sin borrar nada, con la compensación muda.
+echo "== adjuntos: la vuelta real contra el Storage =="
+if bash scripts/probar-storage-real.sh; then :; else FALLA=1; fi
+
 # El catálogo del CÓDIGO contra el DOC. Los tests no pueden hacerlo: corren en
 # WSL y EVENT-TAXONOMY.md vive en el filesystem de Windows, así que el "coincide
 # exacto" que afirmaban CLAUDE.md, el DECISION-LEDGER y el propio doc no lo

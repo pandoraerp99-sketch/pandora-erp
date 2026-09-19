@@ -69,6 +69,10 @@ export function ComprobantesModal({
   const [error, setError] = useState<string | null>(null);
   const [subiendo, setSubiendo] = useState(false);
   const [quitando, setQuitando] = useState<string | null>(null);
+  /** Link visible cuando el navegador bloqueó la pestaña. Ver `bajar`. */
+  const [linkSuelto, setLinkSuelto] = useState<{ url: string; nombre: string } | null>(
+    null
+  );
   const [motivo, setMotivo] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -105,19 +109,41 @@ export function ComprobantesModal({
 
   async function bajar(id: string) {
     setError(null);
+    setLinkSuelto(null);
+
+    // 🔴 La pestaña se abre ACÁ, sincrónica dentro del click, y recién después
+    // se le pone la dirección. Abrirla después del `await` la bloquea el
+    // navegador —el gesto del usuario ya venció— y no tira ningún error: no
+    // pasa nada y el comerciante piensa que el sistema se colgó.
+    const pestania = window.open('', '_blank');
+
     const res = await urlDeComprobanteAction(id);
     if (!res.ok) {
+      pestania?.close();
       setError(res.error);
       return;
     }
     if ('falta' in res.data) {
       // No se abre una pestaña rota: se dice. Y se relee, porque la lista
       // tiene que quedar mostrando el mismo estado que acabamos de descubrir.
+      pestania?.close();
       setError('El archivo no está guardado. La ficha quedó, el archivo no.');
       await recargar();
       return;
     }
-    window.open(res.data.url, '_blank', 'noopener,noreferrer');
+
+    if (pestania) {
+      // Se corta la referencia de vuelta antes de navegar: la página del
+      // archivo no tiene por qué poder tocar la del sistema.
+      pestania.opener = null;
+      pestania.location.replace(res.data.url);
+      return;
+    }
+
+    // El navegador bloqueó la pestaña igual (hay configuraciones que lo hacen
+    // siempre). Entonces se ofrece el link en vez de dejar al usuario
+    // apretando un botón que no hace nada.
+    setLinkSuelto({ url: res.data.url, nombre: res.data.nombre });
   }
 
   async function confirmarQuitar(id: string) {
@@ -153,6 +179,16 @@ export function ComprobantesModal({
         </div>
 
         {error !== null ? <div className="gerr">{error}</div> : null}
+
+        {linkSuelto !== null ? (
+          <div className="pm-note">
+            El navegador bloqueó la pestaña.{' '}
+            <a href={linkSuelto.url} target="_blank" rel="noopener noreferrer">
+              Abrir {linkSuelto.nombre}
+            </a>{' '}
+            — el link vence en un minuto.
+          </div>
+        ) : null}
 
         {items === null && error === null ? (
           <div className="pm-note">Buscando los comprobantes…</div>

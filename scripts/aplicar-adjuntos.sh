@@ -19,6 +19,8 @@ docker exec -i "$CONT" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
   < drizzle/migrations/post_initial/0040_adjuntos_comprobantes.sql || exit 1
 docker exec -i "$CONT" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
   < drizzle/migrations/post_initial/0041_adjuntos_fk_con_tenant.sql || exit 1
+docker exec -i "$CONT" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+  < drizzle/migrations/post_initial/0042_adjuntos_borrar_solo_huerfanos.sql || exit 1
 
 echo "== verificación =="
 docker exec -i "$CONT" psql -U postgres -d postgres -P pager=off -v ON_ERROR_STOP=1 -c "
@@ -29,7 +31,9 @@ docker exec -i "$CONT" psql -U postgres -d postgres -P pager=off -v ON_ERROR_STO
 
   -- El RLS del BUCKET es otra superficie que el de la tabla: con la tabla
   -- protegida y el bucket abierto, los bytes del vecino se bajan igual.
-  SELECT 'policies en storage.objects: ' || count(*)::text
+  -- 3: select, insert y el delete acotado a huérfanos (0042).
+  SELECT CASE WHEN count(*) = 3 THEN 'policies en storage.objects: 3 ok'
+              ELSE 'policies en storage.objects: ' || count(*)::text || ' (TIENEN QUE SER 3)' END
     FROM pg_policies
    WHERE schemaname = 'storage' AND tablename = 'objects'
      AND policyname LIKE 'comprobantes_%';

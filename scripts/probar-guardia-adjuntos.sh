@@ -7,11 +7,12 @@
 # no existe, el filtro esta mal, el JWT no tiene company_id). Ya paso en este
 # proyecto: `probar-guardia-cross-tenant.sh` nacio por lo mismo.
 #
-# Cuatro mutaciones sobre garantias reales:
+# Cinco mutaciones sobre garantias reales:
 #   1. sin las policies del BUCKET → el vecino baja el archivo
 #   2. sin el trigger de la tabla  → el adjunto se borra
 #   3. la lista de tipos del service desincronizada de la del bucket
 #   4. el path armado SIN el tenant → la policy del bucket no protege nada
+#   5. sin la policy de DELETE de la 0042 → la compensacion vuelve a ser muda
 #
 # El estado se restaura SIEMPRE (trap), re-aplicando la 0040.
 set -u
@@ -22,19 +23,27 @@ if [ -z "$CONT" ]; then echo "🔴 no hay container supabase_db levantado"; exit
 
 psql_() { docker exec -i "$CONT" psql -U postgres -d postgres -q "$@"; }
 
+fallos=0
+
 restaurar() {
-  echo "-- restaurando 0040 + 0041 --"
-  for m in 0040_adjuntos_comprobantes 0041_adjuntos_fk_con_tenant; do
+  echo "-- restaurando 0040 + 0041 + 0042 --"
+  for m in 0040_adjuntos_comprobantes 0041_adjuntos_fk_con_tenant \
+           0042_adjuntos_borrar_solo_huerfanos; do
     docker exec -i "$CONT" psql -U postgres -d postgres -q -v ON_ERROR_STOP=1 \
       < "drizzle/migrations/post_initial/${m}.sql" >/dev/null || {
         echo "🔴 no se pudo restaurar ${m} — la base queda DESPROTEGIDA"
+        # 🔴 Antes esto solo hacia `return 1` y el script imprimia
+        # "GUARDIA OK" igual, porque nadie miraba ese return: el guarda
+        # terminaba en verde dejando la base sin proteccion. Es exactamente la
+        # forma de falso verde que este script existe para cazar, adentro del
+        # script. Ahora suma al contador.
+        fallos=$((fallos + 1))
         return 1
       }
   done
 }
 trap restaurar EXIT
 
-fallos=0
 
 esperar_rojo() {
   local caso="$1"
@@ -98,6 +107,26 @@ else
 fi
 restaurar_svc
 
+echo "== mutacion 5: sin el permiso de borrar el huerfano (0042) =="
+# Esta mutacion es la que mas importa de todas, porque el bug que la 0042
+# arregla NO daba error: `remove()` devolvia `data: [], error: null` y el
+# objeto quedaba. Ningun test lo veia — el almacen falso probaba que el service
+# LLAMA a borrar, no que borrar pueda borrar.
+psql_ -c "DROP POLICY IF EXISTS comprobantes_borrar_huerfano ON storage.objects;" >/dev/null
+if bash scripts/probar-storage-real.sh >/tmp/adj-rm.log 2>&1; then
+  echo "🔴 sin la policy de DELETE — la vuelta real SIGUIO EN VERDE (el borrado mudo volvio)"
+  fallos=$((fallos + 1))
+else
+  echo "✅ sin la policy de DELETE — la vuelta real fallo"
+fi
+restaurar
+
+# Restauracion EXPLICITA antes del veredicto. El `trap` corre al salir, o sea
+# DESPUES del "GUARDIA OK": si fallaba ahi, el 🔴 aparecia debajo de un verde ya
+# impreso y con codigo de salida 0. Un ultimo falso verde, en el script que
+# existe para cazarlos.
+restaurar
+
 echo "== y con todo en su lugar, verde =="
 if bash scripts/correr-integracion.sh T-ADJ >/tmp/adj-ok.log 2>&1; then
   echo "✅ con todo restaurado, T-ADJ-01 y T-ADJ-02 en verde"
@@ -110,4 +139,4 @@ if [ "$fallos" -ne 0 ]; then
   echo "GUARDIA DE ADJUNTOS: $fallos problema(s)"
   exit 1
 fi
-echo "GUARDIA DE ADJUNTOS OK (4 mutaciones atrapadas)"
+echo "GUARDIA DE ADJUNTOS OK (5 mutaciones atrapadas)"

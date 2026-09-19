@@ -60,8 +60,21 @@ export async function almacenSupabase(): Promise<AlmacenDeComprobantes> {
     },
 
     async borrar(path) {
-      const { error } = await bucket.remove([path]);
-      return { error: error ? error.message : null };
+      const { data, error } = await bucket.remove([path]);
+      if (error) return { error: error.message };
+      // 🔴 `remove()` devuelve `{ data: [], error: null }` cuando el RLS le
+      // filtra las filas: no borra NADA y no se queja. Mirar sólo `error`
+      // dejaba la compensación muda — el objeto quedaba arriba y el
+      // `logger.error` del huérfano no se disparaba nunca.
+      //
+      // Probado contra la base real (`scripts/probar-storage-real.sh`) antes
+      // de la migration 0042, que es la que le dio el permiso de borrar
+      // huérfanos. Este chequeo se queda igual: si mañana alguien toca esa
+      // policy, la compensación tiene que gritar y no volver a callarse.
+      if ((data ?? []).length === 0) {
+        return { error: 'el storage no borró nada (¿la policy de DELETE?)' };
+      }
+      return { error: null };
     },
 
     async existe(carpeta, nombre) {
