@@ -222,14 +222,28 @@ describe('T-GASTO-03 — proveedores del período', () => {
     await gasto('100.00', 'Edenor', '30-12345678-0');
 
     const filas = await withCtx(() => getProveedoresDelPeriodo(DESDE, HASTA));
-    expect(filas.length).toBe(1);
-    expect(filas[0]?.cuits).toBe('2');
-    expect(filas[0]?.cuit).toContain('30-12345678-9');
-    expect(filas[0]?.cuit).toContain('30-12345678-0');
+    const edenor = filas.filter((f) => f.nombre === 'Edenor');
 
-    // Y el CSV lo dice, no lo deja pasar como un CUIT largo.
+    // 🔴 Antes esto daba UNA fila con `cuits = '2'`: los dos gastos caían en el
+    // mismo grupo porque se agrupa por `coalesce(tercero_id, nombre)` y ninguno
+    // tenía ficha. Desde el puente gasto↔ficha (2026-09-20) cada CUIT arma la
+    // suya, así que son DOS filas — el dato quedó más correcto y el aviso de
+    // "revisar" se estaba yendo en silencio con él. Lo agarró este test, que
+    // ya estaba.
+    //
+    // Lo que el caso tiene que garantizar no es la cantidad de filas sino que
+    // **el tipeo se vea**. Por eso ahora se exige la marca, que cubre las dos
+    // formas de quedar agrupado.
+    expect(edenor).toHaveLength(2);
+    expect(edenor.every((f) => f.nombre_repetido === 'true')).toBe(true);
+    expect(edenor.map((f) => f.cuit).sort()).toEqual(
+      ['30-12345678-0', '30-12345678-9']
+    );
+
+    // Y el CSV lo dice. Es el aviso que más importa: viaja ADENTRO del archivo
+    // que se manda al estudio.
     const csv = armarCsvProveedores(filas, 'septiembre');
-    expect(csv).toContain('revisar: 2 CUIT');
+    expect(csv).toContain('revisar: mismo nombre con otro CUIT');
   });
 
   it('ordena de mayor a menor importe', async () => {
@@ -268,6 +282,7 @@ describe('T-GASTO-03 — proveedores del período', () => {
             nombre: 'Edenor',
             cuit: '30-12345678-9',
             cuits: '1',
+            nombre_repetido: 'false',
             comprobantes: '2',
             total: '1000.00',
           },
@@ -305,7 +320,16 @@ describe('T-GASTO-03 — proveedores del período', () => {
 
     it('usa la misma receta que los otros CSV', async () => {
       const csv = armarCsvProveedores(
-        [{ nombre: 'A', cuit: '', cuits: '0', comprobantes: '1', total: '1234.5' }],
+        [
+          {
+            nombre: 'A',
+            cuit: '',
+            cuits: '0',
+            nombre_repetido: 'false',
+            comprobantes: '1',
+            total: '1234.5',
+          },
+        ],
         'x'
       );
       expect(csv.charCodeAt(0)).toBe(0xfeff);

@@ -39,6 +39,9 @@ import {
 } from './supplier-account.service.js';
 import { products } from '../../db/schema/products.js';
 import { terceros } from '../../db/schema/terceros.js';
+import { createTercero } from '../../cash/terceros.js';
+import { company_users } from '../../db/schema/users.js';
+import type { UserRole } from '../../db/schema/_common.js';
 import { cash_movements } from '../../db/schema/cash_movements.js';
 import { cash_sessions } from '../../db/schema/cash_sessions.js';
 import {
@@ -122,6 +125,113 @@ export interface LineaDeCompra {
  * el gasto se guardara y el movimiento no, el arqueo cerraría de más y nadie
  * sabría por qué.
  */
+/**
+ * Busca (o crea) la ficha del proveedor y devuelve su id, o `null`.
+ *
+ * ── Por qué el CUIT y no el nombre ────────────────────────────────────────
+ * El nombre se tipea distinto cada vez ("Inmobiliaria del Sur", "INMOB. DEL
+ * SUR"), y la tarjeta "Por proveedor" ya muestra el caso de un proveedor con
+ * dos CUIT distintos porque nadie lo chequea. El CUIT es lo que identifica al
+ * locador para el estudio. Sin CUIT no se vincula: una compra suelta sin
+ * comprobante no merece una ficha en el catálogo.
+ *
+ * ── Por qué crear es sólo del dueño ───────────────────────────────────────
+ * `registerExpense` NO pide rol —cualquiera con sesión carga un gasto— pero el
+ * catálogo de beneficiarios lo administra sólo el dueño (`assertOwnerTercero`),
+ * y de esa lista salen los destinatarios de los retiros de caja. Si cargar un
+ * gasto pudiera crear fichas, un cajero estaría metiendo nombres en esa lista
+ * por la ventana.
+ *
+ * Así que se separan las dos cosas, que no son la misma:
+ *   · VINCULAR a una ficha que ya existe → cualquiera. No otorga nada nuevo:
+ *     apunta el gasto a una fila que el dueño ya aprobó.
+ *   · CREAR la ficha → sólo el dueño, la regla que ya rige el catálogo.
+ *
+ * No es "se comporta distinto según quién sea": el gasto queda idéntico en los
+ * dos casos. Lo único owner-only es dar de alta en el catálogo, que ya lo era.
+ *
+ * ── El rol se LEE, no se recibe ───────────────────────────────────────────
+ * La primera versión lo tomaba como parámetro, igual que los catálogos de
+ * `/caja`. Ahí está bien —el gate es el propósito de la función y la action
+ * acaba de leer la sesión—, pero acá el rol decide un efecto SECUNDARIO de
+ * otra operación, y un `actor_role: 'owner'` mandado por quien llama alcanzaba
+ * para abrir el catálogo. Se lee de `company_users` por (tenant, usuario), que
+ * es la fuente de verdad, y sólo cuando hay que dar de alta: en el camino
+ * normal —la ficha ya existe, o no hay CUIT— no cuesta una consulta.
+ *
+ * Tampoco se filtra por `is_active`: un proveedor dado de baja sigue siendo la
+ * misma persona, y fragmentar su historial porque dejó de ofrecerse en un
+ * desplegable sería peor que el problema.
+ */
+async function vincularProveedorPorCuit(
+  tenantId: string,
+  payeeName: string | null,
+  payeeDoc: string | null,
+  terceroIdExplicito: string | undefined,
+  userId: string | null
+): Promise<string | null> {
+  // Si lo eligió a mano, manda esa elección.
+  if (terceroIdExplicito !== undefined) return terceroIdExplicito;
+
+  const doc = payeeDoc?.trim() ?? '';
+  const nombre = payeeName?.trim() ?? '';
+  if (doc === '' || nombre === '') return null;
+
+  const [existente] = await db
+    .select({ id: terceros.id })
+    .from(terceros)
+    .where(
+      and(
+        eq(terceros.tenant_id, tenantId),
+        eq(terceros.type, 'proveedor'),
+        eq(terceros.doc, doc)
+      )
+    )
+    // Si por historia hay dos fichas con el mismo CUIT, siempre gana la misma:
+    // un id que cambia entre llamadas haría que el contrato cuelgue de una y
+    // los gastos de la otra.
+    .orderBy(terceros.created_at)
+    .limit(1);
+
+  if (existente) return existente.id;
+
+  if (userId === null) return null;
+  const [miembro] = await db
+    .select({ role: company_users.role })
+    .from(company_users)
+    .where(
+      and(
+        eq(company_users.company_id, tenantId),
+        eq(company_users.user_id, userId)
+      )
+    )
+    .limit(1);
+
+  // `company_users.role` es `text` con CHECK en la base, así que Drizzle lo
+  // tipa como string. Se compara contra el literal en vez de castear: un cast
+  // diría "confiá en mí" sobre un valor que viene de la base, y la comparación
+  // es la que realmente decide.
+  if (miembro?.role !== 'owner') return null;
+  const actorRole: UserRole = 'owner';
+
+  try {
+    const creado = await createTercero(
+      { type: 'proveedor', name: nombre, doc },
+      actorRole
+    );
+    return creado.id;
+  } catch (e) {
+    // El alta de la ficha es una comodidad; el gasto es el hecho. Que no se
+    // pueda crear (nombre larguísimo, carrera con otro alta) no puede tumbar
+    // la carga del gasto — pero tampoco pasa callado (CLAUDE.md §20.4).
+    logger.warn(
+      { err: e instanceof Error ? e.message : String(e), cuit: doc },
+      'no se pudo crear la ficha del proveedor; el gasto queda sin vincular'
+    );
+    return null;
+  }
+}
+
 export async function registerExpense(input: NuevoGasto): Promise<Expense> {
   const { tenantId, userId } = ctx();
 
@@ -261,6 +371,26 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
     payeeDoc = t.doc;
   }
 
+  // ── El puente gasto ↔ ficha del proveedor ────────────────────────────────
+  //
+  // Hasta el 2026-09-20 elegir el proveedor de la lista era opcional y NADIE lo
+  // elegía: 0 de 18 gastos de la base de dev tenían `tercero_id`, los dos de
+  // alquiler incluidos. El CUIT del locador vivía en la fila del gasto y no en
+  // una ficha, así que un contrato colgado del proveedor —ítem 12, "alquileres
+  // (con contrato)"— quedaba atado a una fila que ningún gasto señalaba, y la
+  // contadora no podía unir el contrato con la deducción.
+  //
+  // El CUIT es la llave: es lo que identifica al locador para el estudio, no el
+  // nombre (que se tipea distinto cada vez). Sin CUIT no se vincula nada —
+  // "Ferretería del barrio" sin comprobante no merece una ficha.
+  const terceroVinculado = await vincularProveedorPorCuit(
+    tenantId,
+    payeeName,
+    payeeDoc,
+    input.tercero_id,
+    userId
+  );
+
   return db.transaction(async (tx) => {
     let cashMovementId: bigint | null = null;
 
@@ -308,7 +438,11 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
         tenant_id: tenantId,
         fecha: input.fecha,
         categoria: input.categoria,
-        tercero_id: input.tercero_id ?? null,
+        // El vinculado, no el del input: si el gasto trae CUIT y no se eligió
+        // proveedor a mano, acá queda apuntando a su ficha (ver
+        // `vincularProveedorPorCuit`). Sin esto el contrato del ítem 12 cuelga
+        // de una fila que ningún gasto señala.
+        tercero_id: terceroVinculado,
         payee_name: payeeName,
         payee_doc: payeeDoc,
         neto: neto.toFixed(4),
@@ -1279,6 +1413,20 @@ export interface ProveedorDelPeriodo {
   cuit: string;
   /** Cuántos CUIT distintos se agruparon. > 1 = hay algo para revisar. */
   cuits: string;
+  /**
+   * `'true'` si OTRO grupo del período tiene el mismo nombre normalizado — o
+   * sea: el mismo proveedor cargado con dos CUIT distintos, que es casi
+   * siempre un tipeo.
+   *
+   * 🔴 Existe porque el puente gasto↔ficha (2026-09-20) lo rompió sin que
+   * fallara nada visible: antes, dos gastos con el mismo nombre y distinto
+   * CUIT caían en UN grupo (se agrupa por `coalesce(tercero_id, nombre)`) y la
+   * tarjeta avisaba "2 CUIT distintos · revisar". Con cada CUIT armando su
+   * propia ficha, pasaron a ser dos grupos y el aviso dejó de existir: el dato
+   * quedó más correcto y la revisión desapareció. Lo agarró un test que ya
+   * estaba; si no, se iba en silencio.
+   */
+  nombre_repetido: string;
   comprobantes: string;
   total: string;
 }
@@ -1321,17 +1469,25 @@ export async function getProveedoresDelPeriodo(
 ): Promise<ProveedorDelPeriodo[]> {
   const { tenantId } = ctx();
   return db.execute<ProveedorDelPeriodo>(
-    sql`SELECT coalesce(string_agg(DISTINCT payee_name, ' / '), '(sin proveedor indicado)') AS nombre,
-               coalesce(string_agg(DISTINCT payee_doc, ' / '), '')                          AS cuit,
-               count(DISTINCT payee_doc)::text                                              AS cuits,
-               count(*)::text                                                               AS comprobantes,
-               sum(total)::text                                                             AS total
-        FROM expenses
-        WHERE tenant_id = ${tenantId}
-          AND fecha >= ${desde}::date AND fecha < ${hasta}::date
-          AND ${GASTO_VIGENTE_SQL}
-        GROUP BY coalesce(tercero_id::text, lower(trim(payee_name)))
-        ORDER BY sum(total) DESC`
+    // La ventana va AFUERA del GROUP BY: pregunta si el nombre de este grupo
+    // se repite en otro grupo del mismo período. No se puede resolver adentro
+    // del agregado porque justamente compara un grupo contra los demás.
+    sql`SELECT g.nombre, g.cuit, g.cuits, g.comprobantes, g.total,
+               (count(*) OVER (PARTITION BY lower(trim(g.nombre))) > 1)::text AS nombre_repetido
+          FROM (
+            SELECT coalesce(string_agg(DISTINCT payee_name, ' / '), '(sin proveedor indicado)') AS nombre,
+                   coalesce(string_agg(DISTINCT payee_doc, ' / '), '')                          AS cuit,
+                   count(DISTINCT payee_doc)::text                                              AS cuits,
+                   count(*)::text                                                               AS comprobantes,
+                   sum(total)::text                                                             AS total,
+                   sum(total)                                                                   AS orden
+              FROM expenses
+             WHERE tenant_id = ${tenantId}
+               AND fecha >= ${desde}::date AND fecha < ${hasta}::date
+               AND ${GASTO_VIGENTE_SQL}
+             GROUP BY coalesce(tercero_id::text, lower(trim(payee_name)))
+          ) g
+         ORDER BY g.orden DESC`
   );
 }
 
@@ -1353,7 +1509,19 @@ export function armarCsvProveedores(
     ['Proveedor', 'CUIT', 'Comprobantes', 'Total comprado'],
     filas.map((p) => [
       csvTxt(p.nombre),
-      csvTxt(Number(p.cuits) > 1 ? `${p.cuit} (revisar: ${p.cuits} CUIT)` : p.cuit),
+      // El aviso viaja DENTRO del archivo que se manda al estudio, así que
+      // tiene que cubrir las dos formas del mismo problema: los dos CUIT
+      // cayeron en un grupo (`cuits > 1`), o quedaron en fichas distintas y
+      // son dos filas con el mismo nombre (`nombre_repetido`). Desde el puente
+      // gasto↔ficha la segunda es la que pasa, y sin esto el CSV salía limpio
+      // con un CUIT mal tipeado adentro.
+      csvTxt(
+        Number(p.cuits) > 1
+          ? `${p.cuit} (revisar: ${p.cuits} CUIT)`
+          : p.nombre_repetido === 'true'
+            ? `${p.cuit} (revisar: mismo nombre con otro CUIT)`
+            : p.cuit
+      ),
       p.comprobantes,
       csvNum(p.total),
     ])

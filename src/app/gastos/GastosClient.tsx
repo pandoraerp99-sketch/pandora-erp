@@ -113,6 +113,12 @@ export interface ProveedorPeriodoDTO {
   cuit: string;
   /** CUIT distintos agrupados. > 1 = hay algo para revisar antes de mandarlo. */
   cuits: string;
+  /**
+   * `'true'` si el mismo nombre aparece en otra fila con otro CUIT. Es el
+   * mismo "revisar" de `cuits > 1`, para el caso en que los dos CUIT quedaron
+   * en fichas distintas y por eso ya no caen en un solo grupo.
+   */
+  nombre_repetido: string;
   comprobantes: string;
   total: string;
 }
@@ -745,6 +751,15 @@ export function GastosClient({
                       ) : Number(p.cuits) > 1 ? (
                         <span className="gprov-ojo">
                           {p.cuits} CUIT distintos · revisar
+                        </span>
+                      ) : p.nombre_repetido === 'true' ? (
+                        /* El mismo nombre aparece en otra fila con otro CUIT:
+                           casi siempre un tipeo. Antes esto caía en el caso de
+                           arriba porque los dos gastos formaban UN grupo; desde
+                           que cada CUIT arma su propia ficha son dos filas, y
+                           sin este aviso el "revisar" se perdía. */
+                        <span className="gprov-ojo">
+                          {p.cuit} · mismo nombre con otro CUIT, revisar
                         </span>
                       ) : (
                         p.cuit
