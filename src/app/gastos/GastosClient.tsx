@@ -755,9 +755,23 @@ export function GastosClient({
                   <span className="gcatv">{plata(p.total)}</span>
                 </div>
               ))}
+              {/* 🔴 Decía "es lo que se le PAGÓ a cada uno" y que lo adeudado
+                  estaba "abajo, en Acreedores". Las dos mitades eran falsas y
+                  `getProveedoresDelPeriodo` no cambió: suma `total` sin mirar
+                  el pago, o sea DEVENGADO.
+
+                  Es la misma frase que se corrigió en el CSV de proveedores el
+                  2026-09-19 — y quedó viva en la pantalla. Acá es peor: las dos
+                  tarjetas están una al lado de la otra, así que el que lee
+                  "pagado acá / debido abajo" suma los dos números y cuenta dos
+                  veces lo que sigue impago, que aparece en LAS DOS. Lo que las
+                  separa no es qué proveedor entra sino qué se pregunta: acá,
+                  cuánto se le compró en el período; abajo, cuánto se le debe a
+                  una fecha. */}
               <p className="label-sm" style={{ marginTop: 10, lineHeight: 1.5 }}>
-                Es lo que se le <b>pagó</b> a cada uno en el período. Lo que se
-                les <b>debe</b> está abajo, en Acreedores.
+                Es lo que se le <b>compró</b> a cada uno en el período, pagado o
+                no. Lo que siga impago aparece <b>también</b> abajo en
+                Acreedores: son dos preguntas distintas y <b>no se suman</b>.
               </p>
             </div>
           ) : null}
