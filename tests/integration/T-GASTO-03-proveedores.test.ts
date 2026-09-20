@@ -281,6 +281,7 @@ describe('T-GASTO-03 — proveedores del período', () => {
           {
             nombre: 'Edenor',
             cuit: '30-12345678-9',
+            tercero_id: '',
             cuits: '1',
             nombre_repetido: 'false',
             comprobantes: '2',
@@ -323,6 +324,7 @@ describe('T-GASTO-03 — proveedores del período', () => {
         [
           {
             nombre: 'A',
+            tercero_id: '',
             cuit: '',
             cuits: '0',
             nombre_repetido: 'false',

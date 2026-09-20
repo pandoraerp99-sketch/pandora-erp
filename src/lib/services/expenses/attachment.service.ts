@@ -38,6 +38,7 @@ import {
   TIPOS_DE_ARCHIVO_PERMITIDOS,
 } from '../../db/schema/attachments.js';
 import { expenses } from '../../db/schema/expenses.js';
+import { terceros } from '../../db/schema/terceros.js';
 import type { AlmacenDeComprobantes } from './attachment.storage.js';
 import { requireTracingContext } from '../../tracing/context.js';
 import { writeAuditLog } from '../../audit/audit-writer.js';
@@ -285,6 +286,211 @@ export async function listarAdjuntosDeGasto(
 }
 
 /**
+ * El contrato que respalda los pagos a un proveedor (slice 3).
+ *
+ * ── Por qué es otra función y no un parámetro de la de arriba ─────────────
+ * Comparten el mecanismo —validar, hashear, subir, insertar, compensar— pero
+ * no comparten las reglas: un comprobante cuelga del GASTO y no lleva
+ * vigencia; un contrato cuelga del TERCERO y sin vigencia no sirve para lo que
+ * se lo pide. El CHECK de la 0040 ya impide mezclarlos, así que una sola
+ * función con banderas terminaría armando estados que la base rechaza.
+ *
+ * ── La vigencia NO decide si el contrato cuenta ───────────────────────────
+ * Un contrato vencido siguió respaldando los doce pagos que cubrió. Igual que
+ * "lo pagado" no es "lo gastado", *cuándo rige* no es *si vale*: por eso los
+ * vencidos se listan igual, marcados, y no se esconden.
+ */
+export async function adjuntarContrato(
+  input: {
+    tercero_id: string;
+    archivo: ArchivoASubir;
+    vigencia_desde: string;
+    vigencia_hasta: string;
+  },
+  almacen: AlmacenDeComprobantes
+): Promise<{ id: string; storage_path: string }> {
+  const { tenantId, userId } = ctx();
+
+  const problema = validarArchivo(input.archivo);
+  if (problema !== null) {
+    throw new AttachmentError(problema, 'ARCHIVO_INVALIDO');
+  }
+
+  if (input.vigencia_hasta < input.vigencia_desde) {
+    throw new AttachmentError(
+      'La vigencia termina antes de empezar',
+      'VIGENCIA_INVALIDA'
+    );
+  }
+
+  const [tercero] = await db
+    .select({ id: terceros.id })
+    .from(terceros)
+    .where(and(eq(terceros.id, input.tercero_id), eq(terceros.tenant_id, tenantId)))
+    .limit(1);
+
+  if (!tercero) {
+    throw new AttachmentError('Ese proveedor no existe', 'TERCERO_NO_ENCONTRADO');
+  }
+
+  const id = crypto.randomUUID();
+  const storagePath = `${tenantId}/${id}`;
+  const sha256 = createHash('sha256').update(input.archivo.bytes).digest('hex');
+
+  const { error: errorSubida } = await almacen.subir(
+    storagePath,
+    input.archivo.bytes,
+    input.archivo.contentType
+  );
+  if (errorSubida) {
+    logger.error(
+      { err: errorSubida, tercero_id: input.tercero_id },
+      'no se pudo subir el contrato al bucket'
+    );
+    throw new AttachmentError('No se pudo guardar el archivo', 'FALLO_SUBIDA');
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(attachments).values({
+        id,
+        tenant_id: tenantId,
+        tipo: 'contrato',
+        tercero_id: input.tercero_id,
+        nombre_original: input.archivo.nombre,
+        content_type: input.archivo.contentType,
+        bytes: input.archivo.bytes.byteLength,
+        sha256,
+        storage_path: storagePath,
+        vigencia_desde: input.vigencia_desde,
+        vigencia_hasta: input.vigencia_hasta,
+        uploaded_by: userId,
+      });
+
+      await writeAuditLog(
+        {
+          // El mismo evento del catálogo, que es cerrado: un contrato es un
+          // adjunto del dominio gastos igual que un comprobante. Lo que cambia
+          // es de qué cuelga, y eso lo dice el payload.
+          event_name: 'expense.attachment_added',
+          payload: {
+            attachment_id: id,
+            tipo: 'contrato',
+            tercero_id: input.tercero_id,
+            nombre_original: input.archivo.nombre,
+            content_type: input.archivo.contentType,
+            bytes: input.archivo.bytes.byteLength,
+            vigencia_desde: input.vigencia_desde,
+            vigencia_hasta: input.vigencia_hasta,
+            sha256,
+          },
+          // Un contrato de locación lleva los datos personales del locador
+          // (B-11, pendiente del abogado). Mismo nivel que el comprobante, y
+          // el payload no suma nada de eso más allá de lo que ya hay.
+          pii_level: 'pii_high',
+        },
+        tx
+      );
+    });
+  } catch (e) {
+    const { error: errorBorrado } = await almacen.borrar(storagePath);
+    if (errorBorrado) {
+      logger.error(
+        { storage_path: storagePath, err: errorBorrado },
+        'quedó un objeto HUÉRFANO en el bucket: falló el insert del contrato y también la compensación'
+      );
+    }
+    throw e;
+  }
+
+  return { id, storage_path: storagePath };
+}
+
+export interface ContratoDeTercero extends AdjuntoDeGasto {
+  vigencia_desde: string | null;
+  vigencia_hasta: string | null;
+  /** `true` si la vigencia ya terminó. NO significa que no valga. */
+  vencido: boolean;
+}
+
+/**
+ * Los contratos vigentes de un proveedor, los vencidos incluidos.
+ *
+ * `hoy` entra por parámetro y no se lee acá adentro: el día del comercio es
+ * America/Argentina/Ushuaia y esto corre en UTC — ya hubo dos relojes
+ * desincronizados en este proyecto por resolver la fecha en el lugar
+ * equivocado.
+ */
+export async function listarContratosDeTercero(
+  terceroId: string,
+  hoy: string,
+  almacen: AlmacenDeComprobantes
+): Promise<ContratoDeTercero[]> {
+  const { tenantId } = ctx();
+
+  const filas = await db
+    .select()
+    .from(attachments)
+    .where(
+      and(
+        eq(attachments.tenant_id, tenantId),
+        eq(attachments.tercero_id, terceroId),
+        isNull(attachments.removed_at)
+      )
+    );
+
+  return Promise.all(
+    filas.map(async (f) => {
+      const esta = await almacen.existe(f.tenant_id, f.id);
+      if (esta === null) {
+        logger.warn(
+          { attachment_id: f.id },
+          'no se pudo verificar si el contrato está en el bucket'
+        );
+      }
+      return {
+        id: f.id,
+        nombre_original: f.nombre_original,
+        content_type: f.content_type,
+        bytes: f.bytes,
+        created_at: f.created_at,
+        archivo_presente: esta === true,
+        vigencia_desde: f.vigencia_desde,
+        vigencia_hasta: f.vigencia_hasta,
+        vencido: f.vigencia_hasta !== null && f.vigencia_hasta < hoy,
+      };
+    })
+  );
+}
+
+/**
+ * Cuántos contratos vigentes tiene cada proveedor de la lista.
+ *
+ * Mismo criterio que `contarAdjuntosPorGasto`: cuenta FICHAS, no archivos
+ * presentes en el bucket.
+ */
+export async function contarContratosPorTercero(
+  terceroIds: string[]
+): Promise<Record<string, number>> {
+  const { tenantId } = ctx();
+  if (terceroIds.length === 0) return {};
+
+  const filas = await db.execute<{ tercero_id: string; cantidad: string }>(sql`
+    SELECT tercero_id::text AS tercero_id, count(*)::text AS cantidad
+      FROM attachments
+     WHERE tenant_id = ${tenantId}
+       AND removed_at IS NULL
+       AND tercero_id IN (${sql.join(
+         terceroIds.map((id) => sql`${id}::uuid`),
+         sql`, `
+       )})
+     GROUP BY tercero_id
+  `);
+
+  return Object.fromEntries(filas.map((f) => [f.tercero_id, Number(f.cantidad)]));
+}
+
+/**
  * Cuántos comprobantes vigentes tiene cada gasto de la lista.
  *
  * Es para que la pantalla pueda mostrar de un vistazo cuáles ya tienen
@@ -390,7 +596,15 @@ export async function quitarComprobante(input: {
           isNull(attachments.removed_at)
         )
       )
-      .returning({ id: attachments.id, expense_id: attachments.expense_id });
+      .returning({
+        id: attachments.id,
+        tipo: attachments.tipo,
+        expense_id: attachments.expense_id,
+        // Sin esto, la baja de un CONTRATO quedaba auditada con
+        // `expense_id: null` y nada más: el evento no decía de qué colgaba lo
+        // que se sacó, que es justo lo que un audit tiene que poder contestar.
+        tercero_id: attachments.tercero_id,
+      });
 
     if (filas.length === 0) {
       throw new AttachmentError('Ese comprobante no existe', 'NO_ENCONTRADO');
@@ -401,7 +615,9 @@ export async function quitarComprobante(input: {
         event_name: 'expense.attachment_removed',
         payload: {
           attachment_id: input.attachment_id,
+          tipo: filas[0]!.tipo,
           expense_id: filas[0]!.expense_id,
+          tercero_id: filas[0]!.tercero_id,
           motivo,
         },
         pii_level: 'pii_high',

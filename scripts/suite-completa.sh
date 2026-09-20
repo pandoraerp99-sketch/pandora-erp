@@ -25,7 +25,11 @@ EVENTOS_CABLEADOS=$(grep -hoE "event_name: '(expense|customer\.account|supplier\
   src/lib/services/expenses/supplier-account.service.ts \
   src/lib/services/expenses/attachment.service.ts \
   src/lib/services/customers/account.service.ts \
-  src/lib/services/identity/accountant.service.ts | sort)
+  src/lib/services/identity/accountant.service.ts | sort -u)
+# `sort -u`: se cuentan NOMBRES distintos, que es lo que el titulo dice y lo
+# que importa del catalogo. Con `sort` a secas contaba apariciones, y emitir un
+# evento ya cableado desde un segundo lugar —el contrato del proveedor reusa
+# `expense.attachment_added`— rompia el chequeo sin que el catalogo cambiara.
 echo "$EVENTOS_CABLEADOS"
 
 FALLA=0

@@ -347,6 +347,26 @@ html[data-theme="dark"] .cmp-zona{ border-color:rgba(255,255,255,0.18);
 html[data-theme="dark"] .cmp-zona:hover{ border-color:var(--purple);
   background:rgba(124,113,255,0.10); }
 
+/* Vencido es una MARCA, no un castigo: el contrato sigue en la lista porque
+   respaldó los pagos que cubrió. Por eso es discreto y no rojo de error. */
+.cmp-vencido{ flex:0 0 auto; font-size:10px; font-weight:700; letter-spacing:0.04em;
+  text-transform:uppercase; padding:3px 7px; border-radius:7px;
+  /* #6b4a12 y no #8a6524: medido sobre píxeles, el anterior daba 3,38:1 en
+     tema claro. Es texto de 10px, o sea "normal" para WCAG por más bold que
+     esté — el umbral de texto grande empieza en 18,66px. */
+  color:#6b4a12; background:rgba(214,158,46,0.16); }
+html[data-theme="dark"] .cmp-vencido{ color:#ffd79a; background:rgba(255,184,122,0.16); }
+
+.cmp-vig{ display:flex; gap:10px; margin-top:7px; flex-wrap:wrap; }
+.cmp-vig label{ display:flex; align-items:center; gap:5px; font-size:11px;
+  color:var(--ink-2); }
+.cmp-vig input{ font-family:inherit; font-size:12px; color:var(--ink-1);
+  background:rgba(13,20,36,0.04); border:1px solid rgba(13,20,36,0.10);
+  border-radius:8px; padding:5px 8px; outline:none; }
+.cmp-vig input:focus{ border-color:var(--purple); }
+html[data-theme="dark"] .cmp-vig input{ background:rgba(255,255,255,0.07);
+  border-color:rgba(255,255,255,0.13); color-scheme:dark; }
+
 /* El clip de la fila de gastos: dice si ese gasto ya tiene respaldo. */
 .gclip{ width:28px; height:26px; flex:0 0 auto; display:inline-flex; align-items:center;
   justify-content:center; gap:2px; border:none; background:transparent; cursor:pointer;

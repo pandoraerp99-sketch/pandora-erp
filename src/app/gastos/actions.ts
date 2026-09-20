@@ -25,11 +25,14 @@ import {
 } from '@/lib/services/expenses/supplier-account.service';
 import {
   adjuntarComprobante,
+  adjuntarContrato,
   listarAdjuntosDeGasto,
+  listarContratosDeTercero,
   quitarComprobante,
   urlParaDescargar,
   AttachmentError,
   type AdjuntoDeGasto,
+  type ContratoDeTercero,
 } from '@/lib/services/expenses/attachment.service';
 import { almacenSupabase } from '@/lib/services/expenses/attachment.storage';
 import type { SupplierPaymentMethod } from '@/lib/db/schema/supplier_account';
@@ -457,6 +460,50 @@ export async function urlDeComprobanteAction(
   attachmentId: string
 ): Promise<ActionResult<{ url: string; nombre: string } | { falta: true }>> {
   return runAction(async () => urlParaDescargar(attachmentId, await almacenSupabase()));
+}
+
+// ── Contratos del proveedor (ítem 12, slice 3) ──────────────────────────────
+
+export async function adjuntarContratoAction(
+  formData: FormData
+): Promise<ActionResult<{ id: string }>> {
+  return runAction(async () => {
+    const archivo = formData.get('archivo');
+    if (!(archivo instanceof File)) {
+      throw new AttachmentError('No llegó ningún archivo', 'SIN_ARCHIVO');
+    }
+
+    const { id } = await adjuntarContrato(
+      {
+        tercero_id: String(formData.get('tercero_id') ?? ''),
+        vigencia_desde: String(formData.get('vigencia_desde') ?? ''),
+        vigencia_hasta: String(formData.get('vigencia_hasta') ?? ''),
+        archivo: {
+          nombre: archivo.name,
+          contentType: archivo.type,
+          bytes: new Uint8Array(await archivo.arrayBuffer()),
+        },
+      },
+      await almacenSupabase()
+    );
+
+    revalidatePath('/gastos');
+    return { id };
+  });
+}
+
+export async function listarContratosAction(
+  terceroId: string
+): Promise<ActionResult<ContratoDeTercero[]>> {
+  return runAction(async () =>
+    // El día lo resuelve el SERVIDOR en la zona del comercio: si lo mandara el
+    // navegador, un contrato vencería o no según el reloj de la máquina.
+    listarContratosDeTercero(
+      terceroId,
+      diaDelComercio(new Date()),
+      await almacenSupabase()
+    )
+  );
 }
 
 export async function quitarComprobanteAction(

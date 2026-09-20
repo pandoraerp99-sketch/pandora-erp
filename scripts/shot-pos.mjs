@@ -427,6 +427,45 @@ if (ACCION === 'comprobantes') {
   })())`));
 }
 
+if (ACCION === 'contratos') {
+  // /gastos: abrir los contratos del primer proveedor que tenga ficha.
+  //
+  // Se espera ANTES de clickear: un `.click()` sobre un boton que React
+  // todavia no hidrato no hace nada y no avisa, y la sonda vuelve con todo en
+  // null — que se lee como "el modal esta roto" cuando el problema es el
+  // timing del instrumento.
+  await dormir(2500);
+  console.log('CLIP>>>', await evaluar(`JSON.stringify((() => {
+    const b = [...document.querySelectorAll('.gprov .gclip')][0];
+    b && b.click();
+    return { habia: !!b, total: document.querySelectorAll('.gprov .gclip').length };
+  })())`));
+  await dormir(3500);
+  console.log('CONTRATOS>>>', await evaluar(`JSON.stringify((()=>{
+    const col = (sel, prop) => {
+      const e = document.querySelector(sel);
+      return e ? getComputedStyle(e)[prop] : null;
+    };
+    const rect = (sel) => {
+      const e = document.querySelector(sel);
+      if (!e) return null;
+      const r = e.getBoundingClientRect();
+      return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)];
+    };
+    return {
+      titulo: document.querySelector('.pmod .pm-title')?.textContent ?? null,
+      zona: document.querySelector('.cmp-zona-txt')?.textContent?.replace(/\\s+/g,' ') ?? null,
+      filas: [...document.querySelectorAll('.cmp-fila')].map(e=>e.textContent.replace(/\\s+/g,' ').slice(0,95)),
+      vencidos: document.querySelectorAll('.cmp-vencido').length,
+      boton_bloqueado: document.querySelector('.cmp-zona .pm-btn')?.disabled ?? null,
+      vencido_fg: col('.cmp-vencido', 'color'),
+      vencido_bg: col('.cmp-vencido', 'backgroundColor'),
+      vig_label_fg: col('.cmp-vig label', 'color'),
+      rects: { vencido: rect('.cmp-vencido'), vig: rect('.cmp-vig label'), fila: rect('.cmp-datos b') },
+    };
+  })())`));
+}
+
 if (ACCION === 'ajuste' || ACCION === 'historial') {
   // /productos: seleccionar el producto PROD (por nombre) en la lista.
   const PROD = process.env.PROD || 'Yerba';

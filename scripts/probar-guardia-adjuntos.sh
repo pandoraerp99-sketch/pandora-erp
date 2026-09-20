@@ -7,12 +7,13 @@
 # no existe, el filtro esta mal, el JWT no tiene company_id). Ya paso en este
 # proyecto: `probar-guardia-cross-tenant.sh` nacio por lo mismo.
 #
-# Cinco mutaciones sobre garantias reales:
+# Seis mutaciones sobre garantias reales:
 #   1. sin las policies del BUCKET → el vecino baja el archivo
 #   2. sin el trigger de la tabla  → el adjunto se borra
 #   3. la lista de tipos del service desincronizada de la del bucket
 #   4. el path armado SIN el tenant → la policy del bucket no protege nada
 #   5. sin la policy de DELETE de la 0042 → la compensacion vuelve a ser muda
+#   6. el contrato vencido deja de marcarse → se pierde el respaldo de medio año
 #
 # El estado se restaura SIEMPRE (trap), re-aplicando la 0040.
 set -u
@@ -121,6 +122,27 @@ else
 fi
 restaurar
 
+echo "== mutacion 6: el contrato vencido deja de marcarse =="
+# La vigencia es donde mas facil se confunde "cuando rige" con "si vale". Un
+# contrato que termino en junio respaldo los seis pagos que cubrio; si la marca
+# se apaga (o peor, si alguien "limpia" la lista escondiendolos), la contadora
+# deja de ver el respaldo de medio año y nada falla.
+cp "$SVC_ADJ" /tmp/attachment.service.ts.bak2
+restaurar_svc2() { cp /tmp/attachment.service.ts.bak2 "$SVC_ADJ"; }
+sed -i 's|vencido: f.vigencia_hasta !== null \&\& f.vigencia_hasta < hoy,|vencido: false,|' "$SVC_ADJ"
+if grep -q 'vencido: false,' "$SVC_ADJ"; then
+  if bash scripts/correr-integracion.sh T-ADJ-04 >/tmp/adj-vig.log 2>&1; then
+    echo "🔴 vencido sin marcar — el test SIGUIO EN VERDE"
+    fallos=$((fallos + 1))
+  else
+    echo "✅ vencido sin marcar — el test se puso rojo"
+  fi
+else
+  echo "🔴 la mutacion 6 NO se aplico (cambio el calculo de la vigencia?)"
+  fallos=$((fallos + 1))
+fi
+restaurar_svc2
+
 # Restauracion EXPLICITA antes del veredicto. El `trap` corre al salir, o sea
 # DESPUES del "GUARDIA OK": si fallaba ahi, el 🔴 aparecia debajo de un verde ya
 # impreso y con codigo de salida 0. Un ultimo falso verde, en el script que
@@ -139,4 +161,4 @@ if [ "$fallos" -ne 0 ]; then
   echo "GUARDIA DE ADJUNTOS: $fallos problema(s)"
   exit 1
 fi
-echo "GUARDIA DE ADJUNTOS OK (5 mutaciones atrapadas)"
+echo "GUARDIA DE ADJUNTOS OK (6 mutaciones atrapadas)"

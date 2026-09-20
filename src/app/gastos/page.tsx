@@ -26,7 +26,7 @@ import {
   listAnnulledExpenses,
   listExpenses,
 } from '@/lib/services/expenses/expense.service';
-import { contarAdjuntosPorGasto } from '@/lib/services/expenses/attachment.service';
+import { contarAdjuntosPorGasto, contarContratosPorTercero } from '@/lib/services/expenses/attachment.service';
 import { listTerceros } from '@/lib/cash/terceros';
 import { getActiveCashSession } from '@/lib/cash/sessions';
 import { GastosClient, type GastoDTO } from './GastosClient';
@@ -128,6 +128,17 @@ export default async function GastosPage({
     { requireAuth: true }
   );
 
+  // Y cuáles proveedores ya tienen su contrato (ítem 12, slice 3). Sólo los
+  // que tienen ficha: un gasto cargado sin CUIT no la tiene, y sin ficha no
+  // hay de dónde colgar el contrato.
+  const contratosPorProveedor = await withServerActionTracing(
+    () =>
+      contarContratosPorTercero(
+        porProveedor.map((p) => p.tercero_id).filter((id) => id !== '')
+      ),
+    { requireAuth: true }
+  );
+
   // DTO explícito, no la fila de Drizzle: `cash_movement_id` es un BigInt y
   // React no lo puede serializar hacia el cliente. Además la pantalla no
   // necesita el id — sólo si salió o no del cajón.
@@ -167,6 +178,7 @@ export default async function GastosPage({
       resumen={resumen}
       porCategoria={porCategoria}
       porProveedor={porProveedor}
+      contratosPorProveedor={contratosPorProveedor}
       acreedores={acreedores}
       fechaAlCierre={alCierre}
       proveedores={proveedores.map((p) => ({

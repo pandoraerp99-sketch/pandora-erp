@@ -27,6 +27,7 @@ import { AppShell } from '@/components/shell/AppShell';
 import { diaDelComercio } from '@/lib/domain/fecha-comercio';
 import { GASTOS_CSS } from './gastosCss';
 import { ComprobantesModal } from './ComprobantesModal';
+import { ContratosModal } from './ContratosModal';
 import {
   anularGastoAction,
   buscarProductosAction,
@@ -110,6 +111,12 @@ export interface TotalCategoriaDTO {
 /** Ítem 9 de la carta: razón social, CUIT e importe. */
 export interface ProveedorPeriodoDTO {
   nombre: string;
+  /**
+   * Ficha del proveedor, o `''` si no tiene. Sin ficha no hay dónde colgar el
+   * contrato, así que el clip no se ofrece — un botón que al apretarlo no
+   * puede hacer nada es peor que no tenerlo.
+   */
+  tercero_id: string;
   cuit: string;
   /** CUIT distintos agrupados. > 1 = hay algo para revisar antes de mandarlo. */
   cuits: string;
@@ -151,6 +158,8 @@ interface Props {
   resumen: ResumenGastosDTO;
   porCategoria: TotalCategoriaDTO[];
   porProveedor: ProveedorPeriodoDTO[];
+  /** Cuántos contratos tiene cada proveedor con ficha (ítem 12, slice 3). */
+  contratosPorProveedor: Record<string, number>;
   /** Lo que se les DEBE al cierre del período (ítem 9, ADR-0028). */
   acreedores: AcreedorDTO[];
   /**
@@ -263,6 +272,7 @@ export function GastosClient({
   resumen,
   porCategoria,
   porProveedor,
+  contratosPorProveedor,
   acreedores,
   fechaAlCierre,
   proveedores,
@@ -292,6 +302,14 @@ export function GastosClient({
    */
   const [adjuntos, setAdjuntos] = useState<Record<string, number>>(() =>
     Object.fromEntries(gastos.map((g) => [g.id, g.adjuntos]))
+  );
+  /** Proveedor cuyos contratos se están mirando. */
+  const [contratosDe, setContratosDe] = useState<{ id: string; nombre: string } | null>(
+    null
+  );
+  /** Contratos por proveedor. Misma mecánica que `adjuntos`. */
+  const [contratos, setContratos] = useState<Record<string, number>>(
+    () => contratosPorProveedor
   );
 
   // Suma con Decimal, no con `+=` sobre strings: es plata (CLAUDE.md §9.8).
@@ -766,6 +784,34 @@ export function GastosClient({
                       )}
                     </div>
                   </div>
+                  {/* El contrato cuelga del PROVEEDOR: uno solo respalda los
+                      doce pagos del año (ítem 12). Sólo aparece si ese
+                      proveedor tiene ficha — un gasto cargado sin CUIT no la
+                      tiene, y sin ficha no hay de dónde colgarlo. */}
+                  {p.tercero_id !== '' ? (
+                    <button
+                      type="button"
+                      className={
+                        (contratos[p.tercero_id] ?? 0) > 0 ? 'gclip con' : 'gclip'
+                      }
+                      onClick={() =>
+                        setContratosDe({ id: p.tercero_id, nombre: p.nombre })
+                      }
+                      title={
+                        (contratos[p.tercero_id] ?? 0) > 0
+                          ? `${contratos[p.tercero_id]} contrato(s)`
+                          : 'Adjuntar el contrato'
+                      }
+                      aria-label={`Contratos de ${p.nombre}`}
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                      </svg>
+                      {(contratos[p.tercero_id] ?? 0) > 0 ? (
+                        <b>{contratos[p.tercero_id]}</b>
+                      ) : null}
+                    </button>
+                  ) : null}
                   <span className="gcatn">{p.comprobantes}</span>
                   <span className="gcatv">{plata(p.total)}</span>
                 </div>
@@ -904,6 +950,17 @@ export function GastosClient({
 
       {viendo !== null ? (
         <DetalleModal gasto={viendo} onCerrar={() => setViendo(null)} />
+      ) : null}
+
+      {contratosDe !== null ? (
+        <ContratosModal
+          terceroId={contratosDe.id}
+          titulo={contratosDe.nombre}
+          onCerrar={() => setContratosDe(null)}
+          onCambio={(cantidad) =>
+            setContratos((prev) => ({ ...prev, [contratosDe.id]: cantidad }))
+          }
+        />
       ) : null}
 
       {comprobantesDe !== null ? (

@@ -1407,6 +1407,11 @@ export function armarCsvGastos(gastos: Expense[]): string {
 
 export interface ProveedorDelPeriodo {
   [k: string]: string;
+  /**
+   * Ficha del proveedor, o `''` si todavía no tiene. Sin ficha no hay dónde
+   * colgar el contrato (ítem 12) — pasa cuando el gasto se cargó sin CUIT.
+   */
+  tercero_id: string;
   /** Razón social. Si difiere entre gastos del mismo proveedor, van las dos. */
   nombre: string;
   /** CUIT. Vacío si no se cargó; si hay más de uno, van todos separados por " / ". */
@@ -1472,10 +1477,15 @@ export async function getProveedoresDelPeriodo(
     // La ventana va AFUERA del GROUP BY: pregunta si el nombre de este grupo
     // se repite en otro grupo del mismo período. No se puede resolver adentro
     // del agregado porque justamente compara un grupo contra los demás.
-    sql`SELECT g.nombre, g.cuit, g.cuits, g.comprobantes, g.total,
+    sql`SELECT g.nombre, g.cuit, g.cuits, g.comprobantes, g.total, g.tercero_id,
                (count(*) OVER (PARTITION BY lower(trim(g.nombre))) > 1)::text AS nombre_repetido
           FROM (
-            SELECT coalesce(string_agg(DISTINCT payee_name, ' / '), '(sin proveedor indicado)') AS nombre,
+            -- Dentro del grupo el tercero es constante (se agrupa POR él
+            -- cuando existe), así que el max es sólo la forma de sacarlo del
+            -- agregado. Vacío = ese proveedor todavía no tiene ficha, y sin
+            -- ficha no hay dónde colgar el contrato.
+            SELECT coalesce(max(tercero_id::text), '')                                          AS tercero_id,
+                   coalesce(string_agg(DISTINCT payee_name, ' / '), '(sin proveedor indicado)') AS nombre,
                    coalesce(string_agg(DISTINCT payee_doc, ' / '), '')                          AS cuit,
                    count(DISTINCT payee_doc)::text                                              AS cuits,
                    count(*)::text                                                               AS comprobantes,
