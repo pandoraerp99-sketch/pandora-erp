@@ -37,8 +37,9 @@ import {
   MAX_BYTES_ADJUNTO,
   TIPOS_DE_ARCHIVO_PERMITIDOS,
 } from '../../db/schema/attachments.js';
-import { expenses } from '../../db/schema/expenses.js';
+import { expenses, GASTO_VIGENTE_SQL } from '../../db/schema/expenses.js';
 import { terceros } from '../../db/schema/terceros.js';
+import { company_users } from '../../db/schema/users.js';
 import type { AlmacenDeComprobantes } from './attachment.storage.js';
 import { requireTracingContext } from '../../tracing/context.js';
 import { writeAuditLog } from '../../audit/audit-writer.js';
@@ -61,6 +62,72 @@ export const SEGUNDOS_DE_VIDA_DEL_LINK = 60;
 export class AttachmentError extends DomainError {
   constructor(messageEs: string, code = 'ATTACHMENT_ERROR') {
     super(code, messageEs, 400);
+  }
+}
+
+export class SoloLecturaError extends DomainError {
+  constructor() {
+    super(
+      'SOLO_LECTURA',
+      'Tu usuario puede ver y descargar los comprobantes, pero no modificarlos',
+      403
+    );
+  }
+}
+
+/**
+ * Quiénes pueden TOCAR los adjuntos. Lista blanca, no lista negra.
+ *
+ * ── Por qué existe ────────────────────────────────────────────────────────
+ * ADR-0008 y CLAUDE.md §7.3 dicen que el contador es read-only. Hasta el slice
+ * 4 eso no lo hacía cumplir NADA:
+ *
+ *   - `ContadorClient.tsx` no dibuja el botón de escribir, pero §6.4 dice con
+ *     todas las letras que esconder un botón no es autorización.
+ *   - El RLS tampoco: se midió y la conexión de Drizzle entra como `postgres`
+ *     con `rolbypassrls = true` (`scripts/ver-rol-de-la-conexion.sh`). Las
+ *     policies gobiernan al cliente de Supabase —el storage, la lectura desde
+ *     el navegador— pero ninguna escritura del service layer pasa por ellas.
+ *     Y aunque pasaran: el RLS separa COMERCIOS, no roles adentro de uno.
+ *
+ * ── Por qué blanca ────────────────────────────────────────────────────────
+ * Preguntar "¿es contador?" deja pasar los dos casos que no son un rol: un
+ * usuario sin fila en `company_users` (invitación revocada, id inventado) y un
+ * rol que se agregue mañana al catálogo. Los dos caen del lado seguro
+ * preguntando al revés (§13.9, fail-closed).
+ *
+ * `cashier` y `admin` entran porque `/gastos` no filtra por rol en ningún
+ * lado: hoy cualquier miembro del comercio carga gastos. Esta guardia cierra
+ * un agujero, no le cambia el acceso a nadie más que al contador.
+ *
+ * ⚠️ El agujero es más ancho que los adjuntos. Se midió corriendo, no por
+ * grep: con rol `accountant`, `registerExpense` y `createProduct` escriben sin
+ * que nada los frene. Cerrar eso toca ventas, caja, clientes y productos, y es
+ * otra pieza de trabajo — no entra de contrabando en el commit de un feature.
+ */
+const ROLES_QUE_ESCRIBEN: readonly string[] = ['owner', 'admin', 'cashier'];
+
+/**
+ * El rol se LEE de `company_users`, nunca se recibe.
+ *
+ * Mismo criterio que `vincularProveedorPorCuit`: un parámetro `actor_role`
+ * alcanzaría para que quien llama se declare owner, y quien llama es una
+ * Server Action a la que le llega un FormData.
+ *
+ * Va ANTES de subir en las dos funciones que suben. No es estilo: rechazar
+ * después de subir dejaría un objeto huérfano en el bucket en cada intento.
+ */
+async function exigirQuePuedaEscribir(tenantId: string, userId: string): Promise<void> {
+  const [miembro] = await db
+    .select({ role: company_users.role })
+    .from(company_users)
+    .where(
+      and(eq(company_users.company_id, tenantId), eq(company_users.user_id, userId))
+    )
+    .limit(1);
+
+  if (miembro === undefined || !ROLES_QUE_ESCRIBEN.includes(miembro.role)) {
+    throw new SoloLecturaError();
   }
 }
 
@@ -138,6 +205,7 @@ export async function adjuntarComprobante(
   almacen: AlmacenDeComprobantes
 ): Promise<{ id: string; storage_path: string }> {
   const { tenantId, userId } = ctx();
+  await exigirQuePuedaEscribir(tenantId, userId);
 
   const problema = validarArchivo(input.archivo);
   if (problema !== null) {
@@ -310,6 +378,7 @@ export async function adjuntarContrato(
   almacen: AlmacenDeComprobantes
 ): Promise<{ id: string; storage_path: string }> {
   const { tenantId, userId } = ctx();
+  await exigirQuePuedaEscribir(tenantId, userId);
 
   const problema = validarArchivo(input.archivo);
   if (problema !== null) {
@@ -525,6 +594,81 @@ export async function contarAdjuntosPorGasto(
 }
 
 /**
+ * `type` y no `interface` a propósito: `db.execute<T>` pide `Record<string,
+ * unknown>`, y una interface no tiene index signature implícita. Con
+ * `interface` esto no compila.
+ */
+export type ComprobanteDelPeriodo = {
+  attachment_id: string;
+  nombre_original: string;
+  expense_id: string;
+  fecha: string;
+  categoria: string;
+  payee_name: string | null;
+  total: string;
+  comprobante_tipo: string | null;
+  comprobante_numero: string | null;
+};
+
+/**
+ * Los comprobantes adjuntos a los gastos de un período (slice 4).
+ *
+ * Es la lectura que hace que el ítem 12 deje de estar a medias: hasta acá la
+ * contadora entraba con su login, veía el detalle de cada gasto y NO los
+ * archivos — tenía que pedírselos por WhatsApp, que es exactamente lo que este
+ * ítem viene a sacar del medio.
+ *
+ * ── Sólo comprobantes; los contratos NO ───────────────────────────────────
+ * `tipo = 'comprobante'` no es un descuido. Un contrato de locación lleva los
+ * datos personales del locador, y B-11 —si se los podemos mostrar a un tercero
+ * que no es el comercio— sigue abierta con el abogado. Dejarlos entrar acá
+ * contestaría esa pregunta de hecho y sin que nadie la haya contestado. Se
+ * difiere a propósito, no por olvido.
+ *
+ * ── Gastos VIGENTES ───────────────────────────────────────────────────────
+ * Un gasto anulado o corregido no va: su comprobante respalda algo que ya no
+ * existe, y el estudio lo cargaría. Se usa `GASTO_VIGENTE_SQL`, que es el
+ * único lugar donde esa regla vive.
+ *
+ * No pregunta al storage si el archivo está: son los gastos de un mes entero y
+ * serían decenas de llamadas para pintar una lista. El estado "el archivo no
+ * está" aparece al hacer click, igual que en `/gastos`.
+ */
+export async function listarComprobantesDelPeriodo(
+  desde: string,
+  hasta: string
+): Promise<ComprobanteDelPeriodo[]> {
+  const { tenantId } = ctx();
+
+  const filas = await db.execute<ComprobanteDelPeriodo>(sql`
+    SELECT a.id::text                  AS attachment_id,
+           a.nombre_original           AS nombre_original,
+           expenses.id::text           AS expense_id,
+           expenses.fecha::text        AS fecha,
+           expenses.categoria          AS categoria,
+           expenses.payee_name         AS payee_name,
+           expenses.total::text        AS total,
+           expenses.comprobante_tipo   AS comprobante_tipo,
+           expenses.comprobante_numero AS comprobante_numero
+      FROM attachments a
+      -- SIN alias a propósito: GASTO_VIGENTE_SQL nombra la tabla "expenses"
+      -- adentro, así que con un alias la consulta ni compila. Es el precio de
+      -- tener esa regla escrita UNA sola vez, y vale la pena.
+      JOIN expenses ON expenses.id = a.expense_id
+                   AND expenses.tenant_id = a.tenant_id
+     WHERE a.tenant_id = ${tenantId}
+       AND a.tipo = 'comprobante'
+       AND a.removed_at IS NULL
+       AND expenses.fecha >= ${desde}::date
+       AND expenses.fecha <= ${hasta}::date
+       AND ${GASTO_VIGENTE_SQL}
+     ORDER BY expenses.fecha DESC, expenses.created_at DESC
+  `);
+
+  return [...filas];
+}
+
+/**
  * Un link firmado para bajar el comprobante.
  *
  * El chequeo de a quién pertenece va ANTES de firmar: una vez firmada, la URL
@@ -577,6 +721,7 @@ export async function quitarComprobante(input: {
   motivo: string;
 }): Promise<void> {
   const { tenantId, userId } = ctx();
+  await exigirQuePuedaEscribir(tenantId, userId);
 
   const motivo = input.motivo.trim();
   if (motivo === '') {

@@ -3,9 +3,17 @@
 /**
  * Server Actions del panel de la contadora.
  *
- * Las dos son de LECTURA o de preferencia: acá no se muta nada del comercio.
- * El rol `accountant` mira y exporta (Ley 20.488: Pandora prepara borradores,
- * la matriculada firma).
+ * Todas son de LECTURA o de preferencia: acá no se muta nada del comercio. El
+ * rol `accountant` mira y exporta (Ley 20.488: Pandora prepara borradores, la
+ * matriculada firma).
+ *
+ * ⚠️ Que este archivo no mute nada NO es lo que lo impide. Una action es
+ * llamable de a una, así que lo que decide si la contadora puede escribir es
+ * el SERVICE, no qué acciones dibuja esta pantalla. Al 2026-09-21 la única
+ * guardia real que existe es la de los adjuntos
+ * (`exigirQuePuedaEscribir`, attachment.service); `registerExpense` y
+ * `createProduct` se probaron corriendo con rol `accountant` y escriben. Ver
+ * el hallazgo en el encabezado de esa guardia.
  */
 import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
@@ -31,6 +39,12 @@ import {
   getCajaAlCierre,
   getDeudoresAlCierre,
 } from '@/lib/services/reporting/cierre.report';
+import {
+  listarComprobantesDelPeriodo,
+  urlParaDescargar,
+  type ComprobanteDelPeriodo,
+} from '@/lib/services/expenses/attachment.service';
+import { almacenSupabase } from '@/lib/services/expenses/attachment.storage';
 
 /**
  * Cambia la empresa que está mirando el contador.
@@ -222,6 +236,92 @@ export async function exportarCajaCsvAction(
     return {
       ok: false,
       error: e instanceof Error ? e.message : 'No se pudo exportar',
+    };
+  }
+}
+
+/**
+ * Los comprobantes adjuntos a los gastos del período — ítem 12, slice 4.
+ *
+ * Es lo único que hace que el ítem 12 deje de estar a medias: hasta acá la
+ * contadora veía el DETALLE de cada gasto y no el archivo, así que los seguía
+ * pidiendo por WhatsApp.
+ *
+ * El período se resuelve igual que en los CSV: el grano y una fecha de adentro
+ * del rango en pantalla, para que la lista y lo que se ve sean el mismo
+ * período. El grano `ejercicio` tiene la misma trampa que en
+ * `exportarVentasCsvAction` —es el último CERRADO respecto de la fecha de
+ * referencia— y se trata igual.
+ *
+ * Sólo comprobantes de gasto: los contratos del proveedor NO entran acá
+ * mientras B-11 siga abierta. Ver `listarComprobantesDelPeriodo`.
+ */
+export async function listarComprobantesDelPeriodoAction(
+  desdeIso?: string,
+  grano?: string
+): Promise<
+  { ok: true; comprobantes: ComprobanteDelPeriodo[] } | { ok: false; error: string }
+> {
+  try {
+    const g: Grano = GRANOS.includes(grano as Grano) ? (grano as Grano) : 'mes';
+    const mesCierre = await withServerActionTracing(getMesCierreEjercicio, {
+      requireAuth: true,
+    });
+    const referencia =
+      g === 'ejercicio' ? new Date() : desdeIso ? new Date(desdeIso) : new Date();
+    const periodo = periodoDe(g, referencia, mesCierre);
+
+    // `periodo.hasta` es EXCLUSIVO y la consulta compara con `<=`: sin
+    // restarle el día, el primer día del mes siguiente entraría en la lista.
+    // Es el mismo ajuste que hacen los CSV para nombrar el archivo.
+    const desde = periodo.desde.toISOString().slice(0, 10);
+    const hasta = new Date(periodo.hasta.getTime() - 86400000)
+      .toISOString()
+      .slice(0, 10);
+
+    const comprobantes = await withServerActionTracing(
+      () => listarComprobantesDelPeriodo(desde, hasta),
+      { requireAuth: true }
+    );
+    return { ok: true, comprobantes };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : 'No se pudieron leer los comprobantes',
+    };
+  }
+}
+
+/**
+ * El link firmado para bajar un comprobante.
+ *
+ * Reusa `urlParaDescargar`, que filtra por el tenant del CONTEXT. Eso importa
+ * más acá que en `/gastos`: la contadora tiene VARIAS empresas en el JWT, y el
+ * tenant sale de `active_company_id`, ya validado contra ese array. Un id de
+ * otro comercio devuelve cero filas aunque ella tenga acceso a los dos — que
+ * es justo el caso que un chequeo contra "el tenant de la sesión" rompería.
+ *
+ * La URL vive 60 segundos y NO se loguea: es un bearer token, y lo que hay del
+ * otro lado puede tener datos de un tercero (B-11).
+ */
+export async function bajarComprobanteAction(
+  attachmentId: string
+): Promise<
+  | { ok: true; url: string; nombre: string }
+  | { ok: true; falta: true }
+  | { ok: false; error: string }
+> {
+  try {
+    const r = await withServerActionTracing(
+      async () => urlParaDescargar(attachmentId, await almacenSupabase()),
+      { requireAuth: true }
+    );
+    if ('falta' in r) return { ok: true, falta: true };
+    return { ok: true, url: r.url, nombre: r.nombre };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : 'No se pudo abrir el comprobante',
     };
   }
 }

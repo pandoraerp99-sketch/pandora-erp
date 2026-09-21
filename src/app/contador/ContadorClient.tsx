@@ -29,6 +29,8 @@ import {
   exportarAcreedoresCsvAction,
   exportarInventarioCsvAction,
   exportarVentasCsvAction,
+  listarComprobantesDelPeriodoAction,
+  bajarComprobanteAction,
 } from './actions';
 
 export type Grano = 'mes' | 'trimestre' | 'anio' | 'ejercicio';
@@ -205,6 +207,26 @@ const GRANOS: Array<{ valor: Grano; label: string }> = [
   { valor: 'ejercicio', label: 'Ejercicio' },
 ];
 
+/**
+ * Un comprobante adjunto del período — ítem 12, slice 4.
+ *
+ * Se declara ACÁ y no se importa de `attachment.service`, por el mismo motivo
+ * que `CajaDTO` arriba: ese módulo trae el cliente de Drizzle y `node:crypto`,
+ * y no tiene por qué entrar en el grafo del cliente aunque el import sea de
+ * tipo. Es la forma, repetida a mano, igual que las otras DTO de este archivo.
+ */
+interface ComprobanteDelPeriodo {
+  attachment_id: string;
+  nombre_original: string;
+  expense_id: string;
+  fecha: string;
+  categoria: string;
+  payee_name: string | null;
+  total: string;
+  comprobante_tipo: string | null;
+  comprobante_numero: string | null;
+}
+
 /** Iniciales para el avatar de la fila de deudor, como la maqueta. */
 function iniciales(nombre: string): string {
   const p = nombre.trim().split(/\s+/).filter(Boolean);
@@ -345,6 +367,67 @@ export function ContadorClient({
 
   const exportar = () =>
     bajar(() => exportarVentasCsvAction(resumen.periodo.desde, grano));
+
+  // ── Los comprobantes adjuntos del período (ítem 12, slice 4) ─────────────
+  // `null` es "todavía no los pedí", que NO es lo mismo que "no hay": con un
+  // array vacío de arranque la tarjeta diría "no hay comprobantes cargados"
+  // antes de haber mirado. Es el tercer estado de siempre.
+  const [comprobantes, setComprobantes] = useState<ComprobanteDelPeriodo[] | null>(
+    null
+  );
+  /** Link visible si el navegador bloqueó la pestaña. Ver `abrirComprobante`. */
+  const [linkSuelto, setLinkSuelto] = useState<{ url: string; nombre: string } | null>(
+    null
+  );
+
+  const verComprobantes = () => {
+    setError(null);
+    setLinkSuelto(null);
+    startTransition(async () => {
+      const res = await listarComprobantesDelPeriodoAction(
+        resumen.periodo.desde,
+        grano
+      );
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setComprobantes(res.comprobantes);
+    });
+  };
+
+  async function abrirComprobante(id: string) {
+    setError(null);
+    setLinkSuelto(null);
+
+    // 🔴 Sincrónica DENTRO del click, igual que en /gastos: abrirla después
+    // del `await` la bloquea el navegador sin tirar ningún error, y la
+    // contadora concluye que el sistema no anda. Por lo mismo esto NO va
+    // adentro de `startTransition`.
+    const pestania = window.open('', '_blank');
+
+    const res = await bajarComprobanteAction(id);
+    if (!res.ok) {
+      pestania?.close();
+      setError(res.error);
+      return;
+    }
+    if ('falta' in res) {
+      pestania?.close();
+      setError(
+        'Ese archivo no está guardado. La ficha quedó, el archivo no: pedíselo al comercio.'
+      );
+      return;
+    }
+
+    if (pestania) {
+      // Se corta la referencia de vuelta antes de navegar.
+      pestania.opener = null;
+      pestania.location.replace(res.url);
+      return;
+    }
+    setLinkSuelto({ url: res.url, nombre: res.nombre });
+  }
 
   // Selector de período, en la topbar como la maqueta.
   const topbarIzq = (
@@ -848,6 +931,80 @@ export function ContadorClient({
                 </b>{' '}
                 son los que hay que mandarle.
               </p>
+
+              {/* ── Ítem 12: los archivos, no sólo el detalle ──────────────
+                  Hasta acá esta tarjeta decía CUÁNTOS comprobantes hay y la
+                  contadora seguía pidiendo los archivos por WhatsApp. Esto es
+                  lo único que hace que el ítem 12 deje de estar a medias.
+
+                  No se cargan solos al entrar: son los gastos de un período
+                  entero y la mayoría de las visitas a esta pantalla no vienen
+                  a buscarlos. */}
+              <div className="adj-bloque">
+                <button
+                  type="button"
+                  className="exp-btn"
+                  onClick={verComprobantes}
+                  disabled={pending}
+                >
+                  {comprobantes === null
+                    ? 'Ver los comprobantes adjuntos'
+                    : 'Actualizar la lista'}
+                </button>
+
+                {linkSuelto !== null ? (
+                  <p className="label-sm">
+                    El navegador bloqueó la pestaña.{' '}
+                    <a href={linkSuelto.url} target="_blank" rel="noopener noreferrer">
+                      Abrir {linkSuelto.nombre}
+                    </a>
+                  </p>
+                ) : null}
+
+                {comprobantes === null ? null : comprobantes.length === 0 ? (
+                  <p className="label-sm">
+                    Ningún gasto del período tiene el comprobante adjunto. Los
+                    números de arriba cuentan gastos <b>cargados</b>; esto cuenta
+                    <b> archivos subidos</b>, que son dos cosas distintas.
+                  </p>
+                ) : (
+                  <>
+                    <ul className="adj-lista">
+                      {comprobantes.map((c) => (
+                        <li key={c.attachment_id}>
+                          <span className="adj-fecha tnum">{fechaCorta(c.fecha)}</span>
+                          <span className="adj-quien">
+                            {c.payee_name ?? c.categoria}
+                            {c.comprobante_numero !== null ? (
+                              <span className="adj-nro tnum">
+                                {' '}
+                                {c.comprobante_tipo ?? ''} {c.comprobante_numero}
+                              </span>
+                            ) : null}
+                          </span>
+                          <span className="adj-importe tnum">{plata(c.total)}</span>
+                          <button
+                            type="button"
+                            className="exp-btn adj-bajar"
+                            onClick={() => void abrirComprobante(c.attachment_id)}
+                          >
+                            Abrir
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    {/* El número se dice acá y no se deja contar a ojo: es el
+                        que la contadora compara contra lo que esperaba. */}
+                    <p className="label-sm">
+                      {comprobantes.length === 1
+                        ? '1 comprobante adjunto'
+                        : `${comprobantes.length} comprobantes adjuntos`}{' '}
+                      en el período. Los contratos de alquiler no salen acá —
+                      llevan datos del locador y esa consulta sigue abierta.
+                    </p>
+                  </>
+                )}
+              </div>
             </>
           )}
         </section>

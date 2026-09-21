@@ -427,6 +427,81 @@ if (ACCION === 'comprobantes') {
   })())`));
 }
 
+if (ACCION === 'adjuntos-contador') {
+  // /contador: abrir la lista de comprobantes adjuntos del periodo (slice 4).
+  // Otra cosa que vive DETRAS DE UN CLICK. Y ademas hay que verificar la
+  // clase del boton: `.pm-btn` no existe en esta pantalla y un boton con una
+  // clase ajena se dibuja como texto pelado sin que nada falle.
+  // ¿Hidrato ALGO de la pantalla? Si el selector de periodo —que existe desde
+  // mucho antes de este slice— tampoco tiene onClick, el problema no es del
+  // bloque nuevo.
+  console.log('HIDRATACION>>>', await evaluar(`JSON.stringify((() => {
+    const conOnClick = (sel) => {
+      const e = document.querySelector(sel);
+      if (!e) return 'no existe';
+      const k = Object.keys(e).find(x => x.startsWith('__reactProps'));
+      return k ? (typeof e[k].onClick === 'function' ? 'SI' : 'sin onClick') : 'sin fiber';
+    };
+    return {
+      seg_periodo: conOnClick('.seg button'),
+      exportar: conOnClick('.exp-btn'),
+      overlay: !!document.querySelector('nextjs-portal'),
+      // El texto del overlay: es LA respuesta cuando nada hidrata, y esta
+      // dentro de un shadow root, asi que un querySelector normal no lo ve.
+      overlay_txt: (() => {
+        const p = document.querySelector('nextjs-portal');
+        const r = p && p.shadowRoot;
+        return r ? (r.textContent || '').replace(/\\s+/g, ' ').slice(0, 400) : null;
+      })(),
+      scripts: document.querySelectorAll('script[src]').length,
+    };
+  })())`));
+  console.log('BOTON>>>', await evaluar(`JSON.stringify((() => {
+    const b = [...document.querySelectorAll('.adj-bloque button')][0];
+    if (!b) return { habia: false };
+    const cs = getComputedStyle(b);
+    const estaba = b.disabled;
+    // ¿React le colgo un onClick? Sin esto, "la pantalla no hidrato" y "la
+    // accion no devolvio nada" se ven EXACTAMENTE igual desde afuera.
+    const props = Object.keys(b).find(k => k.startsWith('__reactProps'));
+    const hidratado = props ? typeof b[props].onClick === 'function' : false;
+    b.click();
+    return { habia: true, disabled: estaba, hidratado, clases: b.className,
+             texto: b.textContent, bg: cs.backgroundColor, borde: cs.borderTopColor };
+  })())`));
+  // 9000 y no 3500: el server action se compila recien en el primer uso y
+  // ademas consulta la base. Un numero corto devuelve todo vacio, que es
+  // indistinguible de "no hay comprobantes" — el falso negativo de siempre.
+  await dormir(9000);
+  console.log('ADJUNTOS>>>', await evaluar(`JSON.stringify((()=>{
+    const col = (sel, prop) => {
+      const e = document.querySelector(sel);
+      return e ? getComputedStyle(e)[prop] : null;
+    };
+    return {
+      filas: [...document.querySelectorAll('.adj-lista li')].map(e=>e.textContent.replace(/\\s+/g,' ').slice(0,90)),
+      pie: [...document.querySelectorAll('.adj-bloque .label-sm')].map(e=>e.textContent.replace(/\\s+/g,' ').slice(0,140)),
+      // Si la accion fallo la pantalla lo dice acá. Sin esto, "no renderizo
+      // nada" y "renderizo el error" se ven igual desde la sonda.
+      err: document.querySelector('.label-sm.err')?.textContent?.replace(/\\s+/g,' ') ?? null,
+      bloque_existe: !!document.querySelector('.adj-bloque'),
+      tema: document.documentElement.getAttribute('data-theme'),
+      fecha_fg: col('.adj-fecha', 'color'),
+      nro_fg: col('.adj-nro', 'color'),
+      quien_fg: col('.adj-quien', 'color'),
+      bajar_bg: col('.adj-bajar', 'backgroundColor'),
+      // Rectangulos para medir sobre PIXELES: el CSS miente sobre vidrio.
+      rects: Object.fromEntries(['.adj-fecha', '.adj-nro', '.adj-quien', '.adj-bloque .label-sm', '.adj-bajar']
+        .map(s => {
+          const e = document.querySelector(s);
+          if (!e) return [s, null];
+          const r = e.getBoundingClientRect();
+          return [s, [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]];
+        })),
+    };
+  })())`));
+}
+
 if (ACCION === 'contratos') {
   // /gastos: abrir los contratos del primer proveedor que tenga ficha.
   //

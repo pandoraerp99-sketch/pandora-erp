@@ -7,13 +7,14 @@
 # no existe, el filtro esta mal, el JWT no tiene company_id). Ya paso en este
 # proyecto: `probar-guardia-cross-tenant.sh` nacio por lo mismo.
 #
-# Seis mutaciones sobre garantias reales:
+# Siete mutaciones sobre garantias reales:
 #   1. sin las policies del BUCKET → el vecino baja el archivo
 #   2. sin el trigger de la tabla  → el adjunto se borra
 #   3. la lista de tipos del service desincronizada de la del bucket
 #   4. el path armado SIN el tenant → la policy del bucket no protege nada
 #   5. sin la policy de DELETE de la 0042 → la compensacion vuelve a ser muda
 #   6. el contrato vencido deja de marcarse → se pierde el respaldo de medio año
+#   7. la lista blanca deja entrar a la contadora → vuelve a poder escribir
 #
 # El estado se restaura SIEMPRE (trap), re-aplicando la 0040.
 set -u
@@ -143,6 +144,31 @@ else
 fi
 restaurar_svc2
 
+echo "== mutacion 7: la contadora vuelve a poder escribir =="
+# El agujero del slice 4: nada impedia que el rol `accountant` subiera un
+# comprobante, subiera un contrato o diera uno de baja. Ni la pantalla
+# (esconder un boton no es autorizacion, CLAUDE.md §6.4) ni el RLS — Drizzle
+# entra como `postgres` con rolbypassrls=true, medido en
+# scripts/ver-rol-de-la-conexion.sh.
+#
+# Se ensancha la lista blanca, que es exactamente como se volveria a abrir sin
+# querer: agregando un rol "porque hacia falta para otra cosa".
+cp "$SVC_ADJ" /tmp/attachment.service.ts.bak3
+restaurar_svc3() { cp /tmp/attachment.service.ts.bak3 "$SVC_ADJ"; }
+sed -i "s|\['owner', 'admin', 'cashier'\]|['owner', 'admin', 'cashier', 'accountant']|" "$SVC_ADJ"
+if grep -q "'accountant'\]" "$SVC_ADJ"; then
+  if bash scripts/correr-integracion.sh T-ADJ-05 >/tmp/adj-rol.log 2>&1; then
+    echo "🔴 contadora con permiso de escribir — el test SIGUIO EN VERDE"
+    fallos=$((fallos + 1))
+  else
+    echo "✅ contadora con permiso de escribir — el test se puso rojo"
+  fi
+else
+  echo "🔴 la mutacion 7 NO se aplico (cambio la lista blanca?)"
+  fallos=$((fallos + 1))
+fi
+restaurar_svc3
+
 # Restauracion EXPLICITA antes del veredicto. El `trap` corre al salir, o sea
 # DESPUES del "GUARDIA OK": si fallaba ahi, el 🔴 aparecia debajo de un verde ya
 # impreso y con codigo de salida 0. Un ultimo falso verde, en el script que
@@ -161,4 +187,4 @@ if [ "$fallos" -ne 0 ]; then
   echo "GUARDIA DE ADJUNTOS: $fallos problema(s)"
   exit 1
 fi
-echo "GUARDIA DE ADJUNTOS OK (6 mutaciones atrapadas)"
+echo "GUARDIA DE ADJUNTOS OK (7 mutaciones atrapadas)"
