@@ -445,17 +445,29 @@ if (ACCION === 'adjuntos-contador') {
     return {
       seg_periodo: conOnClick('.seg button'),
       exportar: conOnClick('.exp-btn'),
-      overlay: !!document.querySelector('nextjs-portal'),
-      // El texto del overlay: es LA respuesta cuando nada hidrata, y esta
-      // dentro de un shadow root, asi que un querySelector normal no lo ve.
-      overlay_txt: (() => {
-        const p = document.querySelector('nextjs-portal');
-        const r = p && p.shadowRoot;
-        return r ? (r.textContent || '').replace(/\\s+/g, ' ').slice(0, 400) : null;
-      })(),
+      // OJO: 'nextjs-portal' NO indica un error. Es tambien el indicador de
+      // dev de Next, asi que esta presente siempre; mirarlo me hizo perder un
+      // rato creyendo que habia un overlay de error. Lo que decide es el
+      // fiber de arriba, no esto.
+      portal_dev: !!document.querySelector('nextjs-portal'),
       scripts: document.querySelectorAll('script[src]').length,
     };
   })())`));
+  // Esperar a que React le cuelgue el onClick ANTES de clickear. /contador
+  // hace muchas consultas y con la espera fija de arriba a veces el click cae
+  // antes de la hidratacion: se pierde en silencio y la lista "no aparece",
+  // que desde afuera se ve igual que un bug. Se espera la condicion, no un
+  // numero de milisegundos.
+  for (let i = 0; i < 40; i++) {
+    const listo = await evaluar(`(() => {
+      const b = document.querySelector('.adj-bloque button');
+      if (!b) return false;
+      const k = Object.keys(b).find(x => x.startsWith('__reactProps'));
+      return !!(k && typeof b[k].onClick === 'function');
+    })()`);
+    if (listo) break;
+    await dormir(500);
+  }
   console.log('BOTON>>>', await evaluar(`JSON.stringify((() => {
     const b = [...document.querySelectorAll('.adj-bloque button')][0];
     if (!b) return { habia: false };
@@ -933,6 +945,45 @@ if (ACCION === 'inventario') {
     const col = (e) => e ? getComputedStyle(e).color : null;
     return { tema, sinCosto: col(falta), alerta: col(alerta), fila: col(fila),
              fondoTabla: fila ? getComputedStyle(fila.parentElement).backgroundColor : null };
+  })())`));
+}
+
+// /contador → la lista de comprobantes adjuntos (ítem 12, slice 4).
+// Los rects que imprime ADJUNTOS>>> más arriba se leen ANTES de que EVOLUCION
+// ponga el scroll en 0, así que apuntan afuera de la foto: medir ahí dio
+// 1,6:1 sobre píxeles que no eran el texto. Acá se re-aplica el tema, se trae
+// la lista a la vista y se vuelven a leer, que es lo que vale para medir.
+if (ACCION === 'adjuntos-contador') {
+  if (process.env.TEMA) {
+    await evaluar(`document.documentElement.setAttribute('data-theme', ${JSON.stringify(process.env.TEMA)}), true`);
+    await dormir(400);
+  }
+  const ancla = process.env.ANCLA === 'pie' ? '.adj-bloque .label-sm:last-child' : '.adj-lista';
+  await evaluar(`(()=>{const t=document.querySelector(${JSON.stringify(ancla)}); t && t.scrollIntoView({block:'center'}); return !!t;})()`);
+  await dormir(700);
+  // ABRIR=1: apretar "Abrir" en la primera fila. Con la ficha de demo, que
+  // a proposito NO tiene archivo, tiene que aparecer el aviso de que falta —
+  // no una pestaña en blanco ni un link roto.
+  if (process.env.ABRIR === '1') {
+    await evaluar(`(() => { const b = document.querySelector('.adj-bajar'); b && b.click(); return !!b; })()`);
+    await dormir(5000);
+    console.log('ABRIR>>>', await evaluar(`JSON.stringify({
+      err: document.querySelector('.label-sm.err')?.textContent?.replace(/\\s+/g,' ') ?? null,
+      linkSuelto: document.querySelector('.adj-bloque a')?.textContent ?? null,
+    })`));
+  }
+  console.log('MEDIR>>>', await evaluar(`JSON.stringify((()=>{
+    // La ÚLTIMA de cada clase: con el pie centrado, la primera fila de una
+    // lista larga queda arriba, fuera de la foto.
+    const r = (s) => { const e = [...document.querySelectorAll(s)].pop(); if (!e) return null;
+      const b = e.getBoundingClientRect();
+      return { color: getComputedStyle(e).color, rect: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)] }; };
+    return {
+      tema: document.documentElement.getAttribute('data-theme'),
+      fecha: r('.adj-fecha'), nro: r('.adj-nro'), quien: r('.adj-quien'),
+      importe: r('.adj-importe'), bajar: r('.adj-bajar'),
+      pie: r('.adj-bloque .label-sm:last-child'),
+    };
   })())`));
 }
 

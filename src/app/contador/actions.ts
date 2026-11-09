@@ -247,17 +247,29 @@ export async function exportarCajaCsvAction(
  * contadora veía el DETALLE de cada gasto y no el archivo, así que los seguía
  * pidiendo por WhatsApp.
  *
- * El período se resuelve igual que en los CSV: el grano y una fecha de adentro
- * del rango en pantalla, para que la lista y lo que se ve sean el mismo
- * período. El grano `ejercicio` tiene la misma trampa que en
- * `exportarVentasCsvAction` —es el último CERRADO respecto de la fecha de
- * referencia— y se trata igual.
+ * ── El período lo resuelve el SERVER, con la fecha de hoy ────────────────
+ * NO recibe una fecha de referencia del cliente, y eso no es estilo. La
+ * primera versión recibía `resumen.periodo.desde` y la consulta corría contra
+ * el año ANTERIOR al que la pantalla mostraba: `periodo.desde` es medianoche
+ * UTC y `periodoDe` resuelve el calendario del comercio (UTC−3), así que el
+ * primer instante de un período cae en el período de antes en hora local. La
+ * lista salía vacía y la pantalla decía, con toda propiedad, "ningún gasto del
+ * período tiene el comprobante adjunto" — un año entero corrido sin un solo
+ * error. Está pinchado en
+ * `tests/unit/periodo-no-es-su-propia-referencia.test.ts`.
+ *
+ * Resolverlo con `new Date()` da exactamente el período que está en pantalla,
+ * porque /contador siempre muestra el que contiene AHORA: el selector cambia
+ * el grano, nunca la fecha.
+ *
+ * ⚠️ `exportarVentasCsvAction` (más arriba) sigue teniendo el patrón viejo:
+ * recibe `desdeIso` del cliente y lo reinterpreta. Mismo bug, no tocado acá
+ * porque cambia el contenido de un archivo que el estudio ya usa.
  *
  * Sólo comprobantes de gasto: los contratos del proveedor NO entran acá
  * mientras B-11 siga abierta. Ver `listarComprobantesDelPeriodo`.
  */
 export async function listarComprobantesDelPeriodoAction(
-  desdeIso?: string,
   grano?: string
 ): Promise<
   { ok: true; comprobantes: ComprobanteDelPeriodo[] } | { ok: false; error: string }
@@ -267,9 +279,10 @@ export async function listarComprobantesDelPeriodoAction(
     const mesCierre = await withServerActionTracing(getMesCierreEjercicio, {
       requireAuth: true,
     });
-    const referencia =
-      g === 'ejercicio' ? new Date() : desdeIso ? new Date(desdeIso) : new Date();
-    const periodo = periodoDe(g, referencia, mesCierre);
+    // La fecha de HOY para todos los granos, `ejercicio` incluido: ese ya
+    // devuelve el último CERRADO respecto de la referencia, así que hoy es
+    // justo lo que corresponde pasarle.
+    const periodo = periodoDe(g, new Date(), mesCierre);
 
     // `periodo.hasta` es EXCLUSIVO y la consulta compara con `<=`: sin
     // restarle el día, el primer día del mes siguiente entraría en la lista.

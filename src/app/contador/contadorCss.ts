@@ -372,13 +372,21 @@ html[data-theme="dark"] .inv-tr{ border-top-color:rgba(255,255,255,0.07); }
 .adj-lista{ list-style:none; margin:0; padding:0; width:100%; display:flex; flex-direction:column; }
 .adj-lista li{ display:flex; align-items:center; gap:12px; padding:9px 2px; border-top:1px solid rgba(15,23,42,0.06); font-size:12.5px; }
 .adj-lista li:first-child{ border-top:none; }
-/* --ink-2 y no --ink-3: el contraste se mide sobre PÍXELES y --ink-3 sobre
-   este vidrio ya dio 3,87:1 en oscuro una vez. */
+/* --ink-2 y no --ink-3, elegido ANTES de medir: --ink-3 sobre vidrio ya dio
+   3,87:1 en oscuro en otra pantalla de esta app. Eso no es una medición de
+   ESTA lista — es el motivo por el que no se arranco con --ink-3. */
 .adj-fecha{ color:var(--ink-2); flex:0 0 78px; font-weight:600; }
 .adj-quien{ color:var(--ink); font-weight:600; flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .adj-nro{ color:var(--ink-2); font-weight:500; }
 .adj-importe{ color:var(--ink); font-weight:700; flex:0 0 auto; }
 .adj-bajar{ padding:6px 12px; font-size:12px; flex:0 0 auto; }
+/* MEDIDO sobre píxeles (2026-11-09): con el --ink-3 de .label-sm, el pie de
+   esta lista daba 3,31:1 en claro y 4,63 en oscuro. Es 12px —texto normal
+   para WCAG— y dice cuántos comprobantes hay y por qué no salen los
+   contratos: no es decoración. Se sube a --ink-2 SÓLO acá; el --ink-3 de toda
+   la app es deuda declarada aparte y cambiarlo de contrabando movería
+   pantallas que nadie volvió a medir. */
+.adj-bloque .label-sm{ color:var(--ink-2); }
 
 html[data-theme="dark"] .adj-bloque{ border-top-color:rgba(255,255,255,0.10); }
 html[data-theme="dark"] .adj-lista li{ border-top-color:rgba(255,255,255,0.07); }

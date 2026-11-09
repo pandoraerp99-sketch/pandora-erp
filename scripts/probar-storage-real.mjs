@@ -186,11 +186,64 @@ if (!SERVICE) {
           : `🔴 SE BORRÓ un comprobante con ficha — la policy quedó demasiado ancha (data=${JSON.stringify(rm2.data)})`
       );
 
-      // Limpieza: se saca la ficha con el service role y después el objeto.
-      await admin.from('attachments').delete().eq('id', id2);
-      await bucket.remove([path2]);
+      await limpiarFichasDePrueba(admin, usuarios[0].user_id);
     }
   }
+}
+
+/**
+ * Saca de la vista las fichas que crea esta prueba — las de esta corrida y
+ * las que dejaron corridas anteriores.
+ *
+ * 🔴 Hasta 2026-11-09 esto hacía `delete()` sobre `attachments` y no miraba el
+ * error. Pero `attachments` es append-only: el trigger
+ * `attachments_solo_baja_logica` rechaza el DELETE (es la mutación 2 de la
+ * guardia). La fila quedaba, entonces la 0042 protegía el objeto y el
+ * `remove()` tampoco borraba. Cada corrida de la suite dejaba un
+ * "protegido.pdf" colgado de un gasto cualquiera del comercio demo —trece
+ * cuando se descubrió, en la lista de comprobantes de /contador— mientras el
+ * script imprimía "VUELTA REAL OK". Una limpieza que dice que limpia y no
+ * mira si limpió.
+ *
+ * Ahora hace lo mismo que la app: baja LÓGICA (removed_at/by/reason), que es
+ * lo único que el trigger deja. Después borra el objeto con el cliente de
+ * SERVICIO —que no pasa por las policies del bucket— y cada paso que falle
+ * suma a `fallas`. Las fichas de prueba se reconocen por el sha256 de
+ * relleno ('b' × 64), que ningún archivo real puede tener.
+ */
+async function limpiarFichasDePrueba(admin, userId) {
+  const { data: viejas, error: errLeer } = await admin
+    .from('attachments')
+    .select('id, storage_path')
+    .eq('sha256', 'b'.repeat(64))
+    .is('removed_at', null);
+  if (errLeer) {
+    console.log('🔴 no se pudieron leer las fichas de prueba para limpiarlas:', errLeer.message);
+    fallas++;
+    return;
+  }
+
+  for (const f of viejas ?? []) {
+    const { error: errBaja } = await admin
+      .from('attachments')
+      .update({
+        removed_at: new Date().toISOString(),
+        removed_by: userId,
+        removed_reason: 'ficha de prueba de probar-storage-real.mjs',
+      })
+      .eq('id', f.id);
+    if (errBaja) {
+      console.log(`🔴 no se pudo dar de baja la ficha de prueba ${f.id}:`, errBaja.message);
+      fallas++;
+      continue;
+    }
+    const { error: errObj } = await admin.storage.from('comprobantes').remove([f.storage_path]);
+    if (errObj) {
+      console.log(`🔴 quedó el objeto de prueba ${f.storage_path}:`, errObj.message);
+      fallas++;
+    }
+  }
+  console.log(`   limpieza: ${(viejas ?? []).length} ficha(s) de prueba dadas de baja`);
 }
 
 console.log(fallas === 0 ? '\nVUELTA REAL OK' : `\n${fallas} problema(s) en la vuelta real`);

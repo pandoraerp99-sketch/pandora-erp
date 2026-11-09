@@ -384,10 +384,7 @@ export function ContadorClient({
     setError(null);
     setLinkSuelto(null);
     startTransition(async () => {
-      const res = await listarComprobantesDelPeriodoAction(
-        resumen.periodo.desde,
-        grano
-      );
+      const res = await listarComprobantesDelPeriodoAction(grano);
       if (!res.ok) {
         setError(res.error);
         return;
@@ -974,7 +971,7 @@ export function ContadorClient({
                         <li key={c.attachment_id}>
                           <span className="adj-fecha tnum">{fechaCorta(c.fecha)}</span>
                           <span className="adj-quien">
-                            {c.payee_name ?? c.categoria}
+                            {c.payee_name?.trim() || c.categoria}
                             {c.comprobante_numero !== null ? (
                               <span className="adj-nro tnum">
                                 {' '}
