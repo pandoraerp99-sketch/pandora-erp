@@ -45,6 +45,29 @@ import {
   type ComprobanteDelPeriodo,
 } from '@/lib/services/expenses/attachment.service';
 import { almacenSupabase } from '@/lib/services/expenses/attachment.storage';
+import { DomainError } from '@/lib/multi_tenant/errors';
+import { logger } from '@/lib/observability/logger';
+
+/**
+ * Qué texto de error llega al NAVEGADOR.
+ *
+ * Estas actions devolvían `e.message` de cualquier error. Pero el mensaje de
+ * un error de Drizzle es `Failed query: <el SQL entero>\nparams: <...>`
+ * (node_modules/drizzle-orm/errors.js), así que una falla de base le mostraba
+ * a la contadora la consulta y sus parámetros. No eran datos de otro comercio
+ * —los parámetros son el propio tenant y fechas— pero el esquema de la base no
+ * tiene por qué llegar a una pantalla.
+ *
+ * Un error de DOMINIO trae un mensaje escrito para el usuario y pasa tal cual.
+ * Todo lo demás va al log del servidor y la pantalla recibe el genérico. No
+ * es silenciarlo (§20.4): se loguea, sólo que no se le muestra a quien mira.
+ * Mismo criterio que el `runAction` de /gastos.
+ */
+function mensajeParaLaPantalla(e: unknown, generico: string): string {
+  if (e instanceof DomainError) return e.messageEs;
+  logger.error({ err: e instanceof Error ? e.message : String(e) }, generico);
+  return generico;
+}
 
 /**
  * Cambia la empresa que está mirando el contador.
@@ -124,7 +147,7 @@ export async function exportarVentasCsvAction(
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof Error ? e.message : 'No se pudo exportar',
+      error: mensajeParaLaPantalla(e, 'No se pudo exportar'),
     };
   }
 }
@@ -155,7 +178,7 @@ export async function exportarInventarioCsvAction(
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof Error ? e.message : 'No se pudo exportar',
+      error: mensajeParaLaPantalla(e, 'No se pudo exportar'),
     };
   }
 }
@@ -182,7 +205,7 @@ export async function exportarDeudoresCsvAction(
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof Error ? e.message : 'No se pudo exportar',
+      error: mensajeParaLaPantalla(e, 'No se pudo exportar'),
     };
   }
 }
@@ -209,7 +232,7 @@ export async function exportarAcreedoresCsvAction(
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof Error ? e.message : 'No se pudo exportar',
+      error: mensajeParaLaPantalla(e, 'No se pudo exportar'),
     };
   }
 }
@@ -235,7 +258,7 @@ export async function exportarCajaCsvAction(
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof Error ? e.message : 'No se pudo exportar',
+      error: mensajeParaLaPantalla(e, 'No se pudo exportar'),
     };
   }
 }
@@ -300,7 +323,7 @@ export async function listarComprobantesDelPeriodoAction(
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof Error ? e.message : 'No se pudieron leer los comprobantes',
+      error: mensajeParaLaPantalla(e, 'No se pudieron leer los comprobantes'),
     };
   }
 }
@@ -334,7 +357,7 @@ export async function bajarComprobanteAction(
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof Error ? e.message : 'No se pudo abrir el comprobante',
+      error: mensajeParaLaPantalla(e, 'No se pudo abrir el comprobante'),
     };
   }
 }

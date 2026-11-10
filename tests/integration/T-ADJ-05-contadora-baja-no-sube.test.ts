@@ -56,6 +56,7 @@ import {
   quitarComprobante,
   urlParaDescargar,
   SoloLecturaError,
+  ContratoReservadoError,
 } from '@/lib/services/expenses/attachment.service';
 import type { AlmacenDeComprobantes } from '@/lib/services/expenses/attachment.storage';
 
@@ -201,14 +202,53 @@ describe('T-ADJ-05 — la contadora baja, no sube', () => {
     expect(r).toMatchObject({ nombre: 'factura.pdf' });
   });
 
-  it('🔴 la contadora ve el clip en la lista y los contratos del proveedor', async () => {
+  it('🔴 la contadora ve el clip en la lista', async () => {
     const cuenta = await como(contadora, () => contarAdjuntosPorGasto([gasto]));
     expect(cuenta[gasto]).toBe(1);
+  });
 
-    const contratos = await como(contadora, () =>
-      listarContratosDeTercero(proveedor, '2026-09-20', almacenFalso().almacen)
+  // ── B-11: los contratos, cerrados de verdad ──────────────────────────────
+  // Este test decía lo CONTRARIO: que la contadora podía listar los contratos
+  // del proveedor. Y el commit del slice 4 afirmaba que los contratos "no
+  // salen" para ella mientras B-11 siga abierta. Las dos cosas eran ciertas a
+  // la vez porque la exclusión vivía sólo en la consulta de /contador: desde
+  // /gastos —a la que entra, porque ninguna ruta filtra por rol— los listaba,
+  // y `urlParaDescargar` no miraba el tipo, así que con el id bajaba un
+  // contrato igual. Esconderlo de una lista no es cerrarlo.
+
+  it('🔴 la contadora NO puede listar los contratos de un proveedor', async () => {
+    await expect(
+      como(contadora, () =>
+        listarContratosDeTercero(proveedor, '2026-09-20', almacenFalso().almacen)
+      )
+    ).rejects.toThrow(ContratoReservadoError);
+  });
+
+  it('🔴 la contadora NO puede bajar un contrato aunque tenga el id', async () => {
+    const c = await como(duenia, () =>
+      adjuntarContrato(
+        {
+          tercero_id: proveedor,
+          archivo: pdf('contrato-con-datos-del-locador.pdf'),
+          vigencia_desde: '2026-01-01',
+          vigencia_hasta: '2026-12-31',
+        },
+        almacenFalso().almacen
+      )
     );
-    expect(contratos).toEqual([]);
+
+    await expect(
+      como(contadora, () => urlParaDescargar(c.id, almacenFalso().almacen))
+    ).rejects.toThrow(ContratoReservadoError);
+
+    // La mitad que se olvida: la dueña lo sigue bajando, y la contadora sigue
+    // bajando COMPROBANTES — la guardia es por tipo, no por la descarga.
+    await expect(
+      como(duenia, () => urlParaDescargar(c.id, almacenFalso().almacen))
+    ).resolves.toMatchObject({ nombre: 'contrato-con-datos-del-locador.pdf' });
+    await expect(
+      como(contadora, () => urlParaDescargar(adjunto, almacenFalso().almacen))
+    ).resolves.toMatchObject({ nombre: 'factura.pdf' });
   });
 
   // ── Lo que nadie estaba impidiendo ────────────────────────────────────────

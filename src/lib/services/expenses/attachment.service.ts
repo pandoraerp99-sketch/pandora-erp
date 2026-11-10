@@ -76,6 +76,22 @@ export class SoloLecturaError extends DomainError {
 }
 
 /**
+ * Un contrato de locación lleva los datos personales del locador, y si se los
+ * podemos mostrar a alguien que NO es el comercio (la contadora) es B-11,
+ * abierta con el abogado. Mientras siga abierta, sólo los ve quien opera el
+ * comercio. Ver `exigirQueOpereElComercio`.
+ */
+export class ContratoReservadoError extends DomainError {
+  constructor() {
+    super(
+      'CONTRATO_RESERVADO',
+      'Los contratos llevan datos personales del locador: por ahora sólo los ve el comercio',
+      403
+    );
+  }
+}
+
+/**
  * Quiénes pueden TOCAR los adjuntos. Lista blanca, no lista negra.
  *
  * ── Por qué existe ────────────────────────────────────────────────────────
@@ -118,6 +134,20 @@ const ROLES_QUE_ESCRIBEN: readonly string[] = ['owner', 'admin', 'cashier'];
  * después de subir dejaría un objeto huérfano en el bucket en cada intento.
  */
 async function exigirQuePuedaEscribir(tenantId: string, userId: string): Promise<void> {
+  await exigirQueOpereElComercio(tenantId, userId, () => new SoloLecturaError());
+}
+
+/**
+ * Los mismos roles que escriben son los que operan el comercio, y son los
+ * únicos que ven un contrato mientras B-11 siga abierta. Un solo chequeo con
+ * dos errores, porque el MOTIVO es distinto: a la contadora no se le niega un
+ * contrato por ser de sólo lectura sino porque no es el comercio.
+ */
+async function exigirQueOpereElComercio(
+  tenantId: string,
+  userId: string,
+  error: () => DomainError
+): Promise<void> {
   const [miembro] = await db
     .select({ role: company_users.role })
     .from(company_users)
@@ -127,7 +157,7 @@ async function exigirQuePuedaEscribir(tenantId: string, userId: string): Promise
     .limit(1);
 
   if (miembro === undefined || !ROLES_QUE_ESCRIBEN.includes(miembro.role)) {
-    throw new SoloLecturaError();
+    throw error();
   }
 }
 
@@ -495,7 +525,8 @@ export async function listarContratosDeTercero(
   hoy: string,
   almacen: AlmacenDeComprobantes
 ): Promise<ContratoDeTercero[]> {
-  const { tenantId } = ctx();
+  const { tenantId, userId } = ctx();
+  await exigirQueOpereElComercio(tenantId, userId, () => new ContratoReservadoError());
 
   const filas = await db
     .select()
@@ -695,6 +726,18 @@ export async function urlParaDescargar(
 
   if (!fila) {
     throw new AttachmentError('Ese comprobante no existe', 'NO_ENCONTRADO');
+  }
+
+  // B-11: la guardia va por TIPO, acá y no en la lista. La consulta de
+  // /contador ya excluye los contratos, pero esconderlos de una lista no los
+  // cierra: el id de un contrato se consigue desde /gastos, y una vez firmada
+  // la URL no pregunta nada más.
+  if (fila.tipo === 'contrato') {
+    await exigirQueOpereElComercio(
+      tenantId,
+      ctx().userId,
+      () => new ContratoReservadoError()
+    );
   }
 
   const url = await almacen.firmar(fila.storage_path, SEGUNDOS_DE_VIDA_DEL_LINK);

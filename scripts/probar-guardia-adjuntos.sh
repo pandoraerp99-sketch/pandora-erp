@@ -7,7 +7,7 @@
 # no existe, el filtro esta mal, el JWT no tiene company_id). Ya paso en este
 # proyecto: `probar-guardia-cross-tenant.sh` nacio por lo mismo.
 #
-# Siete mutaciones sobre garantias reales:
+# Ocho mutaciones sobre garantias reales:
 #   1. sin las policies del BUCKET → el vecino baja el archivo
 #   2. sin el trigger de la tabla  → el adjunto se borra
 #   3. la lista de tipos del service desincronizada de la del bucket
@@ -15,6 +15,7 @@
 #   5. sin la policy de DELETE de la 0042 → la compensacion vuelve a ser muda
 #   6. el contrato vencido deja de marcarse → se pierde el respaldo de medio año
 #   7. la lista blanca deja entrar a la contadora → vuelve a poder escribir
+#   8. la descarga deja de mirar el tipo → la contadora baja un contrato (B-11)
 #
 # El estado se restaura SIEMPRE (trap), re-aplicando la 0040.
 set -u
@@ -169,6 +170,28 @@ else
 fi
 restaurar_svc3
 
+echo "== mutacion 8: el contrato vuelve a bajarse con el id =="
+# B-11. La primera version del slice 4 excluia los contratos de la LISTA de
+# /contador y lo daba por cerrado; pero `urlParaDescargar` no miraba el tipo,
+# asi que con el id —que se consigue desde /gastos— la contadora bajaba el
+# contrato igual. Esconder de una lista no es cerrar. Se apaga el chequeo
+# por tipo y T-ADJ-05 tiene que gritar.
+cp "$SVC_ADJ" /tmp/attachment.service.ts.bak4
+restaurar_svc4() { cp /tmp/attachment.service.ts.bak4 "$SVC_ADJ"; }
+sed -i "s|if (fila.tipo === 'contrato') {|if (false) {|" "$SVC_ADJ"
+if grep -q "if (false) {" "$SVC_ADJ"; then
+  if bash scripts/correr-integracion.sh T-ADJ-05 >/tmp/adj-contrato.log 2>&1; then
+    echo "🔴 contrato sin chequeo de tipo — el test SIGUIO EN VERDE"
+    fallos=$((fallos + 1))
+  else
+    echo "✅ contrato sin chequeo de tipo — el test se puso rojo"
+  fi
+else
+  echo "🔴 la mutacion 8 NO se aplico (cambio el chequeo del tipo?)"
+  fallos=$((fallos + 1))
+fi
+restaurar_svc4
+
 # Restauracion EXPLICITA antes del veredicto. El `trap` corre al salir, o sea
 # DESPUES del "GUARDIA OK": si fallaba ahi, el 🔴 aparecia debajo de un verde ya
 # impreso y con codigo de salida 0. Un ultimo falso verde, en el script que
@@ -187,4 +210,4 @@ if [ "$fallos" -ne 0 ]; then
   echo "GUARDIA DE ADJUNTOS: $fallos problema(s)"
   exit 1
 fi
-echo "GUARDIA DE ADJUNTOS OK (7 mutaciones atrapadas)"
+echo "GUARDIA DE ADJUNTOS OK (8 mutaciones atrapadas)"
