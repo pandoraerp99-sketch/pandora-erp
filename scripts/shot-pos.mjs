@@ -199,6 +199,40 @@ if (ACCION === 'cliente') {
   })`));
 }
 
+if (ACCION === 'carrito') {
+  // /pos con una venta a medio armar: es como la cajera ve la pantalla la
+  // mayor parte del día, y la versión vacía esconde la mitad del diseño (el
+  // carrito, las líneas, el total). Agrega varias tarjetas con stock —una dos
+  // veces, para que se vea una cantidad > 1— y no abre el cobro.
+  for (let i = 0; i < 20; i += 1) {
+    if (await evaluar(`!!document.querySelector('.card')`)) break;
+    await dormir(500);
+  }
+  // Esperar la hidratación: un click previo se pierde sin avisar.
+  for (let i = 0; i < 40; i += 1) {
+    const listo = await evaluar(`(() => {
+      const c = document.querySelector('.card');
+      const k = c && Object.keys(c).find(x => x.startsWith('__reactProps'));
+      return !!(k && typeof c[k].onClick === 'function');
+    })()`);
+    if (listo) break;
+    await dormir(500);
+  }
+  for (const n of [0, 1, 0, 4, 5]) {
+    await evaluar(`(() => {
+      const cs = [...document.querySelectorAll('.card')].filter(c => !/agotado|0 uds/i.test(c.textContent));
+      cs[${n}] && cs[${n}].click();
+      return !!cs[${n}];
+    })()`);
+    await dormir(350);
+  }
+  await dormir(1200);
+  console.log('CARRITO>>>', await evaluar(`JSON.stringify({
+    lineas: document.querySelectorAll('.item').length,
+    total: document.querySelector('.total')?.textContent?.replace(/\\s+/g,' ').slice(0,60) ?? null,
+  })`));
+}
+
 if (ACCION === 'cobro') {
   // ESPERAR a que el catálogo esté pintado antes de clickear.
   //
