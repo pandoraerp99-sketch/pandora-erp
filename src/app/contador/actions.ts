@@ -108,13 +108,11 @@ export async function cambiarEmpresaAction(
  * pensar dónde se guarda; esto es un string que ya existe en memoria.
  */
 export async function exportarVentasCsvAction(
-  desdeIso?: string,
   grano?: string
 ): Promise<{ ok: true; csv: string; nombre: string } | { ok: false; error: string }> {
   try {
     // Mismo criterio que la pantalla: un grano raro cae al mes en vez de
-    // romper. La fecha viene del propio periodo que se esta mirando, asi que
-    // el CSV es SIEMPRE el del periodo en pantalla.
+    // romper.
     const g: Grano = GRANOS.includes(grano as Grano) ? (grano as Grano) : 'mes';
 
     // El mes de cierre lo resuelve el SERVIDOR desde la empresa de la sesión:
@@ -123,15 +121,22 @@ export async function exportarVentasCsvAction(
       requireAuth: true,
     });
 
-    // OJO con `ejercicio`. Los otros granos se fijan pasando una fecha DENTRO
-    // del período en pantalla, y eso funciona porque son el período CORRIENTE
-    // de esa fecha. `ejercicio` no: es el último CERRADO respecto de la fecha
-    // de referencia, así que pasarle un día de adentro del ejercicio cerrado
-    // devolvería el ANTERIOR. Un año entero corrido, en un CSV que se ve
-    // perfectamente bien formado.
-    const referencia =
-      g === 'ejercicio' ? new Date() : desdeIso ? new Date(desdeIso) : new Date();
-    const periodo = periodoDe(g, referencia, mesCierre);
+    // 🔴 El período se resuelve con la fecha de HOY, igual que page.tsx — NO
+    // con una fecha que mande el cliente (H-02 de la auditoría, 2026-11-16).
+    //
+    // Hasta acá recibía `resumen.periodo.desde` y lo reinterpretaba. Eso ya
+    // estaba cuidado para `ejercicio` (el último CERRADO respecto de la
+    // referencia), pero rompía TODOS los granos por otro motivo: `periodo.desde`
+    // es medianoche UTC y `periodoDe` resuelve el calendario del comercio
+    // (UTC−3), así que el primer instante del período cae en el período de
+    // antes. Pidiendo el año 2026 bajaba ventas-2025-01-01_a_2025-12-31.csv:
+    // un archivo bien formado, con el año equivocado, para el estudio.
+    // Pinchado en tests/unit/periodo-no-es-su-propia-referencia.test.ts.
+    //
+    // `new Date()` da exactamente el período en pantalla porque /contador
+    // siempre muestra el que contiene AHORA: el selector cambia el grano,
+    // nunca la fecha.
+    const periodo = periodoDe(g, new Date(), mesCierre);
     const csv = await withServerActionTracing(
       async () => armarCsv(await getVentasParaExport(periodo)),
       { requireAuth: true }
@@ -285,9 +290,7 @@ export async function exportarCajaCsvAction(
  * porque /contador siempre muestra el que contiene AHORA: el selector cambia
  * el grano, nunca la fecha.
  *
- * ⚠️ `exportarVentasCsvAction` (más arriba) sigue teniendo el patrón viejo:
- * recibe `desdeIso` del cliente y lo reinterpreta. Mismo bug, no tocado acá
- * porque cambia el contenido de un archivo que el estudio ya usa.
+ * `exportarVentasCsvAction` tenía el mismo patrón y se arregló igual (H-02).
  *
  * Sólo comprobantes de gasto: los contratos del proveedor NO entran acá
  * mientras B-11 siga abierta. Ver `listarComprobantesDelPeriodo`.

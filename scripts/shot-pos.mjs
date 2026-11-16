@@ -687,6 +687,57 @@ if (ACCION === 'anulados') {
   })`));
 }
 
+if (ACCION === 'export-ventas') {
+  // /contador: apretar "Exportar ventas" y leer QUÉ archivo baja (H-02).
+  // El CSV se arma con un Blob y un <a download> que se clickea solo: se
+  // intercepta ese click para quedarse con el nombre y el contenido. Es la
+  // única forma de ver el bug del año corrido, que no daba ningún error —
+  // el archivo salía bien formado con el año equivocado.
+  for (let i = 0; i < 40; i++) {
+    const listo = await evaluar(`(() => {
+      const b = [...document.querySelectorAll('button')].find(x => /Exportar ventas/.test(x.textContent || ''));
+      const k = b && Object.keys(b).find(x => x.startsWith('__reactProps'));
+      return !!(k && typeof b[k].onClick === 'function');
+    })()`);
+    if (listo) break;
+    await dormir(500);
+  }
+  // 🔴 El Blob se captura en createObjectURL, NO con fetch(href) en el click:
+  // la pantalla hace a.click() y en la línea siguiente revokeObjectURL, así
+  // que un fetch asincrónico llega con el link ya revocado. La primera
+  // versión de esta sonda volvía `descarga: null` en los cuatro granos y se
+  // leía igual que "el botón no exporta".
+  await evaluar(`(() => {
+    window.__descarga = null;
+    const blobs = new Map();
+    const crear = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = (b) => { const u = crear(b); blobs.set(u, b); return u; };
+    const original = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () {
+      if (this.download) {
+        const nombre = this.download;
+        const blob = blobs.get(this.href);
+        (blob ? blob.text() : Promise.resolve('')).then(t => {
+          window.__descarga = { nombre, lineas: t.split('\\n').length, cabecera: t.split('\\n')[0].slice(0, 160) };
+        });
+        return;
+      }
+      return original.call(this);
+    };
+    [...document.querySelectorAll('button')].find(x => /Exportar ventas/.test(x.textContent || ''))?.click();
+    return true;
+  })()`);
+  for (let i = 0; i < 40; i++) {
+    if (await evaluar(`!!window.__descarga`)) break;
+    await dormir(500);
+  }
+  console.log('DESCARGA>>>', await evaluar(`JSON.stringify({
+    etiqueta: document.querySelector('.bar-sub')?.textContent?.replace(/\\s+/g,' ').trim() ?? null,
+    descarga: window.__descarga,
+    error: document.querySelector('.label-sm.err')?.textContent ?? null,
+  })`));
+}
+
 if (ACCION === 'export') {
   // /gastos: abrir "Exportar para el estudio" y leer los cuatro items como los
   // ve quien exporta. Sus subtextos describen QUE LLEVA cada archivo, y uno de

@@ -366,7 +366,7 @@ export function ContadorClient({
   };
 
   const exportar = () =>
-    bajar(() => exportarVentasCsvAction(resumen.periodo.desde, grano));
+    bajar(() => exportarVentasCsvAction(grano));
 
   // ── Los comprobantes adjuntos del período (ítem 12, slice 4) ─────────────
   // `null` es "todavía no los pedí", que NO es lo mismo que "no hay": con un
