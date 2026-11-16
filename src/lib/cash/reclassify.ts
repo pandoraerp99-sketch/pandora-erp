@@ -164,6 +164,10 @@ export async function reclassifySalePaymentMethod(
         'No hay una caja abierta en este punto de venta. Reclasificar ventas de sesiones cerradas es F1+.'
       );
     }
+    // Las dos horas salen del reloj de la BASE (opened_at es `default now()`
+    // y finalized_at lo pone `now()` en finalizeSale desde 2026-11-16): esta
+    // comparación es de un solo reloj. Antes finalized_at era `new Date()` de
+    // Node, y comparar dos relojes falló una vez en la suite.
     if (sale.finalized_at < session.opened_at) {
       throw new ReclassifyValidationError(
         'sale_not_in_open_session',

@@ -832,7 +832,17 @@ async function finalizeSaleCore(
         payment_method: denormalizedPaymentMethod,
         payment_breakdown: denormalizedPaymentBreakdown,
         cash_session_id: linkedCashSessionId,
-        finalized_at: new Date(),
+        // La hora del cobro la pone la BASE, no Node (2026-11-16). La compara
+        // `reclassify.ts` contra `cash_sessions.opened_at`, que es `default
+        // now()`: con `new Date()` eran dos relojes (en dev, WSL y la VM de
+        // Docker; en producción, Vercel y Supabase), y una venta cobrada
+        // apenas abierta la caja podía "quedar antes" de la caja. T-CASH-10
+        // falló así una vez en la suite completa, corrida bajo carga; no se
+        // pudo reproducir aislado (6/6 verde, desfase medido ~0,5 ms con
+        // scripts/medir-desfase-de-relojes.sh). Un solo reloj lo saca de
+        // discusión: `now()` es el inicio de ESTA transacción, que arranca
+        // después de que la apertura de caja ya se commiteó.
+        finalized_at: sql`now()`,
         updated_at: new Date(),
       })
       .where(and(eq(sales.tenant_id, tenantId), eq(sales.id, input.sale_id)));
