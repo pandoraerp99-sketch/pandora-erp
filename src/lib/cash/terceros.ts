@@ -15,6 +15,7 @@ import { TERCERO_TYPES, type TerceroType, type UserRole } from '../db/schema/_co
 import { requireTracingContext } from '../tracing/context.js';
 import { CrossTenantAccessError } from '../multi_tenant/errors.js';
 import { isValidUuid } from '../tracing/ids.js';
+import { exigirQueOpereElComercio } from '../auth/autorizacion.js';
 
 const NAME_MAX_LEN = 80;
 const DOC_MAX_LEN = 20;
@@ -102,6 +103,7 @@ export async function createTercero(
   input: { type: TerceroType; name: string; doc?: string | null },
   actorRole: UserRole | null | undefined
 ): Promise<Tercero> {
+  await exigirQueOpereElComercio();
   assertOwnerTercero(actorRole);
   const tenant_id = requireTenant();
   if (!TERCERO_TYPES.includes(input.type)) {
@@ -128,6 +130,7 @@ export async function updateTercero(
   input: { id: string; name: string; doc?: string | null },
   actorRole: UserRole | null | undefined
 ): Promise<Tercero> {
+  await exigirQueOpereElComercio();
   assertOwnerTercero(actorRole);
   const tenant_id = requireTenant();
   if (!isValidUuid(input.id)) {
@@ -152,6 +155,7 @@ export async function deactivateTercero(
   input: { id: string },
   actorRole: UserRole | null | undefined
 ): Promise<Tercero> {
+  await exigirQueOpereElComercio();
   assertOwnerTercero(actorRole);
   const tenant_id = requireTenant();
   if (!isValidUuid(input.id)) {

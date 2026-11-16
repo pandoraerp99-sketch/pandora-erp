@@ -29,6 +29,7 @@ import { writeAuditLog } from '../../audit/audit-writer.js';
 import { logger } from '../../observability/logger.js';
 import { ValidationError } from '../../multi_tenant/errors.js';
 import { requireTenantId } from '../../tracing/context.js';
+import { exigirQueOpereElComercio } from '../../auth/autorizacion.js';
 
 const REQUIRED_COLUMNS = ['name', 'price'] as const;
 const ALLOWED_COLUMNS = [
@@ -113,6 +114,7 @@ function parseCsvLine(line: string): string[] {
 export async function importProductsFromCsv(
   csvContent: string
 ): Promise<CsvImportResult> {
+  await exigirQueOpereElComercio();
   const tenantId = requireTenantId();
 
   const rawLines = csvContent.split(/\r?\n/);

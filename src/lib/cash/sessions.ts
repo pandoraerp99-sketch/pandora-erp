@@ -45,6 +45,7 @@ import { CrossTenantAccessError } from '../multi_tenant/errors.js';
 import { isValidUuid } from '../tracing/ids.js';
 import { writeAuditLog } from '../audit/audit-writer.js';
 import { incrementCounter } from '../observability/metrics.js';
+import { exigirQueOpereElComercio } from '../auth/autorizacion.js';
 
 // ──── Errors tipados ────────────────────────────────────────────
 
@@ -422,6 +423,7 @@ export async function openCashSession(
   input: OpenSessionInput,
   txOrDb: DbOrTransaction = db
 ): Promise<CashSession> {
+  await exigirQueOpereElComercio();
   const ctx = requireTracingContext();
   const values = prepareOpenSessionValues(input, ctx);
 
@@ -495,6 +497,7 @@ export async function closeCashSession(
   input: CloseSessionInput,
   txOrDb: DbOrTransaction = db
 ): Promise<CloseSessionResult> {
+  await exigirQueOpereElComercio();
   if (!isValidUuid(input.session_id)) {
     throw new CashValidationError(
       'invalid_session_id',

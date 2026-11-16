@@ -129,6 +129,9 @@ describe('T-AUDIT-02 — plata y acceso dejan evento en audit_log', () => {
     await db.insert(company_users).values([
       { id: crypto.randomUUID(), company_id: tenant, user_id: user, role: 'owner' },
       { id: crypto.randomUUID(), company_id: tenant, user_id: empleado, role: 'cashier' },
+      // También en el comercio ajeno: el fixture le crea un cliente ahí, y
+      // desde H-01 nadie escribe donde no es miembro.
+      { id: crypto.randomUUID(), company_id: ajeno, user_id: user, role: 'owner' },
     ]);
     const base = {
       tenant_id: tenant,

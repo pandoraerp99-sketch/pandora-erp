@@ -23,6 +23,7 @@ import { requireTracingContext } from '../../tracing/context.js';
 import { writeAuditLog } from '../../audit/audit-writer.js';
 import { CrossTenantAccessError, DomainError } from '../../multi_tenant/errors.js';
 import { logger } from '../../observability/logger.js';
+import { exigirQueOpereElComercio } from '../../auth/autorizacion.js';
 
 type DbOrTx = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -252,6 +253,7 @@ export interface SettleInput {
 export async function settleAccount(
   input: SettleInput
 ): Promise<CustomerAccountMovement> {
+  await exigirQueOpereElComercio();
   const { tenantId, userId } = ctx();
   const monto = new Decimal(input.amount);
 
@@ -386,6 +388,7 @@ export async function adjustAccount(input: {
   amount: string;
   reason: string;
 }): Promise<CustomerAccountMovement> {
+  await exigirQueOpereElComercio();
   const { tenantId, userId } = ctx();
   const monto = new Decimal(input.amount);
   if (!monto.isFinite() || monto.lte(0)) {

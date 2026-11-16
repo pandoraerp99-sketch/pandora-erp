@@ -19,6 +19,7 @@ import { CrossTenantAccessError, DomainError } from '../../multi_tenant/errors.j
 import { writeAuditLog } from '../../audit/audit-writer.js';
 import { logger } from '../../observability/logger.js';
 import { mesesDelComercio, ZONA_COMERCIO } from '../../domain/fecha-comercio.js';
+import { exigirQueOpereElComercio } from '../../auth/autorizacion.js';
 
 function requireTenantId(): string {
   const ctx = requireTracingContext();
@@ -123,6 +124,7 @@ function parse(raw: unknown): CustomerInput {
 }
 
 export async function createCustomer(rawInput: unknown): Promise<Customer> {
+  await exigirQueOpereElComercio();
   const tenantId = requireTenantId();
   const input = parse(rawInput);
 
@@ -167,6 +169,7 @@ export async function updateCustomer(
   id: string,
   rawInput: unknown
 ): Promise<Customer> {
+  await exigirQueOpereElComercio();
   const tenantId = requireTenantId();
   // El patch manda solo lo que cambia, pero igual se validan las reglas
   // cruzadas: no puede entrar un doc_number sin doc_type.
@@ -273,6 +276,7 @@ export async function listCustomers(
  * viejas y borrarlo rompe el historico.
  */
 export async function deactivateCustomer(id: string): Promise<void> {
+  await exigirQueOpereElComercio();
   const tenantId = requireTenantId();
   const [row] = await db
     .update(customers)

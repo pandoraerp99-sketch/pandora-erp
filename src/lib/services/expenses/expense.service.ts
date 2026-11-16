@@ -55,6 +55,7 @@ import { CrossTenantAccessError, DomainError } from '../../multi_tenant/errors.j
 import { logger } from '../../observability/logger.js';
 import { csvArmar, csvNum, csvTxt } from '../reporting/csv.js';
 import { diaDelComercio, ZONA_COMERCIO } from '../../domain/fecha-comercio.js';
+import { exigirQueOpereElComercio } from '../../auth/autorizacion.js';
 
 export class ExpenseError extends DomainError {
   constructor(code: string, messageEs: string) {
@@ -233,6 +234,7 @@ async function vincularProveedorPorCuit(
 }
 
 export async function registerExpense(input: NuevoGasto): Promise<Expense> {
+  await exigirQueOpereElComercio();
   const { tenantId, userId } = ctx();
 
   if (!EXPENSE_CATEGORIES.includes(input.categoria)) {
@@ -713,6 +715,7 @@ export interface AnulacionGasto {
  * calcular el delta contra la caja, y anular+cargar da el mismo resultado.
  */
 export async function annulExpense(input: AnulacionGasto): Promise<Expense> {
+  await exigirQueOpereElComercio();
   const { tenantId, userId } = ctx();
 
   const motivo = input.motivo?.trim() ?? '';

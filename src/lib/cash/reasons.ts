@@ -20,6 +20,7 @@ import { BENEFICIARIO_TIPOS, type BeneficiarioTipo, type UserRole } from '../db/
 import { requireTracingContext } from '../tracing/context.js';
 import { CrossTenantAccessError } from '../multi_tenant/errors.js';
 import { isValidUuid } from '../tracing/ids.js';
+import { exigirQueOpereElComercio } from '../auth/autorizacion.js';
 
 const LABEL_MAX_LEN = 60;
 
@@ -109,6 +110,7 @@ export async function createWithdrawalReason(
   input: { label: string; beneficiario_tipo?: BeneficiarioTipo },
   actorRole: UserRole | null | undefined
 ): Promise<CashWithdrawalReason> {
+  await exigirQueOpereElComercio();
   assertOwner(actorRole);
   const tenant_id = requireTenant();
   const label = normalizeLabel(input.label);
@@ -133,6 +135,7 @@ export async function updateWithdrawalReason(
   input: { id: string; label: string; beneficiario_tipo?: BeneficiarioTipo },
   actorRole: UserRole | null | undefined
 ): Promise<CashWithdrawalReason> {
+  await exigirQueOpereElComercio();
   assertOwner(actorRole);
   const tenant_id = requireTenant();
   if (!isValidUuid(input.id)) {
@@ -162,6 +165,7 @@ export async function deactivateWithdrawalReason(
   input: { id: string },
   actorRole: UserRole | null | undefined
 ): Promise<CashWithdrawalReason> {
+  await exigirQueOpereElComercio();
   assertOwner(actorRole);
   const tenant_id = requireTenant();
   if (!isValidUuid(input.id)) {

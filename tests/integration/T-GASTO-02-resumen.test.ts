@@ -97,12 +97,12 @@ describe('T-GASTO-02 — resumen del período', () => {
       full_name: 'Dueño',
       is_support: false,
     });
-    await db.insert(company_users).values({
-      id: crypto.randomUUID(),
-      company_id: tenantId,
-      user_id: userId,
-      role: 'owner',
-    });
+    // Membresía en los DOS comercios: el fixture escribe también en el otro
+    // (es lo que se prueba), y desde H-01 nadie escribe donde no es miembro.
+    await db.insert(company_users).values([
+      { id: crypto.randomUUID(), company_id: tenantId, user_id: userId, role: 'owner' },
+      { id: crypto.randomUUID(), company_id: otroTenant, user_id: userId, role: 'owner' },
+    ]);
   });
 
   afterEach(async () => {

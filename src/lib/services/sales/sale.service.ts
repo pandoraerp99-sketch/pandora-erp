@@ -85,6 +85,7 @@ import {
   type SetCustomerInput,
   type UpdateItemQuantityInput,
 } from './types.js';
+import { exigirQueOpereElComercio } from '../../auth/autorizacion.js';
 
 export interface SaleWithItems {
   sale: Sale;
@@ -201,6 +202,7 @@ export async function createDraftSale(
   cashierUserId: string,
   salePoint: number = 1
 ): Promise<Sale> {
+  await exigirQueOpereElComercio();
   const tenantId = requireTenantId();
   const correlationId = getCurrentCorrelationId() ?? generateCorrelationId();
 
@@ -239,6 +241,7 @@ export async function createDraftSale(
 }
 
 export async function addItemToSale(rawInput: unknown): Promise<SaleWithItems> {
+  await exigirQueOpereElComercio();
   const tenantId = requireTenantId();
   const input: AddItemInput = parse(AddItemInputSchema, rawInput, 'add_item');
 
@@ -343,6 +346,7 @@ export async function addItemToSale(rawInput: unknown): Promise<SaleWithItems> {
 }
 
 export async function updateItemQuantity(rawInput: unknown): Promise<SaleWithItems> {
+  await exigirQueOpereElComercio();
   const tenantId = requireTenantId();
   const input: UpdateItemQuantityInput = parse(
     UpdateItemQuantityInputSchema,
@@ -420,6 +424,7 @@ export async function updateItemQuantity(rawInput: unknown): Promise<SaleWithIte
 }
 
 export async function removeItemFromSale(rawInput: unknown): Promise<SaleWithItems> {
+  await exigirQueOpereElComercio();
   const tenantId = requireTenantId();
   const input: RemoveItemInput = parse(RemoveItemInputSchema, rawInput, 'remove_item');
 
@@ -465,6 +470,7 @@ export async function removeItemFromSale(rawInput: unknown): Promise<SaleWithIte
 }
 
 export async function setSaleCustomer(rawInput: unknown): Promise<Sale> {
+  await exigirQueOpereElComercio();
   const tenantId = requireTenantId();
   const input: SetCustomerInput = parse(SetCustomerInputSchema, rawInput, 'set_customer');
 
@@ -571,6 +577,7 @@ export async function setSaleCustomer(rawInput: unknown): Promise<Sale> {
 }
 
 export async function finalizeSale(rawInput: unknown): Promise<SaleWithItems> {
+  await exigirQueOpereElComercio();
   const tenantId = requireTenantId();
   const input: FinalizeSaleInput = parse(
     FinalizeSaleInputSchema,
@@ -911,6 +918,7 @@ async function finalizeSaleCore(
 }
 
 export async function cancelSale(rawInput: unknown): Promise<Sale> {
+  await exigirQueOpereElComercio();
   const tenantId = requireTenantId();
   const input: CancelSaleInput = parse(CancelSaleInputSchema, rawInput, 'cancel_sale');
 

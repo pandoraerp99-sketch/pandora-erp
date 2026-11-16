@@ -28,6 +28,7 @@ import { requireTracingContext } from '../tracing/context.js';
 import { CrossTenantAccessError } from '../multi_tenant/errors.js';
 import { isValidUuid } from '../tracing/ids.js';
 import { writeAuditLog } from '../audit/audit-writer.js';
+import { exigirQueOpereElComercio } from '../auth/autorizacion.js';
 
 export type ReclassifyErrorCode =
   | 'invalid_sale_id'
@@ -87,6 +88,7 @@ export async function reclassifySalePaymentMethod(
   input: ReclassifySalePaymentInput,
   txOrDb: DbOrTransaction = db
 ): Promise<ReclassifyResult> {
+  await exigirQueOpereElComercio();
   const ctx = requireTracingContext();
   const tenant_id = ctx.tenant_id;
   if (!tenant_id) {

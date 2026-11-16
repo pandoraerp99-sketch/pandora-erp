@@ -39,7 +39,11 @@ import {
 } from '../../db/schema/attachments.js';
 import { expenses, GASTO_VIGENTE_SQL } from '../../db/schema/expenses.js';
 import { terceros } from '../../db/schema/terceros.js';
-import { company_users } from '../../db/schema/users.js';
+import {
+  SoloLecturaError,
+  leerRolEnElComercio,
+  rolOpera,
+} from '../../auth/autorizacion.js';
 import type { AlmacenDeComprobantes } from './attachment.storage.js';
 import { requireTracingContext } from '../../tracing/context.js';
 import { writeAuditLog } from '../../audit/audit-writer.js';
@@ -65,15 +69,10 @@ export class AttachmentError extends DomainError {
   }
 }
 
-export class SoloLecturaError extends DomainError {
-  constructor() {
-    super(
-      'SOLO_LECTURA',
-      'Tu usuario puede ver y descargar los comprobantes, pero no modificarlos',
-      403
-    );
-  }
-}
+// La regla de quién opera el comercio vive en src/lib/auth/autorizacion.ts
+// desde H-01 (2026-11-16): acá nació y de acá se generalizó a todas las
+// mutaciones. Se re-exporta porque los tests y las actions la importan de acá.
+export { SoloLecturaError };
 
 /**
  * Un contrato de locación lleva los datos personales del locador, y si se los
@@ -121,7 +120,7 @@ export class ContratoReservadoError extends DomainError {
  * que nada los frene. Cerrar eso toca ventas, caja, clientes y productos, y es
  * otra pieza de trabajo — no entra de contrabando en el commit de un feature.
  */
-const ROLES_QUE_ESCRIBEN: readonly string[] = ['owner', 'admin', 'cashier'];
+// (la lista blanca es ROLES_QUE_OPERAN, en autorizacion.ts)
 
 /**
  * El rol se LEE de `company_users`, nunca se recibe.
@@ -134,7 +133,7 @@ const ROLES_QUE_ESCRIBEN: readonly string[] = ['owner', 'admin', 'cashier'];
  * después de subir dejaría un objeto huérfano en el bucket en cada intento.
  */
 async function exigirQuePuedaEscribir(tenantId: string, userId: string): Promise<void> {
-  await exigirQueOpereElComercio(tenantId, userId, () => new SoloLecturaError());
+  await exigirRolQueOpera(tenantId, userId, () => new SoloLecturaError());
 }
 
 /**
@@ -143,22 +142,12 @@ async function exigirQuePuedaEscribir(tenantId: string, userId: string): Promise
  * dos errores, porque el MOTIVO es distinto: a la contadora no se le niega un
  * contrato por ser de sólo lectura sino porque no es el comercio.
  */
-async function exigirQueOpereElComercio(
+async function exigirRolQueOpera(
   tenantId: string,
   userId: string,
   error: () => DomainError
 ): Promise<void> {
-  const [miembro] = await db
-    .select({ role: company_users.role })
-    .from(company_users)
-    .where(
-      and(eq(company_users.company_id, tenantId), eq(company_users.user_id, userId))
-    )
-    .limit(1);
-
-  if (miembro === undefined || !ROLES_QUE_ESCRIBEN.includes(miembro.role)) {
-    throw error();
-  }
+  if (!rolOpera(await leerRolEnElComercio(tenantId, userId))) throw error();
 }
 
 function ctx() {
@@ -526,7 +515,7 @@ export async function listarContratosDeTercero(
   almacen: AlmacenDeComprobantes
 ): Promise<ContratoDeTercero[]> {
   const { tenantId, userId } = ctx();
-  await exigirQueOpereElComercio(tenantId, userId, () => new ContratoReservadoError());
+  await exigirRolQueOpera(tenantId, userId, () => new ContratoReservadoError());
 
   const filas = await db
     .select()
@@ -733,7 +722,7 @@ export async function urlParaDescargar(
   // cierra: el id de un contrato se consigue desde /gastos, y una vez firmada
   // la URL no pregunta nada más.
   if (fila.tipo === 'contrato') {
-    await exigirQueOpereElComercio(
+    await exigirRolQueOpera(
       tenantId,
       ctx().userId,
       () => new ContratoReservadoError()

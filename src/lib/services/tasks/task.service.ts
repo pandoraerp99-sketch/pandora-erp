@@ -28,6 +28,7 @@ import { proximaFecha } from '../../tasks/recurrencia.js';
 import { requireTracingContext } from '../../tracing/context.js';
 import { CrossTenantAccessError, DomainError } from '../../multi_tenant/errors.js';
 import { logger } from '../../observability/logger.js';
+import { exigirQueOpereElComercio } from '../../auth/autorizacion.js';
 
 export class TaskError extends DomainError {
   constructor(code: string, messageEs: string) {
@@ -86,6 +87,7 @@ export interface NuevaTarea {
 }
 
 export async function createTask(input: NuevaTarea): Promise<Task> {
+  await exigirQueOpereElComercio();
   const { tenantId, userId } = ctx();
 
   const tipo = input.tipo ?? 'general';
@@ -172,6 +174,7 @@ async function traerPropia(
  *   día siguiente, y una tarea diaria tachada a esa hora saltearía un día.
  */
 export async function completeTask(id: string, hoyLocal: string): Promise<Task> {
+  await exigirQueOpereElComercio();
   const { tenantId, userId } = ctx();
   const hoy = validarFecha(hoyLocal, 'La fecha de hoy');
   if (hoy === null) throw new TaskError('fecha_invalida', 'Falta la fecha de hoy');
@@ -234,6 +237,7 @@ export async function completeTask(id: string, hoyLocal: string): Promise<Task> 
  * apoyarse en esto.
  */
 export async function uncompleteTask(id: string): Promise<Task> {
+  await exigirQueOpereElComercio();
   const { tenantId } = ctx();
 
   return db.transaction(async (tx) => {
@@ -282,6 +286,7 @@ export interface CambiosTarea {
 
 /** Editar / reprogramar. */
 export async function updateTask(id: string, cambios: CambiosTarea): Promise<Task> {
+  await exigirQueOpereElComercio();
   const { tenantId } = ctx();
 
   const actual = await traerPropia(db, tenantId, id);
@@ -337,6 +342,7 @@ export async function updateTask(id: string, cambios: CambiosTarea): Promise<Tas
  * corrige registrando otro: se borra. No es un hecho contable.
  */
 export async function deleteTask(id: string): Promise<void> {
+  await exigirQueOpereElComercio();
   const { tenantId } = ctx();
   await traerPropia(db, tenantId, id);
   await db.delete(tasks).where(and(eq(tasks.tenant_id, tenantId), eq(tasks.id, id)));

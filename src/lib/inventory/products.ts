@@ -38,6 +38,7 @@ import type { TracingContext } from '../tracing/context.js';
 import { CrossTenantAccessError } from '../multi_tenant/errors.js';
 import { isValidUuid } from '../tracing/ids.js';
 import { writeAuditLog } from '../audit/audit-writer.js';
+import { exigirQueOpereElComercio } from '../auth/autorizacion.js';
 
 // ──── Errors tipados ────────────────────────────────────────────
 
@@ -296,6 +297,7 @@ export async function createProduct(
   input: CreateProductInput,
   txOrDb: DbOrTransaction = db
 ): Promise<Product> {
+  await exigirQueOpereElComercio();
   const ctx = requireTracingContext();
   const values = prepareCreateProductValues(input, ctx);
 

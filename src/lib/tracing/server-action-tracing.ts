@@ -10,6 +10,7 @@
 import { headers } from 'next/headers';
 import type { ActorType } from '../db/schema/_common.js';
 import { getCurrentSession } from '../auth/session.js';
+import { leerRolEnElComercio } from '../auth/autorizacion.js';
 import { withTracingContext } from './context.js';
 import { generateCorrelationId, generateRequestId, resolveInboundIds } from './ids.js';
 
@@ -44,6 +45,13 @@ export async function withServerActionTracing<T>(
   const tenantId = session?.active_company_id ?? fallbackTenantId ?? null;
   const actorUserId = session?.user_id ?? null;
 
+  // El rol se lee de la base (no del JWT) UNA vez acá, y viaja en el context:
+  // así `exigirQueOpereElComercio()` no cuesta una consulta por mutación. Ver
+  // src/lib/auth/autorizacion.ts. Sin sesión o sin empresa activa queda null,
+  // que para la guardia es "no es miembro".
+  const actorRole =
+    session && tenantId ? await leerRolEnElComercio(tenantId, session.user_id) : null;
+
   // Fix advisor 2026-06-02: cuando NO hay session (requireAuth=false en endpoint
   // publico como webhook receiver / health), actor_type DEBE ser 'system', NO 'user'.
   // 'user' implica que hay user_id; loguear actor='user' con user_id=null mancha
@@ -61,6 +69,7 @@ export async function withServerActionTracing<T>(
       tenant_id: tenantId,
       actor_user_id: actorUserId,
       actor_type: actorType,
+      actor_role: actorRole,
     },
     fn
   );

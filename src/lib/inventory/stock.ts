@@ -57,6 +57,7 @@ import { isValidUuid } from '../tracing/ids.js';
 import { writeAuditLog } from '../audit/audit-writer.js';
 import { normalizeDecimal, ProductValidationError } from './products.js';
 import { diaDelComercio } from '../domain/fecha-comercio.js';
+import { exigirQueOpereElComercio } from '../auth/autorizacion.js';
 
 // ──── Errors tipados ────────────────────────────────────────────
 
@@ -504,6 +505,7 @@ export async function recordStockMovement(
   input: RecordMovementInput,
   txOrDb: DbOrTransaction = db
 ): Promise<RecordMovementResult> {
+  await exigirQueOpereElComercio();
   const ctx = requireTracingContext();
   const values = prepareStockMovementValues(input, ctx);
   // Una sola fuente: la dirección que se calcula para la fila es la misma que
@@ -657,6 +659,7 @@ export async function recordOpeningStock(
   input: { product_id: string; qty: string; override_tenant_id?: string },
   txOrDb: DbOrTransaction = db
 ): Promise<RecordMovementResult> {
+  await exigirQueOpereElComercio();
   return await recordStockMovement(
     {
       product_id: input.product_id,

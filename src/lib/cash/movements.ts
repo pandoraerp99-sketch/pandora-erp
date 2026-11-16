@@ -32,6 +32,7 @@ import type { TracingContext } from '../tracing/context.js';
 import { CrossTenantAccessError } from '../multi_tenant/errors.js';
 import { isValidUuid } from '../tracing/ids.js';
 import { normalizeCashAmount, CashValidationError } from './sessions.js';
+import { exigirQueOpereElComercio } from '../auth/autorizacion.js';
 
 // ──── Errores adicionales tipados ──────────────────────────────
 
@@ -185,6 +186,7 @@ export async function registerCashMovement(
   input: RegisterMovementInput,
   txOrDb: DbOrTransaction = db
 ): Promise<CashMovement> {
+  await exigirQueOpereElComercio();
   const ctx = requireTracingContext();
   const tenant_id = ctx.tenant_id;
   if (!tenant_id) {

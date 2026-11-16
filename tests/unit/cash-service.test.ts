@@ -18,6 +18,7 @@
  * + audit_log atomic + metrics atomic) → diferidos a tests/integration cuando
  * Docker activo. Listados en INTEGRATION-TODO.md T-CASH-01..04 + T-CONC-02.
  */
+import { withTracingContext } from '@/lib/tracing/context';
 import { describe, expect, it } from 'vitest';
 import {
   normalizeCashAmount,
@@ -634,13 +635,28 @@ describe('openCashSession wrapper — requireTracingContext gate', () => {
 });
 
 describe('closeCashSession wrapper — UUID validation + context gate', () => {
-  it('session_id no UUID → throw CashValidationError', async () => {
+  it('session_id no UUID (con contexto de dueña) → throw CashValidationError', async () => {
+    // Desde H-01 la guardia de rol corre ANTES que la validación, y sin
+    // contexto es ella la que tira. Con el rol YA resuelto en el contexto
+    // (`actor_role`) no consulta la base: el test sigue siendo unitario y lo
+    // que se prueba vuelve a ser la validación del UUID.
     await expect(
-      closeCashSession({
-        session_id: 'garbage',
-        counted_amount: 1500,
-        expected_amount: 1500,
-      } satisfies CloseSessionInput)
+      withTracingContext(
+        {
+          correlation_id: '11111111-1111-4111-8111-111111111111',
+          request_id: '22222222-2222-4222-8222-222222222222',
+          tenant_id: '33333333-3333-4333-8333-333333333333',
+          actor_user_id: '44444444-4444-4444-8444-444444444444',
+          actor_type: 'user',
+          actor_role: 'owner',
+        },
+        () =>
+          closeCashSession({
+            session_id: 'garbage',
+            counted_amount: 1500,
+            expected_amount: 1500,
+          } satisfies CloseSessionInput)
+      )
     ).rejects.toThrow(CashValidationError);
   });
 

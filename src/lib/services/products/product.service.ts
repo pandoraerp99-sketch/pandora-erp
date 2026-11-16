@@ -59,6 +59,7 @@ import {
   type StockAdjustmentInput,
   type UpdateProductInput,
 } from './types.js';
+import { exigirQueOpereElComercio } from '../../auth/autorizacion.js';
 
 async function getByIdInternal(tenantId: string, id: string): Promise<Product | null> {
   const result = await db
@@ -71,6 +72,7 @@ async function getByIdInternal(tenantId: string, id: string): Promise<Product | 
 }
 
 export async function createProduct(rawInput: unknown): Promise<Product> {
+  await exigirQueOpereElComercio();
   const tenantId = requireTenantId();
 
   const parsed = CreateProductInputSchema.safeParse(rawInput);
@@ -187,6 +189,7 @@ export async function updateProduct(
   id: string,
   rawInput: unknown
 ): Promise<Product> {
+  await exigirQueOpereElComercio();
   const tenantId = requireTenantId();
 
   // Zod descarta las claves que no conoce, así que sin este chequeo un
@@ -471,6 +474,7 @@ export async function listLowStockProducts(): Promise<Product[]> {
  *     nada, ahora se rechaza.
  */
 export async function adjustStock(rawInput: unknown): Promise<Product> {
+  await exigirQueOpereElComercio();
   // Fail-fast del tenant en el boundary del service. `recordStockMovement` lo
   // vuelve a exigir desde el tracing context — es a propósito, no redundancia
   // accidental: acá se falla con el error de siempre antes de tocar nada.
@@ -559,6 +563,7 @@ export async function adjustStock(rawInput: unknown): Promise<Product> {
 }
 
 export async function softDeleteProduct(id: string): Promise<void> {
+  await exigirQueOpereElComercio();
   const tenantId = requireTenantId();
 
   const existing = await getByIdInternal(tenantId, id);

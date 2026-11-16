@@ -7,7 +7,7 @@
 # no existe, el filtro esta mal, el JWT no tiene company_id). Ya paso en este
 # proyecto: `probar-guardia-cross-tenant.sh` nacio por lo mismo.
 #
-# Ocho mutaciones sobre garantias reales:
+# Nueve mutaciones sobre garantias reales:
 #   1. sin las policies del BUCKET → el vecino baja el archivo
 #   2. sin el trigger de la tabla  → el adjunto se borra
 #   3. la lista de tipos del service desincronizada de la del bucket
@@ -16,6 +16,7 @@
 #   6. el contrato vencido deja de marcarse → se pierde el respaldo de medio año
 #   7. la lista blanca deja entrar a la contadora → vuelve a poder escribir
 #   8. la descarga deja de mirar el tipo → la contadora baja un contrato (B-11)
+#   9. una mutacion cualquiera pierde su guardia de rol → la contadora vende (H-01)
 #
 # El estado se restaura SIEMPRE (trap), re-aplicando la 0040.
 set -u
@@ -154,10 +155,13 @@ echo "== mutacion 7: la contadora vuelve a poder escribir =="
 #
 # Se ensancha la lista blanca, que es exactamente como se volveria a abrir sin
 # querer: agregando un rol "porque hacia falta para otra cosa".
-cp "$SVC_ADJ" /tmp/attachment.service.ts.bak3
-restaurar_svc3() { cp /tmp/attachment.service.ts.bak3 "$SVC_ADJ"; }
-sed -i "s|\['owner', 'admin', 'cashier'\]|['owner', 'admin', 'cashier', 'accountant']|" "$SVC_ADJ"
-if grep -q "'accountant'\]" "$SVC_ADJ"; then
+# Desde H-01 la lista blanca vive en autorizacion.ts, compartida por TODAS las
+# mutaciones: ensancharla ahí abre la puerta en todo el sistema de una vez.
+AUTZ=src/lib/auth/autorizacion.ts
+cp "$AUTZ" /tmp/autorizacion.ts.bak3
+restaurar_svc3() { cp /tmp/autorizacion.ts.bak3 "$AUTZ"; }
+sed -i "s|\['owner', 'admin', 'cashier'\]|['owner', 'admin', 'cashier', 'accountant']|" "$AUTZ"
+if grep -q "'accountant'\]" "$AUTZ"; then
   if bash scripts/correr-integracion.sh T-ADJ-05 >/tmp/adj-rol.log 2>&1; then
     echo "🔴 contadora con permiso de escribir — el test SIGUIO EN VERDE"
     fallos=$((fallos + 1))
@@ -192,6 +196,28 @@ else
 fi
 restaurar_svc4
 
+echo "== mutacion 9: una mutacion cualquiera pierde su guardia de rol (H-01) =="
+# La guardia es UNA linea por funcion, puesta por scripts/insertar-guardia-de-rol.py.
+# La que falta no se ve: un refactor que la borre de finalizeSale deja a la
+# contadora vendiendo. T-ROL-01 recorre una muestra de todos los dominios y
+# tiene que gritar si falta en cualquiera.
+SVC_SALE=src/lib/services/sales/sale.service.ts
+cp "$SVC_SALE" /tmp/sale.service.ts.bak9
+restaurar_svc9() { cp /tmp/sale.service.ts.bak9 "$SVC_SALE"; }
+sed -i "0,/  await exigirQueOpereElComercio();/{/  await exigirQueOpereElComercio();/d}" "$SVC_SALE"
+if [ "$(grep -c 'await exigirQueOpereElComercio();' "$SVC_SALE")" = "6" ]; then
+  if bash scripts/correr-integracion.sh T-ROL-01 >/tmp/rol-mut.log 2>&1; then
+    echo "🔴 una mutacion sin guardia — T-ROL-01 SIGUIO EN VERDE"
+    fallos=$((fallos + 1))
+  else
+    echo "✅ una mutacion sin guardia — T-ROL-01 se puso rojo"
+  fi
+else
+  echo "🔴 la mutacion 9 NO se aplico (cambio la cantidad de guardias en sale.service?)"
+  fallos=$((fallos + 1))
+fi
+restaurar_svc9
+
 # Restauracion EXPLICITA antes del veredicto. El `trap` corre al salir, o sea
 # DESPUES del "GUARDIA OK": si fallaba ahi, el 🔴 aparecia debajo de un verde ya
 # impreso y con codigo de salida 0. Un ultimo falso verde, en el script que
@@ -210,4 +236,4 @@ if [ "$fallos" -ne 0 ]; then
   echo "GUARDIA DE ADJUNTOS: $fallos problema(s)"
   exit 1
 fi
-echo "GUARDIA DE ADJUNTOS OK (8 mutaciones atrapadas)"
+echo "GUARDIA DE ADJUNTOS OK (9 mutaciones atrapadas)"

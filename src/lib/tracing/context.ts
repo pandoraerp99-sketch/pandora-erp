@@ -15,6 +15,13 @@ export interface TracingContext {
   tenant_id: string | null;
   actor_user_id: string | null;
   actor_type: ActorType;
+  /**
+   * Rol del actor EN el comercio activo, leído de `company_users` por
+   * `withServerActionTracing` una vez por request. `undefined` = no se
+   * resolvió (contextos armados a mano, p. ej. en tests): la guardia de
+   * autorización lo consulta. `null` = se consultó y no es miembro.
+   */
+  actor_role?: string | null;
 }
 
 const tracingStorage = new AsyncLocalStorage<TracingContext>();
