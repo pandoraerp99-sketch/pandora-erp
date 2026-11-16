@@ -22,7 +22,9 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const RAIZ = join(__dirname, '..', '..');
-const APP = join(RAIZ, 'src', 'app');
+// Todo `src`, no sólo `src/app`: un helper de reporting en `src/lib` que
+// llame a periodoDe con un borde sería el mismo bug, un piso más abajo.
+const FUENTES = join(RAIZ, 'src');
 
 /** Archivos que pueden pasar otra referencia, con el motivo. Hoy: ninguno. */
 const PERMITIDOS: Record<string, string> = {};
@@ -44,6 +46,9 @@ function llamadas(fuente: string): Array<{ linea: number; referencia: string }> 
   // cosa (incluido `new Date(desdeIso)`) cae en la segunda alternativa.
   const re = /periodoDe\(\s*[^,()]+,\s*(new Date\(\)|[^,)]+)/g;
   for (const m of fuente.matchAll(re)) {
+    // La DEFINICIÓN (`export function periodoDe(grano, fecha: Date = new
+    // Date(), ...)`) no es una llamada.
+    if (/function\s+$/.test(fuente.slice(Math.max(0, m.index! - 20), m.index))) continue;
     const linea = fuente.slice(0, m.index).split('\n').length;
     out.push({ linea, referencia: m[1]!.trim() });
   }
@@ -51,7 +56,7 @@ function llamadas(fuente: string): Array<{ linea: number; referencia: string }> 
 }
 
 describe('el período de una pantalla se resuelve con la fecha de hoy', () => {
-  const encontradas = archivos(APP).flatMap((f) =>
+  const encontradas = archivos(FUENTES).flatMap((f) =>
     llamadas(readFileSync(f, 'utf8')).map((c) => ({
       archivo: relative(RAIZ, f).replace(/\\/g, '/'),
       ...c,

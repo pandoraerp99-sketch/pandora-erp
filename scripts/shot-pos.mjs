@@ -718,7 +718,22 @@ if (ACCION === 'export-ventas') {
         const nombre = this.download;
         const blob = blobs.get(this.href);
         (blob ? blob.text() : Promise.resolve('')).then(t => {
-          window.__descarga = { nombre, lineas: t.split('\\n').length, cabecera: t.split('\\n')[0].slice(0, 160) };
+          // Las FILAS, no sólo el nombre: el nombre y la consulta salen del
+          // mismo período y no pueden contradecirse. Lo que puede fallar es
+          // que las filas caigan fuera del rango que el nombre promete.
+          const fechas = t.split('\\n').slice(1)
+            .map(l => (l.split(';')[0] || '').trim())
+            .filter(f => /^\\d{4}-\\d{2}-\\d{2}$/.test(f))
+            .sort();
+          window.__descarga = {
+            nombre,
+            lineas: t.split('\\n').length,
+            filas_con_fecha: fechas.length,
+            fecha_min: fechas[0] ?? null,
+            fecha_max: fechas[fechas.length - 1] ?? null,
+            cabecera: t.split('\\n')[0].slice(0, 100),
+            ultima: t.trim().split('\\n').pop().slice(0, 120),
+          };
         });
         return;
       }
