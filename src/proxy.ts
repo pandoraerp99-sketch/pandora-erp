@@ -32,6 +32,11 @@ const PUBLIC_PATHS = [
   '/reset-password',
   '/api/health',
   '/api/webhooks',
+  // Vercel Cron no trae sesión de Supabase: sin esto el proxy lo mandaba a
+  // /login con un 307 y el cron NUNCA corría (H-15, 2026-11-16). La puerta de
+  // estas rutas es CRON_SECRET, fail-closed: src/lib/security/cron-auth.ts.
+  // Sacarlas del login SIN esa puerta las dejaría abiertas a internet.
+  '/api/internal/cron',
   // /pos ahora es el POS funcional real (Slice 5): ruta AUTENTICADA. Ya no
   // está acá — un usuario sin sesión que toca /pos es redirigido a /login.
 ];

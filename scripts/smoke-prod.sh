@@ -20,6 +20,16 @@ set -a; . ./.env.test; set +a
 unset NODE_ENV
 PUERTO=3100
 
+# Carpeta PROPIA (H-06). Compartir `.next` con el dev server lo corrompía: el
+# 2026-11-09 /pos renderizó el POS viejo, borrado del código en septiembre,
+# mezclado desde la caché. Ver next.config.ts.
+export NEXT_DIST_DIR=.next-prod
+
+# Un secreto de cron propio del humo, para probar la puerta de las rutas de
+# cron en el build de producción (H-15): sin header 401, con uno malo 401,
+# con el bueno 200. Se genera cada vez; no es el de ningún deploy.
+export CRON_SECRET="humo-$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+
 if [ "${1:-}" != "--sin-build" ]; then
   echo "==> pnpm build"
   if ! pnpm build > /tmp/smoke-build.log 2>&1; then
@@ -39,9 +49,13 @@ done
 
 FALLAS=0
 pedir() {
-  local ruta="$1" esperado="$2"
+  local ruta="$1" esperado="$2" header="${3:-}"
   local codigo
-  codigo=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PUERTO$ruta")
+  if [ -n "$header" ]; then
+    codigo=$(curl -s -o /dev/null -w "%{http_code}" -H "$header" "http://localhost:$PUERTO$ruta")
+  else
+    codigo=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PUERTO$ruta")
+  fi
   if [ "$codigo" = "$esperado" ]; then
     echo "  OK    $ruta -> $codigo"
   else
@@ -58,6 +72,11 @@ pedir /login 200
 pedir /panel 307
 pedir /pos 307
 pedir /productos 307
+# El cron (H-15): público en el proxy, cerrado por CRON_SECRET. Un 307 acá
+# sería el bug viejo (Vercel Cron mandado al login, el cron no corre nunca).
+pedir /api/internal/cron/mp-reconcile 401
+pedir /api/internal/cron/mp-reconcile 401 "Authorization: Bearer adivinanza"
+pedir /api/internal/cron/mp-reconcile 200 "Authorization: Bearer $CRON_SECRET"
 
 echo "==> Errores en el log del server:"
 grep -a -i -E "error|TypeError" /tmp/smoke-prod.log | head -5 || true

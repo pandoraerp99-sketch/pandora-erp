@@ -1,214 +1,109 @@
 # Pandora ERP
 
-POS + ERP fiscal para comercios pequeños argentinos (sederia, rotiseria, kiosko). AFIP nativo. Multi-tenant. Stack Next.js 16 + Supabase Postgres + Drizzle ORM + shadcn/ui (Radix + Nova preset).
+POS + ERP para un comercio chico de Tierra del Fuego: vender, cobrar (efectivo, débito, crédito, cuenta corriente), cerrar la caja, llevar el stock como un libro, cargar gastos con su comprobante, y darle a la contadora lo que el estudio pide. Multi-tenant, AFIP nativo (bloqueado: ver abajo).
 
-> **Documentación arquitectónica completa** vive en el directorio padre Windows:
-> `c:\Users\Pandora\Desktop\SRS\` — CLAUDE.md, DECISION-LEDGER, 22 ADRs, ROADMAP, DESIGN-ADAPTATION-PLAN, EVENT-TAXONOMY, etc.
-> Este README cubre sólo el setup técnico de este repo.
+Next.js 16 (webpack) · React 19 · TypeScript strict · Supabase (Postgres + Auth + Storage) · Drizzle · Decimal.js · Vitest.
 
----
-
-## Estado actual — Sprint 0 + 1 + migración a WSL (2026-05-30)
-
-**Fundaciones técnicas construidas:**
-
-- `package.json` (Next 16.2.6 + React 19.2.4 + TS 5.9 + Drizzle 0.45 + jose 6.2 + zod 4.4 + decimal.js 10.6 + Pino 10 + @supabase/ssr + postgres-js + shadcn-radix-nova)
-- `src/lib/env.ts` — Zod fail-fast validation de env vars críticas
-- `src/lib/db/schema/` — 10 tablas tipadas (companies, users, products, sales, sale_items, audit_log, invoice_sequences, fiscal_snapshots + helpers)
-- `src/lib/db/client.ts` — postgres-js + Drizzle client
-- `src/lib/tracing/` — AsyncLocalStorage para correlation_id + request_id + tenant_id
-- `src/lib/multi_tenant/` — CrossTenantAccessError + validateTenantAccess service-side
-- `src/lib/money/` — Decimal.js + HALF_EVEN global + formatARS locale es-AR
-- `src/lib/observability/logger.ts` — Pino con auto-inject + SECRET LIST redact
-- `src/lib/auth/` — @supabase/ssr server + browser + JWT custom claims (jose)
-- `src/middleware.ts` — request_id + correlation_id + Supabase session refresh
-- `src/lib/audit/` — audit-writer con catálogo canónico de 42 events F0 (EVENT-TAXONOMY v2.0.2)
-- `src/lib/domain/` — calculation engine puro + state machines commercial/fiscal
-- `src/lib/services/products/` — CRUD + barcode + CSV import + adjustStock
-- `src/lib/services/sales/` — createDraft + addItem + finalize con stock atómico + cancel
-- `src/components/ui/` — 16 componentes shadcn/ui (Radix-Nova preset)
-- `drizzle/migrations/post_initial/` — RLS policies + triggers inmutables + particiones audit_log
-- `src/app/page.tsx` + `src/app/api/health/route.ts` — primera ruta visible
-- `tests/unit/` — money + multi-tenant + calculation + state-machines + audit-event-names
-
-**Lo que falta** (siguientes sprints): Server Actions reales, integración AFIP (Sprint 6 — bloqueado por contador), POS UI funcional, migración del diseño Claude Design al esqueleto.
+> La documentación de producto y arquitectura (CLAUDE.md, DECISION-LEDGER, ADRs, EVENT-TAXONOMY) vive en `C:\Users\Pandora\Desktop\SRS\`. El estado real auditado está en `AUDITORIA-ESTADO-REAL-2026-11-15.md` de esa carpeta. Este README cubre cómo **arrancar, probar y desplegar** este repo.
+>
+> Los números de este proyecto no se escriben a mano: `bash scripts/numeros-del-proyecto.sh`.
 
 ---
 
-## Setup local
+## Qué funciona hoy
 
-### Prerequisitos
+| Pantalla | Qué hace |
+|---|---|
+| `/pos` | Vende de punta a punta: carrito, cliente, cobro por medio de pago, stock y caja en la misma transacción. Idempotente contra doble click. |
+| `/caja` | Apertura, ingresos/egresos con motivo, cierre con arqueo y descuadre, corrección de medio de pago sin borrar nada. |
+| `/productos` | Catálogo, ajustes y merma con motivo, stock reconstruible desde el libro, import CSV. |
+| `/clientes` | Ficha, cuenta corriente (fiado) como libro: cobros totales/parciales, ajustes auditados, deudores. |
+| `/gastos` | Gastos por rubro, compras que mueven stock, proveedores con cuenta corriente, comprobantes adjuntos (PDF/foto). |
+| `/contador` | Lo que pide el estudio: posición de IVA, ventas, caja/deudores/acreedores al cierre, inventario valorizado, comprobantes; todo en CSV. Multi-empresa. |
+| `/panel` | Inicio del dueño: ventas, margen, días de stock, proyección del mes, pendientes, feriados. |
 
-- **WSL2 Ubuntu** (este repo asume Linux dev env, no Windows nativo)
-- **Node 22 LTS** (instalado via nvm)
-- **pnpm 9+** o **11+**
-- **Cuenta Supabase** (free tier alcanza F0) — para fase posterior
+**No funciona todavía** (y la pantalla lo dice, no lo esconde):
+- **Factura electrónica (AFIP):** la cadena WSAA → WSFEv1 está escrita y testeada; falta el **certificado** y las definiciones A-2/A-11 de la contadora.
+- **Cobro con MercadoPago QR:** webhook, verificación y reconciliación existen; falta crear la orden desde el POS (el medio aparece deshabilitado con su motivo).
 
-### 1. Verificar que está todo en su lugar
+**Roles:** `owner`, `admin` y `cashier` operan; `accountant` (la contadora) sólo lee. Lo hace cumplir el servidor en cada escritura (`src/lib/auth/autorizacion.ts`), no la interfaz.
+
+---
+
+## Arrancar en local
+
+Todo corre en **WSL2 Ubuntu** con **Docker Desktop** (integración WSL activada), **Node 22** (nvm) y **pnpm**.
 
 ```bash
 cd ~/workspace/pandora-erp
-node --version    # esperado: v22.x
-pnpm --version    # esperado: 9+ o 11+
-ls src/lib/       # esperado: env.ts + auth/ + db/ + money/ + multi_tenant/ + services/ + etc.
-```
 
-### 2. Instalar dependencias
-
-```bash
+# 1. Dependencias
 pnpm install
+
+# 2. Supabase local (Postgres + Auth + Storage en Docker, puertos 3432x)
+#    Docker Desktop tiene que estar prendido en Windows.
+npx supabase start
+
+# 3. Variables de la base local
+cp .env.test.example .env.test        # ya trae los valores del Supabase local
+
+# 4. Esquema: todas las migraciones, en orden
+set -a; . ./.env.test; set +a
+bash scripts/db-apply-all.sh
+
+# 5. Un usuario para entrar
+node scripts/seed-dev-operator.mjs    # operador@pandora.dev / pandora-dev-1234 (rol owner)
+
+# 6. Levantar la app
+bash scripts/dev-con-supabase-local.sh
 ```
 
-Si pide aprobar build scripts (sharp, esbuild, etc.), aprobar:
+Abrir <http://localhost:3000> y entrar con el operador.
 
-```bash
-pnpm approve-builds
-```
+> ⚠️ **No uses `pnpm dev` a secas.** `.env.local` es un archivo de prueba que apunta a una base que no existe: la app levanta, dice *Ready*, y el login falla en silencio (`ECONNREFUSED` adentro de un Server Action). `dev-con-supabase-local.sh` arranca con las variables del Supabase local sin tocar `.env.local`.
+>
+> Si la pantalla aparece desarmada o con un *"1 Issue"* abajo a la izquierda: parar el server, `rm -rf .next`, y volver a levantarlo.
 
-### 3. Configurar variables de entorno
-
-```bash
-cp .env.example .env.local
-```
-
-Editar `.env.local` con valores reales:
-
-- `DATABASE_URL` — connection string Postgres de Supabase
-- `NEXT_PUBLIC_SUPABASE_URL` — URL del proyecto Supabase
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` — anon key pública
-- `SUPABASE_SERVICE_ROLE_KEY` — service role secreta
-- `JWT_SECRET` — generar con `openssl rand -hex 64`
-- `SECRETS_ENCRYPTION_KEY_V1` — generar con `openssl rand -hex 32`
-
-Si falta alguna variable crítica, `src/lib/env.ts` lanza error en boot y la app NO arranca (fail-fast intencional).
-
-### 4. Aplicar schema
-
-```bash
-pnpm db:generate     # genera migración inicial Drizzle
-pnpm db:migrate      # aplica migración inicial
-```
-
-Después, aplicar migraciones SQL custom manualmente:
-
-```bash
-psql $DATABASE_URL -f drizzle/migrations/post_initial/0001_partition_audit_log.sql
-psql $DATABASE_URL -f drizzle/migrations/post_initial/0002_immutable_triggers.sql
-psql $DATABASE_URL -f drizzle/migrations/post_initial/0003_rls_policies.sql
-```
-
-> Ver `drizzle/migrations/README.md` para detalle.
-
-### 5. Arrancar dev server
-
-```bash
-pnpm dev
-```
-
-Abrir <http://localhost:3000>. Verificar `/api/health` retorna 200.
+Datos de demo (opcionales): `scripts/seed-dev-ventas.sql` y `node scripts/seed-dev-gastos.mjs`.
 
 ---
 
-## Scripts disponibles
+## Verificar
 
-| Script | Qué hace |
+| Comando | Qué prueba |
 |---|---|
-| `pnpm dev` | Next.js dev server con Turbopack (puerto 3000) |
-| `pnpm build` | Build de producción |
-| `pnpm start` | Servidor producción |
-| `pnpm lint` | ESLint |
-| `pnpm typecheck` | `tsc --noEmit` (agregar al package.json si no está) |
-| `pnpm test` | Vitest run once (requiere agregar vitest a devDeps) |
-| `pnpm test:watch` | Vitest watch mode |
-| `pnpm db:generate` | Genera migración desde schema |
-| `pnpm db:migrate` | Aplica migraciones |
-| `pnpm db:push` | Push directo (sólo dev) |
-| `pnpm db:studio` | Drizzle Studio (UI DB) |
+| `bash scripts/suite-completa.sh` | Unit + integración contra la base real, el catálogo de eventos contra la documentación, que nadie suba archivos con el service role, y una vuelta real contra el Storage. Decide por código de salida. |
+| `bash scripts/rojos-de-la-suite.sh` | Qué falló en la última corrida (la suite imprime sólo el resumen). |
+| `bash scripts/correr-integracion.sh T-ADJ` | Un grupo de tests de integración por prefijo. |
+| `bash scripts/verificar-tipos.sh <archivos>` | `tsc` + que los archivos no tengan CRLF. |
+| `bash scripts/smoke-prod.sh` | Compila para **producción** (en `.next-prod`, aparte del dev) y pide las rutas al server de producción, incluida la puerta de los crons. |
+| `bash scripts/probar-guardia-adjuntos.sh` | Rompe a propósito 9 garantías (policies, triggers, guardia de rol…) y exige que los tests se pongan rojos. Un test que nunca falló no prueba nada. |
+
+Capturas y contraste: `scripts/shot-pos.mjs` (corre desde **Windows**, con `RUTA`, `TEMA` y una acción) y `scripts/contraste-png.ps1` (mide contraste WCAG sobre los píxeles, no sobre el CSS).
 
 ---
 
-## Estructura del código
+## Desplegar (todavía NO está desplegado)
 
-```
-pandora-erp/
-├── src/
-│   ├── app/                          ← Next.js App Router
-│   │   ├── layout.tsx                ← Geist fonts + lang es-AR + metadata Pandora
-│   │   ├── page.tsx                  ← Home Pandora
-│   │   ├── globals.css               ← Tailwind 4 + shadcn-radix-nova OKLCH + reduced-motion
-│   │   └── api/health/route.ts
-│   ├── components/
-│   │   └── ui/                       ← 16 componentes shadcn (Radix-Nova preset)
-│   ├── lib/
-│   │   ├── utils.ts                  ← shadcn cn() helper
-│   │   ├── env.ts                    ← Zod env validation fail-fast
-│   │   ├── auth/                     ← Supabase + JWT helpers
-│   │   ├── db/
-│   │   │   ├── client.ts             ← Drizzle + postgres-js
-│   │   │   └── schema/               ← Tablas tipadas
-│   │   ├── money/                    ← Decimal.js + formatARS
-│   │   ├── multi_tenant/             ← Errors + validateTenantAccess
-│   │   ├── observability/            ← Pino logger
-│   │   ├── tracing/                  ← AsyncLocalStorage context
-│   │   ├── audit/                    ← audit-writer + event-names canon
-│   │   ├── domain/                   ← calculation + state-machines (puros)
-│   │   └── services/                 ← Application Services
-│   │       ├── products/
-│   │       └── sales/
-│   └── middleware.ts                 ← Edge middleware (auth + tracing)
-├── tests/
-│   ├── setup.ts                      ← env mock para Vitest
-│   └── unit/                         ← money + multi-tenant + calc + states + audit events
-├── drizzle/
-│   └── migrations/
-│       ├── README.md
-│       └── post_initial/             ← RLS + triggers inmutables + particiones
-├── public/                           ← Assets Next.js
-├── components.json                   ← shadcn config (radix-nova)
-├── postcss.config.mjs                ← Tailwind 4
-├── eslint.config.mjs                 ← ESLint 9 flat config
-├── tsconfig.json                     ← TS strict
-├── next.config.ts                    ← Next 16 config
-├── drizzle.config.ts                 ← Drizzle Kit
-├── vitest.config.ts                  ← Vitest config
-├── .env.example                      ← Variables documentadas
-├── .gitattributes                    ← Force LF
-└── .gitignore
-```
+Hoy la app vive sólo en local: no hay Supabase en la nube, ni variables de producción, ni CI, y la mayoría de los commits no está en GitHub. Lo que hace falta, en orden:
+
+1. **Proyecto Supabase en la nube** (plan free alcanza para un comercio). Aplicar las migraciones con `scripts/db-apply-all.sh` apuntando a su `DATABASE_URL`, y configurar el *Custom Access Token Hook* de la migración 0015.
+2. **Variables de producción** en Vercel, según `.env.example`. Las que no pueden faltar: `DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET`, `SECRETS_ENCRYPTION_KEY_V1` (+ `_ACTIVE_VERSION`), y `CRON_SECRET` (sin él los crons quedan apagados: es a propósito). **No** fijar `NODE_ENV`: rompe el build.
+3. **Vercel**: conectar el repo; `vercel.json` ya declara el cron de MercadoPago. El build es `pnpm build` (webpack, por los imports `.js`; ver `next.config.ts`).
+4. Antes de cada deploy, `bash scripts/smoke-prod.sh` en verde.
+5. **AFIP**: `AFIP_ENVIRONMENT=homologacion` hasta tener certificado y homologación. `produccion` sólo con `NODE_ENV=production`.
+
+Crear la cuenta en la nube, cargar secretos y publicar son decisiones del dueño del proyecto: ningún script de este repo lo hace solo.
 
 ---
 
-## Convenciones
+## Convenciones que el código hace cumplir
 
-- **Money:** SIEMPRE `Decimal` de `decimal.js`. NUNCA `Number`. Ver `src/lib/money/decimal.ts`.
-- **Currency:** ARS-only F0. Display via `formatARS()` con locale es-AR.
-- **Multi-tenant:** SIEMPRE validar via `validateTenantAccess()` + RLS Postgres por encima.
-- **Logging:** SIEMPRE `logger.{info,warn,...}` (Pino). NUNCA `console.log`.
-- **Audit:** Sólo eventos del catálogo canónico (EVENT-TAXONOMY §5 v2.0.2). 42 eventos F0.
-- **Errors:** SIEMPRE clase `DomainError` o subclase. Boundary atrapa y formatea.
-- **Naming:** snake_case en DB. camelCase en TS. PascalCase en componentes.
-- **Idioma:** español rioplatense en UI + comentarios cara-al-comerciante. Inglés técnico en código.
-
----
-
-## Próximos pasos
-
-Ver en directorio Windows `c:\Users\Pandora\Desktop\SRS\`:
-
-- `ROADMAP.md` — sprints operativos
-- `DESIGN-ADAPTATION-PLAN.md` — migración 6 .jsx Claude Design a TSX modular
-- Memoria `master-audit-2026-05-28.md` + `sprint-0-1-build-and-audit-2026-05-30.md`
-
-Inmediato (siguientes sprints):
-
-1. Agregar deps test: `pnpm add -D vitest @vitest/coverage-v8 fast-check`
-2. Validar: `pnpm typecheck` + `pnpm test`
-3. Migrar 6 .jsx de Claude Design a TSX modular siguiendo DESIGN-ADAPTATION-PLAN
-4. Wire data layer real: Server Components leyendo de Drizzle
-5. Application Services adicionales: Cash, Customer, Orders
-6. Auth flows: login, signup, invite contador
-7. Sprint 6 — AFIP integration (BLOQUEADO por reuniones contador + abogado)
-
----
-
-*README sprint 0 base + migración WSL · 2026-05-30 · Pandora ERP*
+- **Plata:** `Decimal` (decimal.js), nunca `Number`. Redondeo `HALF_EVEN`.
+- **Tablas que no se editan:** `audit_log`, `stock_movements`, `expenses`, `attachments`. Corregir es insertar una fila nueva que apunta a la vieja; un trigger rechaza el `UPDATE`/`DELETE`.
+- **Multi-tenant:** toda consulta filtra por `tenant_id` dentro del `WHERE`. El tenant sale del contexto de la sesión, nunca de un parámetro.
+- **Autorización:** cada mutación del service layer empieza con `await exigirQueOpereElComercio();`. Una nueva se agrega a `scripts/insertar-guardia-de-rol.py` y a `tests/integration/T-ROL-01`.
+- **Fechas:** el día del comercio es `America/Argentina/Ushuaia`. El período de una pantalla se resuelve con la fecha de hoy, nunca con un borde que mande el cliente (hay un test que lo vigila).
+- **Auditoría:** sólo eventos del catálogo cerrado (`src/lib/audit/event-names.ts`); agregar uno es decisión del dueño.
+- **Logs:** Pino (`logger`), nunca `console.log`; tokens, certificados y URLs firmadas no se loguean.
+- **Idioma:** castellano rioplatense en la interfaz y en los comentarios.

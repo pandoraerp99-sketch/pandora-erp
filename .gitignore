@@ -17,6 +17,8 @@
 
 # next.js
 /.next/
+# build de producción del humo (scripts/smoke-prod.sh), separado del de dev
+/.next-prod/
 /out/
 
 # production

@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // ── Carpeta de build separable (H-06, 2026-11-16) ──
+  // `scripts/smoke-prod.sh` compila en `.next-prod` y el dev server sigue en
+  // `.next`. Compartían la carpeta: un build de producción dejaba restos que
+  // el dev server mezclaba con el código actual, y el 2026-11-09 /pos
+  // renderizó el POS VIEJO (borrado del código en septiembre) con un "1 Issue"
+  // de hidratación. Sin la variable, el default de siempre.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
+
   // ── YA NO HAY REWRITES A MAQUETAS (2026-09-10) ──
   // /caja dejó de tenerlo el 2026-09-03 y /panel hoy: los dos sirven React de
   // src/app/, sobre <AppShell>, como el resto.
