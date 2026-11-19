@@ -17,6 +17,7 @@
 //
 // OJO: esto es UN TEMPLATE LITERAL. Nada de backticks aca adentro.
 import { CLIENTES_CSS } from '../clientes/clientesCss';
+import { CARGA_CSS } from './cargaCss';
 
 export const GASTOS_CSS =
   CLIENTES_CSS +
@@ -439,4 +440,4 @@ html[data-theme="dark"] .fv-seg button{ background:rgba(255,255,255,0.06); borde
 html[data-theme="dark"] .fv-seg button.fijo .d{ background:#8da2ff; } html[data-theme="dark"] .fv-seg button.variable .d{ background:#5fc8ff; }
 html[data-theme="dark"] .fv-seg button.mixto .d{ background:#ffb87a; }
 html[data-theme="dark"] .fv-seg button.on{ border-color:#8da2ff; box-shadow:0 0 0 3px rgba(141,162,255,0.18); }
-`;
+` + CARGA_CSS;

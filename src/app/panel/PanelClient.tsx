@@ -786,7 +786,7 @@ export function PanelClient({
             <div className="card glass">
               <div className="card-title">
                 <h3>Ingresos vs Gastos</h3>
-                <Link className="label-sm" href="/gastos">
+                <Link className="label-sm" href="/gastos?vista=libro">
                   Ver gastos →
                 </Link>
               </div>

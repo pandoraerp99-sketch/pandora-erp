@@ -208,3 +208,56 @@ export async function getFijosVariablesPorMes(
     };
   });
 }
+
+export interface MemoriaProveedor {
+  categoria: string;
+  /** Fijo / variable / mixto que valía en ese último gasto; null si no tenía. */
+  comportamiento: Comportamiento | null;
+}
+
+/**
+ * Lo que se usó la ÚLTIMA vez con cada proveedor: categoría y fijo/variable.
+ *
+ * Es la memoria del alta: al elegir un proveedor que ya se usó, el formulario
+ * completa solo la categoría y el tipo (pedido del owner, 2026-11-19: "que se
+ * autocomplete y se asigne solo"). Sale del último gasto VIGENTE cargado con
+ * ese proveedor, por fecha de carga. No es una tabla de reglas: si una vez la
+ * luz se cargó como "Otros", la próxima propone "Otros", y corregirlo una vez
+ * alcanza para que la siguiente proponga lo nuevo.
+ *
+ * El fijo/variable es el que VALÍA en ese gasto: el elegido a mano (la última
+ * fila de `expense_cost_behaviour`) o, si no se eligió, el de su categoría.
+ */
+export async function memoriaPorProveedor(): Promise<Record<string, MemoriaProveedor>> {
+  const { tenantId } = ctx();
+  const filas = await db.execute<{
+    tercero_id: string;
+    categoria: string;
+    explicito: string | null;
+  }>(sql`
+    SELECT DISTINCT ON (e.tercero_id)
+           e.tercero_id::text AS tercero_id,
+           e.categoria,
+           cb.comportamiento AS explicito
+      FROM expenses e
+      LEFT JOIN LATERAL (
+        SELECT b.comportamiento FROM expense_cost_behaviour b
+         WHERE b.expense_id = e.id AND b.tenant_id = e.tenant_id
+         ORDER BY b.created_at DESC LIMIT 1
+      ) cb ON true
+     WHERE e.tenant_id = ${tenantId}
+       AND e.tercero_id IS NOT NULL
+       AND e.total > 0
+       AND NOT EXISTS (SELECT 1 FROM expenses c WHERE c.corrects_id = e.id)
+     ORDER BY e.tercero_id, e.created_at DESC`);
+  const out: Record<string, MemoriaProveedor> = {};
+  for (const f of filas) {
+    out[f.tercero_id] = {
+      categoria: f.categoria,
+      comportamiento: seClasifica(f.categoria)
+        ? comportamientoEfectivo(f.categoria, f.explicito)
+        : null,
+    };
+  }
+  return out;
+}

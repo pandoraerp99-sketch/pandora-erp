@@ -16,7 +16,7 @@ import {
   getExpenseItems,
   getProveedoresDelPeriodo,
   listExpenses,
-  registerExpense,
+  registerExpenseOnce,
   ExpenseError,
   type NuevoGasto,
 } from '@/lib/services/expenses/expense.service';
@@ -85,11 +85,19 @@ export type GastoFormInput = Omit<NuevoGasto, 'cash_session_id'>;
  *
  * Sólo el efectivo necesita caja. Transferencia y tarjeta no la tocan: si todo
  * egreso saliera del cajón, el arqueo descontaría plata que nunca estuvo ahí.
+ *
+ * `clave` es la de idempotencia del formulario (ver `registerExpenseOnce`):
+ * el alta vive fija en la pantalla y un doble click no puede cargar dos
+ * gastos. Devuelve el id para que el navegador suba el comprobante elegido.
  */
 export async function registrarGastoAction(
-  input: GastoFormInput
-): Promise<ActionResult<null>> {
+  input: GastoFormInput,
+  clave: string
+): Promise<ActionResult<{ id: string }>> {
   return runAction(async () => {
+    if (typeof clave !== 'string' || clave.length < 8 || clave.length > 100) {
+      throw new ExpenseError('clave_invalida', 'Volvé a cargar la página y probá de nuevo.');
+    }
     let cashSessionId: string | undefined;
     if (input.medio_pago === 'efectivo') {
       const sesion = await getActiveCashSession(SALE_POINT);
@@ -102,16 +110,21 @@ export async function registrarGastoAction(
       cashSessionId = sesion.id;
     }
 
-    await registerExpense({
-      ...input,
-      ...(cashSessionId !== undefined ? { cash_session_id: cashSessionId } : {}),
-    });
+    const { id } = await registerExpenseOnce(
+      {
+        ...input,
+        ...(cashSessionId !== undefined ? { cash_session_id: cashSessionId } : {}),
+      },
+      clave
+    );
 
     revalidatePath('/gastos');
     // El panel de la contadora lee el IVA crédito de acá: si no se revalida,
     // sigue mostrando la posición de IVA vieja.
     revalidatePath('/contador');
-    return null;
+    // El efectivo sale de la caja: el esperado de /caja cambió.
+    if (input.medio_pago === 'efectivo') revalidatePath('/caja');
+    return { id };
   });
 }
 

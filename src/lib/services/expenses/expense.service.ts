@@ -58,6 +58,8 @@ import { logger } from '../../observability/logger.js';
 import { csvArmar, csvNum, csvTxt } from '../reporting/csv.js';
 import { diaDelComercio, ZONA_COMERCIO } from '../../domain/fecha-comercio.js';
 import { exigirQueOpereElComercio } from '../../auth/autorizacion.js';
+import { withIdempotency } from '../../idempotency/idempotency.js';
+import { createHash } from 'node:crypto';
 
 export class ExpenseError extends DomainError {
   constructor(code: string, messageEs: string) {
@@ -1170,6 +1172,59 @@ export async function listExpenses(
       )
     )
     .orderBy(sql`fecha DESC, created_at DESC`);
+}
+
+/**
+ * Registrar un gasto UNA sola vez por clave.
+ *
+ * El alta dejó de ser un modal que se cierra al guardar: ahora es un
+ * formulario fijo en la pantalla, y un doble click sobre "Registrar gasto"
+ * mandaba dos veces el mismo gasto. En efectivo eso son DOS salidas de la
+ * caja. La clave la genera el navegador por formulario y se reusa mientras el
+ * contenido no cambie; la segunda llamada devuelve el id de la primera sin
+ * volver a escribir nada.
+ *
+ * `releaseOnError`: si el gasto se rechaza (caja cerrada, neto + IVA que no
+ * cierra), la clave se libera para que corregir y reintentar funcione.
+ */
+export async function registerExpenseOnce(
+  input: NuevoGasto,
+  idempotencyKey: string
+): Promise<{ id: string; replayed: boolean }> {
+  const { tenantId } = ctx();
+  const { result, replayed } = await withIdempotency<{ id: string }>(
+    {
+      tenantId,
+      key: idempotencyKey,
+      operation: 'expense.register',
+      requestHash: createHash('sha256').update(JSON.stringify(input)).digest('hex'),
+      releaseOnError: true,
+    },
+    async () => {
+      const gasto = await registerExpense(input);
+      return { id: gasto.id };
+    }
+  );
+  return { id: result.id, replayed };
+}
+
+/**
+ * Los últimos gastos CARGADOS, sin importar de qué fecha son.
+ *
+ * Es la lista "Últimos gastos" al lado del alta: sirve para ver que lo que se
+ * acaba de registrar quedó, y se ordena por cuándo se cargó, no por la fecha
+ * del gasto (un gasto atrasado de agosto cargado hoy tiene que aparecer
+ * arriba). Sólo los vigentes: un anulado ya no es un gasto.
+ */
+export async function listRecentExpenses(limit = 5): Promise<Expense[]> {
+  const { tenantId } = ctx();
+  const n = Math.min(Math.max(Math.trunc(limit), 1), 20);
+  return db
+    .select()
+    .from(expenses)
+    .where(and(eq(expenses.tenant_id, tenantId), GASTO_VIGENTE))
+    .orderBy(sql`created_at DESC`)
+    .limit(n);
 }
 
 export interface TotalPorCategoria {

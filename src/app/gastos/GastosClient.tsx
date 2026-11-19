@@ -24,32 +24,41 @@ import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Decimal from 'decimal.js';
 import {
-  COMPORTAMIENTO_POR_CATEGORIA,
   comportamientoEfectivo,
   seClasifica,
   type Comportamiento,
 } from '@/lib/domain/comportamiento-costo';
-import { ClasificarModal, FijosVariablesCard, PastillaFV, SelectorFV } from './FijosVariables';
-import type { MesFijosVariables } from '@/lib/services/expenses/cost-behaviour.service';
+import { ClasificarModal, FijosVariablesCard, PastillaFV } from './FijosVariables';
+import { CargarGasto } from './CargarGasto';
+import { ResumenCarga, type GastoRecienteDTO, type MesCargaDTO } from './ResumenCarga';
+import type {
+  MemoriaProveedor,
+  MesFijosVariables,
+} from '@/lib/services/expenses/cost-behaviour.service';
 import { AppShell } from '@/components/shell/AppShell';
-import { diaDelComercio } from '@/lib/domain/fecha-comercio';
+import {
+  catClase,
+  catLabel,
+  fechaCorta,
+  medioLabel,
+  plata,
+} from './gastosFormato';
 import { GASTOS_CSS } from './gastosCss';
 import { ComprobantesModal } from './ComprobantesModal';
 import { ContratosModal } from './ContratosModal';
 import {
   anularGastoAction,
-  buscarProductosAction,
   exportarAcreedoresCsvAction,
   exportarGastosCsvAction,
   exportarProveedoresCsvAction,
   getDetalleAction,
   pagarProveedorAction,
-  registrarGastoAction,
-  type GastoFormInput,
   clasificarGastoAction,
   type LineaDTO,
-  type ProductoBuscadoDTO,
 } from './actions';
+
+/** Las dos vistas de /gastos: cargar un gasto (la que abre) y el libro. */
+export type Vista = 'cargar' | 'libro';
 
 /** Los medios con los que se le puede pagar a un proveedor (ADR-0028 §7). */
 type MedioPagoProveedor = 'efectivo' | 'transferencia' | 'debito' | 'credito';
@@ -186,6 +195,17 @@ interface Props {
   periodoEtiqueta: string;
   /** Si hay caja abierta. Decide si se puede pagar en EFECTIVO. */
   hayCajaAbierta: boolean;
+  /** Con qué vista abre (viene de `?vista=`). */
+  vista: Vista;
+  /** Efectivo esperado en la caja abierta, para el impacto del alta. */
+  cajaEsperado: string | null;
+  /** El mes en curso por categoría, para "Gastos del mes". */
+  mes: MesCargaDTO;
+  recientes: GastoRecienteDTO[];
+  /** Lo que se le debe HOY a cada proveedor (no al cierre del período). */
+  deudaHoy: Record<string, string>;
+  /** Categoría y tipo de la última vez con cada proveedor. */
+  memoria: Record<string, MemoriaProveedor>;
   cashierName: string;
   salePointLabel: string;
 }
@@ -209,74 +229,6 @@ const GRANOS: Array<{ valor: Grano; label: string }> = [
   { valor: 'ejercicio', label: 'Ejercicio' },
 ];
 
-/** Categorías tomadas del pedido de la contadora (schema `expenses`). */
-const CATEGORIAS: Array<{ valor: string; label: string }> = [
-  { valor: 'alquiler', label: 'Alquiler' },
-  { valor: 'seguros', label: 'Seguros' },
-  { valor: 'servicios', label: 'Servicios' },
-  { valor: 'impuestos_y_tasas', label: 'Impuestos y tasas' },
-  { valor: 'honorarios', label: 'Honorarios' },
-  { valor: 'mercaderia', label: 'Mercadería' },
-  { valor: 'otros', label: 'Otros' },
-];
-const catLabel = (v: string) =>
-  CATEGORIAS.find((c) => c.valor === v)?.label ?? v;
-
-/**
- * El color va por CLASE, no inline.
- *
- * La primera versión pasaba el hex por `style`, y un color inline no puede
- * tener variante de tema: en oscuro quedaban las siete pills con texto oscuro
- * sobre fondo oscuro, ilegibles (medido, no supuesto). Las variables viven en
- * `gastosCss.ts`, con su bloque para cada tema.
- */
-const catClase = (v: string) =>
-  CATEGORIAS.some((c) => c.valor === v) ? `cat-${v}` : 'cat-otros';
-
-/**
- * Esta lista NO deriva de `EXPENSE_PAYMENT_METHODS` a propósito: el const del
- * servidor es el contrato de la base, y la pantalla necesita además la etiqueta
- * en castellano y el orden en que se ofrece. Lo que sí hay que sostener a mano
- * es que ningún medio del servidor quede sin ofrecerse — que es exactamente lo
- * que pasó con `cuenta_corriente` entre el 17 y el 18 de septiembre: el libro
- * de proveedores estaba entero y la deuda no podía nacer desde ninguna pantalla.
- */
-const MEDIOS: Array<{ valor: string; label: string }> = [
-  { valor: 'efectivo', label: 'Efectivo' },
-  { valor: 'transferencia', label: 'Transferencia' },
-  { valor: 'debito', label: 'Débito' },
-  { valor: 'credito', label: 'Crédito' },
-  { valor: 'cuenta_corriente', label: 'A cuenta corriente (queda debiendo)' },
-  { valor: 'otro', label: 'Otro' },
-];
-const medioLabel = (v: string) => MEDIOS.find((m) => m.valor === v)?.label ?? v;
-
-const PESOS = new Intl.NumberFormat('es-AR', {
-  style: 'currency',
-  currency: 'ARS',
-  minimumFractionDigits: 2,
-});
-/** Sólo presentación: el cálculo ya vino hecho del servidor, en Decimal. */
-const plata = (v: string) => PESOS.format(Number(v));
-
-/** 'AAAA-MM-DD' → '12 sep'. Sin `new Date()`: parsear la fecha suelta la corre
- *  un día para atrás en cualquier huso al oeste de UTC (el nuestro lo es). */
-function fechaCorta(iso: string): string {
-  const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-  const [, m, d] = iso.split('-');
-  const mes = MESES[Number(m) - 1] ?? '';
-  return `${Number(d)} ${mes}`;
-}
-
-/**
- * Hoy en 'AAAA-MM-DD' del COMERCIO, para el valor por defecto del formulario.
- * No el del reloj que renderiza: en el server es UTC, y a las 22:00 proponía
- * mañana — una fecha que el service rechaza por futura en una compra.
- */
-function hoyLocal(): string {
-  return diaDelComercio();
-}
-
 type Filtro = 'todos' | 'manda' | 'arca' | 'anulados';
 
 export function GastosClient({
@@ -293,13 +245,27 @@ export function GastosClient({
   grano,
   periodoEtiqueta,
   hayCajaAbierta,
+  vista,
+  cajaEsperado,
+  mes,
+  recientes,
+  deudaHoy,
+  memoria,
   cashierName,
   salePointLabel,
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [modalAbierto, setModalAbierto] = useState(false);
+  // La vista se cambia en el cliente (las dos tienen sus datos ya cargados) y
+  // se anota en la URL sin navegar, para que recargar o compartir el link
+  // abra la misma.
+  const [vistaActual, setVistaActual] = useState<Vista>(vista);
+  const cambiarVista = (v: Vista) => {
+    setVistaActual(v);
+    setError(null);
+    window.history.replaceState(null, '', `/gastos?periodo=${grano}&vista=${v}`);
+  };
   const [filtro, setFiltro] = useState<Filtro>('todos');
   /** Gasto cuyo detalle se está mirando. */
   const [viendo, setViendo] = useState<GastoDTO | null>(null);
@@ -371,7 +337,7 @@ export function GastosClient({
   // linter lo marca, con razón: es mutar algo de afuera del componente); con
   // el router de Next se vuelve a renderizar sólo esta página en el servidor.
   const cambiarGrano = (g: Grano) => {
-    router.push(`/gastos?periodo=${g}`);
+    router.push(`/gastos?periodo=${g}&vista=libro`);
   };
 
   const visibles = useMemo(() => {
@@ -379,18 +345,6 @@ export function GastosClient({
     if (filtro === 'arca') return gastos.filter((g) => g.en_iva_compras);
     return gastos;
   }, [gastos, filtro]);
-
-  const guardar = (form: GastoFormInput) => {
-    setError(null);
-    startTransition(async () => {
-      const res = await registrarGastoAction(form);
-      if (!res.ok) {
-        setError(res.error);
-        return;
-      }
-      setModalAbierto(false);
-    });
-  };
 
   /**
    * Anular.
@@ -481,34 +435,44 @@ export function GastosClient({
           <div>
             <div className="bar-title">Gastos</div>
             <div className="bar-sub">
-              {salePointLabel} · {periodoEtiqueta}
+              {salePointLabel} ·{' '}
+              {vistaActual === 'cargar' ? 'cargar un gasto' : periodoEtiqueta}
             </div>
           </div>
         </div>
         <div className="bar-actions">
-          <MenuExportar
-            pending={pending}
-            cantidadFuera={Number(resumen.fuera_cantidad)}
-            cantidadTotal={Number(resumen.cantidad)}
-            cantidadProveedores={porProveedor.length}
-            cantidadAcreedores={acreedores.length}
-            onExportar={exportar}
-            onExportarProveedores={exportarProveedores}
-            onExportarAcreedores={exportarAcreedores}
-          />
-          <button
-            type="button"
-            className="b primary"
-            onClick={() => {
-              setError(null);
-              setModalAbierto(true);
-            }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            Nuevo gasto
-          </button>
+          {vistaActual === 'libro' ? (
+            <MenuExportar
+              pending={pending}
+              cantidadFuera={Number(resumen.fuera_cantidad)}
+              cantidadTotal={Number(resumen.cantidad)}
+              cantidadProveedores={porProveedor.length}
+              cantidadAcreedores={acreedores.length}
+              onExportar={exportar}
+              onExportarProveedores={exportarProveedores}
+              onExportarAcreedores={exportarAcreedores}
+            />
+          ) : null}
+          <div className="seg glass ptabs" role="tablist" aria-label="Vista de gastos">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={vistaActual === 'cargar'}
+              className={vistaActual === 'cargar' ? 'on' : undefined}
+              onClick={() => cambiarVista('cargar')}
+            >
+              Cargar gasto
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={vistaActual === 'libro'}
+              className={vistaActual === 'libro' ? 'on' : undefined}
+              onClick={() => cambiarVista('libro')}
+            >
+              Libro de gastos
+            </button>
+          </div>
         </div>
       </div>
 
@@ -518,6 +482,19 @@ export function GastosClient({
         </div>
       ) : null}
 
+      {vistaActual === 'cargar' ? (
+        <div className="cg-grid">
+          <CargarGasto
+            proveedores={proveedores}
+            cajaEsperado={cajaEsperado}
+            deudaHoy={deudaHoy}
+            memoria={memoria}
+            onVerLibro={() => cambiarVista('libro')}
+          />
+          <ResumenCarga mes={mes} recientes={recientes} />
+        </div>
+      ) : (
+      <>
       <div className="kpis">
         <div className="k lead">
           <div className="k-k">
@@ -968,6 +945,8 @@ export function GastosClient({
           </div>
         </div>
       </div>
+      </>
+      )}
     </>
   );
 
@@ -979,18 +958,9 @@ export function GastosClient({
       afipConnected={false}
       afipDetail="WSFEv1 · sin certificado"
       scroll="pagina"
-      topbarLeft={topbarIzq}
+      topbarLeft={vistaActual === 'libro' ? topbarIzq : undefined}
     >
       {contenido}
-      {modalAbierto ? (
-        <GastoModal
-          proveedores={proveedores}
-          hayCajaAbierta={hayCajaAbierta}
-          pending={pending}
-          onCancelar={() => setModalAbierto(false)}
-          onGuardar={guardar}
-        />
-      ) : null}
 
       {viendo !== null ? (
         <DetalleModal gasto={viendo} onCerrar={() => setViendo(null)} />
@@ -1544,31 +1514,6 @@ function AnularModal({
   );
 }
 
-// ════════════════════════ Detalle: el renglón en borrador ════════════════════
-
-/**
- * Un renglón mientras se está cargando.
- *
- * Guarda `productId` porque una línea **es un lote**: sin producto no puede
- * mover stock ni valorizar nada. La maqueta de facturas recibidas tiene ahí un
- * texto libre — sirve para transcribir un papel, no para esto.
- */
-interface BorradorLinea {
-  key: string;
-  productId: string;
-  nombre: string;
-  qty: string;
-  costo: string;
-}
-
-/**
- * Buscador de productos del catálogo. Mismo gesto que el POS: se tipea, se
- * elige, se agrega el renglón.
- *
- * No permite crear productos desde acá, y es a propósito: un alta de catálogo
- * (precio de venta, alícuota, rubro, exención Ley 19.640) metida adentro de la
- * carga de una factura son dos decisiones distintas en el mismo formulario.
- */
 /** Con qué se le puede pagar a un proveedor. Sólo el efectivo toca la caja. */
 const MEDIOS_PAGO_PROV: Array<{ valor: MedioPagoProveedor; label: string }> = [
   { valor: 'efectivo', label: 'Efectivo' },
@@ -1722,677 +1667,6 @@ function PagoProveedorModal({
             onClick={() => onPagar(ingresado!.toFixed(2), medio)}
           >
             {pending ? 'Registrando…' : 'Registrar pago'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BuscadorProducto({
-  onElegir,
-}: {
-  onElegir: (p: ProductoBuscadoDTO) => void;
-}) {
-  const [texto, setTexto] = useState('');
-  const [opciones, setOpciones] = useState<ProductoBuscadoDTO[]>([]);
-  const [buscando, setBuscando] = useState(false);
-
-  useEffect(() => {
-    const q = texto.trim();
-    let vivo = true;
-    // Todo el estado se toca DENTRO del timer, nunca sincrónicamente en el
-    // efecto: hacerlo sincrónico encadena renders (`react-hooks`, y el lint lo
-    // marca como error). Y el timer es lo que evita una consulta por tecla.
-    const t = setTimeout(async () => {
-      if (q === '') {
-        if (vivo) {
-          setBuscando(false);
-          setOpciones([]);
-        }
-        return;
-      }
-      if (vivo) setBuscando(true);
-      const res = await buscarProductosAction(q);
-      if (!vivo) return;
-      setBuscando(false);
-      setOpciones(res.ok ? res.data : []);
-    }, 220);
-    return () => {
-      vivo = false;
-      clearTimeout(t);
-    };
-  }, [texto]);
-
-  return (
-    <div className="det-busc">
-      <input
-        value={texto}
-        onChange={(e) => setTexto(e.target.value)}
-        placeholder="Buscar un producto por nombre, código o SKU…"
-        aria-label="Buscar un producto para agregar al detalle"
-      />
-      {texto.trim() !== '' ? (
-        <div className="det-op">
-          {buscando && opciones.length === 0 ? (
-            <div className="det-vacio">Buscando…</div>
-          ) : opciones.length === 0 ? (
-            <div className="det-vacio">
-              No hay productos que coincidan. Si es nuevo, cargalo primero en
-              Productos.
-            </div>
-          ) : (
-            opciones.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                className="det-opi"
-                onClick={() => {
-                  onElegir(p);
-                  setTexto('');
-                  setOpciones([]);
-                }}
-              >
-                <span className="det-opn">{p.name}</span>
-                <span className="det-opc">
-                  {p.sku !== null ? `${p.sku} · ` : ''}
-                  {p.cost !== null
-                    ? `última compra ${plata(p.cost)}`
-                    : 'sin costo cargado'}
-                </span>
-              </button>
-            ))
-          )}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-// ════════════════════════ Modal de carga ════════════════════════
-
-function GastoModal({
-  proveedores,
-  hayCajaAbierta,
-  pending,
-  onCancelar,
-  onGuardar,
-}: {
-  proveedores: ProveedorDTO[];
-  hayCajaAbierta: boolean;
-  pending: boolean;
-  onCancelar: () => void;
-  onGuardar: (form: GastoFormInput) => void;
-}) {
-  const [fecha, setFecha] = useState(hoyLocal);
-  const [categoria, setCategoria] = useState('servicios');
-  const [proveedorId, setProveedorId] = useState('');
-  const [payeeName, setPayeeName] = useState('');
-  const [total, setTotal] = useState('');
-  const [discrimina, setDiscrimina] = useState(false);
-  const [neto, setNeto] = useState('');
-  const [iva, setIva] = useState('');
-  // Arranca en el medio que NO depende de que haya caja: si no hay ninguna
-  // abierta, elegir efectivo dejaría el formulario trabado desde el vamos.
-  const [medio, setMedio] = useState(hayCajaAbierta ? 'efectivo' : 'transferencia');
-  const [compTipo, setCompTipo] = useState('Factura');
-  const [compNumero, setCompNumero] = useState('');
-  const [enIvaCompras, setEnIvaCompras] = useState(false);
-  const [descripcion, setDescripcion] = useState('');
-  const [lineas, setLineas] = useState<BorradorLinea[]>([]);
-
-  const dec = (v: string): Decimal | null => {
-    if (v.trim() === '') return null;
-    try {
-      const d = new Decimal(v.replace(',', '.'));
-      return d.isFinite() ? d : null;
-    } catch {
-      return null;
-    }
-  };
-
-  const dTotal = dec(total);
-  const dNeto = dec(neto);
-  const dIva = dec(iva);
-
-  const totalInvalido = dTotal === null || dTotal.lte(0);
-  // Si se discriminó, neto + IVA tiene que cerrar contra el total. Un tipeo acá
-  // deja en la declaración un crédito fiscal que no coincide con el papel.
-  const noCierra =
-    discrimina &&
-    dTotal !== null &&
-    dNeto !== null &&
-    dIva !== null &&
-    !dNeto.plus(dIva).eq(dTotal);
-  const faltaDiscriminar = discrimina && (dNeto === null || dIva === null);
-  const faltaComprobante = enIvaCompras && compNumero.trim() === '';
-  const efectivoBloqueado = medio === 'efectivo' && !hayCajaAbierta;
-  // Un gasto a cuenta corriente NO es plata que salió: es una deuda. Cambia las
-  // etiquetas del formulario y exige proveedor de la lista (ADR-0028 §3).
-  const esCtaCte = medio === 'cuenta_corriente';
-  const faltaProveedor = esCtaCte && proveedorId === '';
-
-  // ── El detalle ──
-  const esMercaderia = categoria === 'mercaderia';
-  // Fijo / variable / mixto (0045). Arranca en el de la categoría y se
-  // vuelve a poner al cambiarla; si la categoría no tiene uno (impuestos,
-  // otros), hay que elegir.
-  const [comportamiento, setComportamiento] = useState<Comportamiento | null>(
-    COMPORTAMIENTO_POR_CATEGORIA.servicios
-  );
-  const elegirCategoria = (c: string) => {
-    setCategoria(c);
-    setComportamiento(COMPORTAMIENTO_POR_CATEGORIA[c as keyof typeof COMPORTAMIENTO_POR_CATEGORIA] ?? null);
-  };
-  const faltaComportamiento = !esMercaderia && comportamiento === null;
-
-  const cambiarLinea = (i: number, cambio: Partial<BorradorLinea>) =>
-    setLineas((prev) => prev.map((l, j) => (j === i ? { ...l, ...cambio } : l)));
-
-  const subtotalDe = (l: BorradorLinea): Decimal | null => {
-    const q = dec(l.qty);
-    const c = dec(l.costo);
-    if (q === null || c === null || q.lte(0) || c.lt(0)) return null;
-    return q.times(c);
-  };
-
-  const lineasIncompletas =
-    esMercaderia && lineas.some((l) => subtotalDe(l) === null);
-
-  const sumaDetalle = lineas.reduce(
-    (acc, l) => acc.plus(subtotalDe(l) ?? 0),
-    new Decimal(0)
-  );
-
-  // Contra el NETO si el comprobante discrimina IVA, contra el TOTAL si no: el
-  // IVA discriminado se recupera y no es costo de la mercadería. Es la misma
-  // regla que aplica el service — acá se muestra ANTES de mandar, para que un
-  // error de tipeo se vea en el momento y no vuelva como error del servidor.
-  const baseDetalle = discrimina ? dNeto : dTotal;
-
-  // El margen de $0,50 es `TOLERANCE_RECONCILIATION` de `lib/money/decimal.ts`.
-  // Se repite acá en vez de importarlo porque ese módulo arrastra `env` al
-  // bundle del navegador y tira la página (ya pasó con `formatARS`). Si cambia
-  // allá, cambia acá: son dos lugares y esta nota es el hilo entre los dos.
-  const TOLERANCIA = new Decimal('0.50');
-  const detalleNoCierra =
-    esMercaderia &&
-    lineas.length > 0 &&
-    !lineasIncompletas &&
-    baseDetalle !== null &&
-    sumaDetalle.minus(baseDetalle).abs().gt(TOLERANCIA);
-
-  const puedeGuardar =
-    !totalInvalido &&
-    !noCierra &&
-    !faltaDiscriminar &&
-    !faltaComprobante &&
-    !efectivoBloqueado &&
-    !faltaProveedor &&
-    !lineasIncompletas &&
-    !detalleNoCierra &&
-    !faltaComportamiento &&
-    !pending;
-
-  /** Completa el IVA al 21% desde el total, que es el caso común. */
-  const calcular21 = () => {
-    if (dTotal === null || dTotal.lte(0)) return;
-    const base = dTotal.div('1.21');
-    setNeto(base.toFixed(2));
-    // El IVA sale por RESTA, no por `base * 0.21`: así los dos redondeos siempre
-    // suman exactamente el total, que es lo que el servidor va a exigir.
-    setIva(dTotal.minus(base.toFixed(2)).toFixed(2));
-  };
-
-  const enviar = () => {
-    if (!puedeGuardar || dTotal === null) return;
-    onGuardar({
-      fecha,
-      categoria: categoria as GastoFormInput['categoria'],
-      total: dTotal.toFixed(2),
-      ...(discrimina && dNeto !== null && dIva !== null
-        ? { neto: dNeto.toFixed(2), iva: dIva.toFixed(2) }
-        : {}),
-      medio_pago: medio as GastoFormInput['medio_pago'],
-      ...(proveedorId !== '' ? { tercero_id: proveedorId } : {}),
-      ...(proveedorId === '' && payeeName.trim() !== ''
-        ? { payee_name: payeeName.trim() }
-        : {}),
-      ...(compNumero.trim() !== ''
-        ? { comprobante_tipo: compTipo, comprobante_numero: compNumero.trim() }
-        : {}),
-      en_iva_compras: enIvaCompras,
-      ...(!esMercaderia && comportamiento !== null ? { comportamiento } : {}),
-      ...(descripcion.trim() !== '' ? { descripcion: descripcion.trim() } : {}),
-      // Sólo viajan si hay: `items: []` y sin `items` son lo mismo para el
-      // service, pero mandar un array vacío en una categoría que no es
-      // mercadería lo haría rechazar el gasto entero.
-      ...(esMercaderia && lineas.length > 0
-        ? {
-            items: lineas.map((l) => ({
-              product_id: l.productId,
-              qty: new Decimal(l.qty.replace(',', '.')).toFixed(4),
-              unit_cost: new Decimal(l.costo.replace(',', '.')).toFixed(4),
-            })),
-          }
-        : {}),
-    });
-  };
-
-  return (
-    <div className="pmov open" onClick={onCancelar}>
-      <div
-        className="pmod"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Cargar un gasto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="pm-head">
-          <div>
-            <div className="pm-title">Nuevo gasto</div>
-            <div className="pm-sub">
-              La fecha es la <b>del gasto</b>, no la de hoy: se cargan atrasados
-              todo el tiempo.
-            </div>
-          </div>
-          <button type="button" className="pm-x" onClick={onCancelar} aria-label="Cerrar">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="pm-row">
-          <div className="pm-fld">
-            <label htmlFor="gFecha">Fecha del gasto</label>
-            <input
-              id="gFecha"
-              type="date"
-              value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
-            />
-          </div>
-          <div className="pm-fld">
-            <label htmlFor="gCat">Categoría</label>
-            <select
-              id="gCat"
-              value={categoria}
-              onChange={(e) => elegirCategoria(e.target.value)}
-            >
-              {CATEGORIAS.map((c) => (
-                <option key={c.valor} value={c.valor}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {!esMercaderia ? (
-          <div className="pm-fld">
-            <label id="gFvLbl">
-              ¿Es fijo o variable?{' '}
-              <span className="fv-ayuda">
-                {comportamiento === null
-                  ? 'Esta categoría no tiene uno por defecto: elegí.'
-                  : '¿Sube si vendés más? Variable. ¿No cambia? Fijo. ¿Las dos cosas, como la luz? Mixto.'}
-              </span>
-            </label>
-            <SelectorFV valor={comportamiento} onElegir={setComportamiento} etiquetaId="gFvLbl" />
-          </div>
-        ) : null}
-
-        {/* Con `cuenta_corriente` esto deja de ser "a quién se le pagó": no se
-            pagó nada todavía. Y el proveedor pasa a ser OBLIGATORIO y de la
-            lista — una deuda sin acreedor identificado no se puede ni pagar ni
-            informar, y dos tipeos del mismo nombre serían dos acreedores
-            distintos en el listado que va al estudio. El servidor lo rechaza
-            igual (`cta_cte_needs_tercero`); acá se evita que el comerciante
-            llegue a ese error apretando Guardar. */}
-        <div className="pm-fld">
-          <label htmlFor="gProv">{esCtaCte ? 'A quién se le debe' : 'A quién se le pagó'}</label>
-          <select
-            id="gProv"
-            value={proveedorId}
-            onChange={(e) => setProveedorId(e.target.value)}
-          >
-            <option value="">
-              {esCtaCte ? 'Elegí el proveedor…' : 'Escribir el nombre…'}
-            </option>
-            {proveedores.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-                {p.doc !== null ? ` · ${p.doc}` : ''}
-              </option>
-            ))}
-          </select>
-          {proveedorId === '' && !esCtaCte ? (
-            <input
-              style={{ marginTop: 8 }}
-              value={payeeName}
-              onChange={(e) => setPayeeName(e.target.value)}
-              placeholder="Nombre del proveedor (opcional)"
-              aria-label="Nombre del proveedor"
-            />
-          ) : null}
-          {proveedorId === '' && esCtaCte ? (
-            <p className="pm-note err" style={{ marginTop: 8 }}>
-              Una deuda necesita saber a quién. Si el proveedor no está en la
-              lista, cargalo primero desde Clientes y proveedores.
-            </p>
-          ) : null}
-        </div>
-
-        <div className="pm-fld">
-          <label htmlFor="gTotal">{esCtaCte ? 'Cuánto es' : 'Cuánto se pagó'}</label>
-          <input
-            id="gTotal"
-            className="big"
-            value={total}
-            onChange={(e) => setTotal(e.target.value)}
-            inputMode="decimal"
-            placeholder="0,00"
-            autoFocus
-          />
-        </div>
-
-        <label className="pm-check" htmlFor="gDisc">
-          <input
-            id="gDisc"
-            type="checkbox"
-            checked={discrimina}
-            onChange={(e) => {
-              setDiscrimina(e.target.checked);
-              if (!e.target.checked) {
-                setNeto('');
-                setIva('');
-              }
-            }}
-          />
-          <span>
-            <span className="t">El comprobante discrimina el IVA</span>
-            <span className="s">
-              Sólo si la factura lo muestra aparte. Neto + IVA tiene que dar
-              exactamente el total.
-            </span>
-          </span>
-        </label>
-
-        {discrimina ? (
-          <>
-            <div className="pm-row">
-              <div className="pm-fld">
-                <label htmlFor="gNeto">Neto</label>
-                <input
-                  id="gNeto"
-                  value={neto}
-                  onChange={(e) => setNeto(e.target.value)}
-                  inputMode="decimal"
-                  placeholder="0,00"
-                />
-              </div>
-              <div className="pm-fld">
-                <label htmlFor="gIva">IVA</label>
-                <input
-                  id="gIva"
-                  value={iva}
-                  onChange={(e) => setIva(e.target.value)}
-                  inputMode="decimal"
-                  placeholder="0,00"
-                />
-              </div>
-            </div>
-            <p className="pm-note" style={{ marginTop: -6 }}>
-              <button
-                type="button"
-                onClick={calcular21}
-                disabled={dTotal === null || dTotal.lte(0)}
-                style={{
-                  font: 'inherit',
-                  color: 'var(--purple)',
-                  fontWeight: 700,
-                  textDecoration: 'underline',
-                  cursor: 'pointer',
-                }}
-              >
-                Calcular al 21%
-              </button>{' '}
-              desde el total. Verificá contra el papel: hay gastos al 10,5% y
-              otros exentos.
-            </p>
-          </>
-        ) : null}
-
-        {noCierra ? (
-          <p className="pm-warn red">
-            Neto + IVA da <b>{plata(dNeto!.plus(dIva!).toFixed(2))}</b> y el
-            total es <b>{plata(dTotal!.toFixed(2))}</b>. Tienen que coincidir.
-          </p>
-        ) : null}
-
-        <div className="pm-row">
-          <div className="pm-fld">
-            <label htmlFor="gCompTipo">Comprobante</label>
-            <select
-              id="gCompTipo"
-              value={compTipo}
-              onChange={(e) => setCompTipo(e.target.value)}
-            >
-              <option>Factura</option>
-              <option>Ticket</option>
-              <option>Recibo</option>
-              <option>Nota de débito</option>
-              <option>Otro</option>
-            </select>
-          </div>
-          <div className="pm-fld">
-            <label htmlFor="gCompNro">Número</label>
-            <input
-              id="gCompNro"
-              value={compNumero}
-              onChange={(e) => setCompNumero(e.target.value)}
-              placeholder="0001-00001234"
-            />
-          </div>
-        </div>
-
-        <label className="pm-check" htmlFor="gArca">
-          <input
-            id="gArca"
-            type="checkbox"
-            checked={enIvaCompras}
-            onChange={(e) => setEnIvaCompras(e.target.checked)}
-          />
-          <span>
-            <span className="t">Entra al IVA compras</span>
-            <span className="s">
-              Marcalo si es una factura a nombre del comercio. El estudio ya la
-              baja de ARCA y no hace falta mandársela. Sin marcar, sale en el
-              export para el estudio.
-            </span>
-          </span>
-        </label>
-
-        {faltaComprobante ? (
-          <p className="pm-warn red">
-            Un gasto que entra al IVA compras necesita el <b>número de
-            comprobante</b>: es lo que después permite cruzarlo con lo que el
-            estudio ve en ARCA.
-          </p>
-        ) : null}
-
-        {/* ── El detalle: sólo mercadería ──────────────────────────────────
-            Una línea es un LOTE: entra al stock y deja registrado a qué costo.
-            En las otras categorías no hay nada que contar, y el service las
-            rechaza — mostrar la sección igual sería ofrecer algo que no se
-            puede hacer. */}
-        {esMercaderia ? (
-          <div className="det">
-            <div className="det-h">
-              <span className="det-t">Detalle de la mercadería</span>
-              <span className="det-s">
-                Opcional. Si lo cargás, entra al stock y queda el costo de cada
-                producto — que es lo que el inventario al cierre necesita.
-              </span>
-            </div>
-
-            {lineas.length > 0 ? (
-              <div className="det-tab">
-                <div className="det-th">
-                  <span style={{ flex: 1 }}>Producto</span>
-                  <span style={{ width: 74, textAlign: 'right' }}>Cant.</span>
-                  <span style={{ width: 104, textAlign: 'right' }}>Costo u. neto</span>
-                  <span style={{ width: 100, textAlign: 'right' }}>Subtotal</span>
-                  <span style={{ width: 28 }} />
-                </div>
-                {lineas.map((l, i) => (
-                  <div key={l.key} className="det-tr">
-                    <span style={{ flex: 1 }} className="det-nom">
-                      {l.nombre}
-                    </span>
-                    <input
-                      className="det-in"
-                      style={{ width: 74 }}
-                      inputMode="decimal"
-                      value={l.qty}
-                      aria-label={`Cantidad de ${l.nombre}`}
-                      onChange={(e) => cambiarLinea(i, { qty: e.target.value })}
-                    />
-                    <input
-                      className="det-in"
-                      style={{ width: 104 }}
-                      inputMode="decimal"
-                      value={l.costo}
-                      aria-label={`Costo unitario de ${l.nombre}`}
-                      onChange={(e) => cambiarLinea(i, { costo: e.target.value })}
-                    />
-                    <span style={{ width: 100, textAlign: 'right' }} className="det-sub">
-                      {subtotalDe(l) === null ? '—' : plata(subtotalDe(l)!.toFixed(4))}
-                    </span>
-                    <button
-                      type="button"
-                      className="det-x"
-                      aria-label={`Sacar ${l.nombre}`}
-                      onClick={() => setLineas((prev) => prev.filter((_, j) => j !== i))}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            <BuscadorProducto
-              onElegir={(p) => {
-                setLineas((prev) => [
-                  ...prev,
-                  {
-                    key: `${p.id}-${prev.length}-${Date.now()}`,
-                    productId: p.id,
-                    nombre: p.name,
-                    qty: '',
-                    // El costo de la última compra viene cargado: el proveedor
-                    // casi siempre repite precio, y si aumentó se ve contra qué.
-                    costo: p.cost !== null ? new Decimal(p.cost).toFixed(2) : '',
-                  },
-                ]);
-              }}
-            />
-
-            {lineas.length > 0 ? (
-              <div className="det-sum">
-                <span>
-                  Suma del detalle{' '}
-                  <i>{discrimina ? '(contra el neto)' : '(contra el total)'}</i>
-                </span>
-                <b className="det-nom">{plata(sumaDetalle.toFixed(4))}</b>
-              </div>
-            ) : null}
-
-            {/* El costo es NETO de IVA recuperable: el IVA discriminado se
-                recupera, así que no es costo de la mercadería. De acá sale
-                `products.cost` y de ahí el margen de cada venta. */}
-            {detalleNoCierra ? (
-              <p className="pm-warn red">
-                El detalle suma <b>{plata(sumaDetalle.toFixed(2))}</b> y el
-                comprobante dice{' '}
-                <b>{plata((baseDetalle ?? new Decimal(0)).toFixed(2))}</b>
-                {discrimina ? ' (neto, sin IVA)' : ''}. Tienen que coincidir.
-              </p>
-            ) : lineas.length > 0 && discrimina ? (
-              <p className="pm-note">
-                Los costos van <b>netos</b>: el IVA discriminado se recupera, así
-                que no es costo de la mercadería.
-              </p>
-            ) : null}
-
-            {lineasIncompletas ? (
-              <p className="pm-warn red">
-                Hay renglones sin cantidad o sin costo. Completalos o sacalos.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-
-        <div className="pm-fld">
-          <label htmlFor="gMedio">Con qué se pagó</label>
-          <select id="gMedio" value={medio} onChange={(e) => setMedio(e.target.value)}>
-            {MEDIOS.map((m) => (
-              <option key={m.valor} value={m.valor}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Sólo el efectivo toca la caja. Los otros medios no: si todo egreso
-            saliera del cajón, el arqueo descontaría plata que nunca estuvo ahí. */}
-        {medio === 'efectivo' ? (
-          hayCajaAbierta ? (
-            <p className="pm-warn amber">
-              Sale de la <b>caja del día</b> y se descuenta del arqueo.{' '}
-              <b>No lo cargues además como egreso en Caja</b>: se descontaría dos
-              veces.
-            </p>
-          ) : (
-            <p className="pm-warn red">
-              <b>No hay una caja abierta.</b> Un gasto en efectivo tiene que
-              salir de la caja del día. Abrila desde Caja, o cargalo con el medio
-              con el que realmente se pagó.
-            </p>
-          )
-        ) : esCtaCte ? (
-          <p className="pm-warn amber">
-            <b>No sale plata ahora.</b> Queda como <b>deuda con el proveedor</b> y
-            aparece en Acreedores. Va a contar como gasto del mes{' '}
-            <b>en que se lo pagues</b>, no de este.
-          </p>
-        ) : (
-          <p className="pm-note">No toca la caja: no es plata del cajón.</p>
-        )}
-
-        <div className="pm-fld">
-          <label htmlFor="gDesc">Detalle (opcional)</label>
-          <input
-            id="gDesc"
-            value={descripcion}
-            onChange={(e) => setDescripcion(e.target.value)}
-            placeholder="Luz de agosto, alquiler de septiembre…"
-          />
-        </div>
-
-        <div className="pm-acts">
-          <button type="button" className="pm-btn ghost" onClick={onCancelar}>
-            Cancelar
-          </button>
-          <button
-            type="button"
-            className="pm-btn primary"
-            disabled={!puedeGuardar}
-            onClick={enviar}
-          >
-            {pending ? 'Guardando…' : 'Guardar gasto'}
           </button>
         </div>
       </div>

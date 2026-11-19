@@ -11,6 +11,7 @@
  * en el servidor.
  */
 import { eq } from 'drizzle-orm';
+import Decimal from 'decimal.js';
 import { requireSessionWithCompany } from '@/lib/auth/session';
 import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
 import { db } from '@/lib/db/client';
@@ -25,15 +26,18 @@ import {
   getProveedoresDelPeriodo,
   listAnnulledExpenses,
   listExpenses,
+  listRecentExpenses,
 } from '@/lib/services/expenses/expense.service';
 import { contarAdjuntosPorGasto, contarContratosPorTercero } from '@/lib/services/expenses/attachment.service';
 import { listTerceros } from '@/lib/cash/terceros';
-import { getActiveCashSession } from '@/lib/cash/sessions';
+import { computeCashBreakdown, getActiveCashSession } from '@/lib/cash/sessions';
+import { diaDelComercio } from '@/lib/domain/fecha-comercio';
 import {
   clasificacionesExplicitas,
   getFijosVariablesPorMes,
+  memoriaPorProveedor,
 } from '@/lib/services/expenses/cost-behaviour.service';
-import { GastosClient, type GastoDTO } from './GastosClient';
+import { GastosClient, type GastoDTO, type Vista } from './GastosClient';
 
 /** El primer día del período y el primer día del SIGUIENTE, como 'AAAA-MM-DD'. */
 const soloFecha = (d: Date) => d.toISOString().slice(0, 10);
@@ -41,10 +45,13 @@ const soloFecha = (d: Date) => d.toISOString().slice(0, 10);
 export default async function GastosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ periodo?: string }>;
+  searchParams: Promise<{ periodo?: string; vista?: string }>;
 }) {
   const session = await requireSessionWithCompany();
-  const { periodo: pedido } = await searchParams;
+  const { periodo: pedido, vista: vistaPedida } = await searchParams;
+  // Dos vistas: cargar un gasto (la que abre, como la maqueta) y el libro.
+  // Viaja en la URL como el período, así el link al libro se puede guardar.
+  const vista: Vista = vistaPedida === 'libro' ? 'libro' : 'cargar';
 
   // Un valor raro en la URL cae al mes en vez de romper: la URL la escribe
   // cualquiera. Mismo criterio que /contador.
@@ -64,6 +71,9 @@ export default async function GastosPage({
 
   const mesCierre = company?.mesCierre ?? 12;
   const periodo = periodoDe(grano, new Date(), mesCierre);
+  // "Gastos del mes" al lado del alta es SIEMPRE el mes en curso, elija lo que
+  // elija el libro: es lo que la maqueta muestra y lo que sirve al cargar.
+  const mesActual = periodoDe('mes', new Date(), mesCierre);
   const desde = soloFecha(periodo.desde);
   const hasta = soloFecha(periodo.hasta);
   // La deuda a proveedores es una FOTO: vale a un día, no a un rango.
@@ -103,7 +113,15 @@ export default async function GastosPage({
           // donde se ve si un CUIT quedó mal cargado.
           getProveedoresDelPeriodo(desde, hasta),
           listTerceros('proveedor'),
-          getActiveCashSession(1).then((s) => s !== null),
+          // La caja abierta, con su esperado: el recuadro "Impacto en caja"
+          // del alta muestra cuánto efectivo queda después del gasto. Sale de
+          // LA fórmula del cierre (`computeCashBreakdown`), no de una suma en
+          // pantalla, igual que /caja. Mismo punto de venta que la action.
+          getActiveCashSession(1).then(async (s) =>
+            s === null
+              ? null
+              : (await computeCashBreakdown(db, s.id, s.tenant_id, s.initial_amount)).expected
+          ),
           // Anular saca al gasto de TODAS las demás lecturas (deja de estar
           // vigente y la fila de anulación vale 0). Sin esta lista, el
           // comerciante lo ve desaparecer y no puede distinguir "lo anulé" de
@@ -142,6 +160,29 @@ export default async function GastosPage({
       ),
     { requireAuth: true }
   );
+
+  // Lo que necesita la vista de carga.
+  //   - el mes en curso por categoría (la MISMA base que "Por categoría":
+  //     devengado por fecha del gasto), y el número grande es la suma de esas
+  //     mismas filas — no `resumen.total`, que es "plata que salió" y puede no
+  //     coincidir con las barras;
+  //   - los últimos cargados;
+  //   - lo que se le debe HOY a cada proveedor, no al cierre del período del
+  //     libro: con "Ejercicio" elegido esa fecha está en el pasado.
+  //   - la memoria por proveedor: categoría y tipo de la última vez.
+  const [mesPorCategoria, recientes, deudaHoy, memoria] = await withServerActionTracing(
+    () =>
+      Promise.all([
+        getExpenseTotals(soloFecha(mesActual.desde), soloFecha(mesActual.hasta)),
+        listRecentExpenses(5),
+        getAcreedoresAlCierre(diaDelComercio()),
+        memoriaPorProveedor(),
+      ]),
+    { requireAuth: true }
+  );
+  const mesTotal = mesPorCategoria
+    .reduce((acc, c) => acc.plus(new Decimal(c.total)), new Decimal(0))
+    .toFixed(2);
 
   // Fijo / variable / mixto (0045): la clasificación explícita de cada gasto
   // listado, y el resumen de los últimos 6 meses (independiente del período
@@ -206,7 +247,25 @@ export default async function GastosPage({
       }))}
       grano={grano}
       periodoEtiqueta={periodo.etiqueta}
-      hayCajaAbierta={cajaAbierta}
+      hayCajaAbierta={cajaAbierta !== null}
+      vista={vista}
+      cajaEsperado={cajaAbierta}
+      mes={{
+        etiqueta: mesActual.etiqueta,
+        total: mesTotal,
+        porCategoria: mesPorCategoria.map((c) => ({ categoria: c.categoria, total: c.total })),
+      }}
+      recientes={recientes.map((g) => ({
+        id: g.id,
+        fecha: g.fecha,
+        categoria: g.categoria,
+        payee_name: g.payee_name,
+        descripcion: g.descripcion,
+        total: g.total,
+        medio_pago: g.medio_pago,
+      }))}
+      deudaHoy={Object.fromEntries(deudaHoy.map((a) => [a.tercero_id, a.saldo]))}
+      memoria={memoria}
       cashierName={session.email.replace(/@.*/, '')}
       salePointLabel={company?.name ?? 'Mi comercio'}
     />

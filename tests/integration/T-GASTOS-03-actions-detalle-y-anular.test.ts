@@ -175,7 +175,7 @@ describe('T-GASTOS-03 — actions de gastos', () => {
         { product_id: yerba, qty: '10', unit_cost: '800' },
         { product_id: azucar, qty: '5', unit_cost: '400' },
       ],
-    });
+    }, crypto.randomUUID());
     expect(res.ok).toBe(true);
 
     const [p] = await db
@@ -186,6 +186,52 @@ describe('T-GASTOS-03 — actions de gastos', () => {
     expect(p?.stock_current).toBe('10.0000');
     // Neto, no bruto: el IVA discriminado se recupera.
     expect(p?.cost).toBe('800.0000');
+  });
+
+  it('🔴 un doble click con la misma clave carga UN gasto, no dos', async () => {
+    // El alta dejó de ser un modal que se cierra: queda fija en la pantalla y
+    // se aprieta dos veces. En efectivo serían dos salidas de la caja.
+    const form = {
+      fecha: '2026-02-11',
+      categoria: 'servicios' as const,
+      total: '4321.00',
+      medio_pago: 'transferencia' as const,
+      en_iva_compras: false,
+      comportamiento: 'mixto' as const,
+      descripcion: 'doble click',
+    };
+    const clave = crypto.randomUUID();
+    const r1 = await registrarGastoAction(form, clave);
+    const r2 = await registrarGastoAction(form, clave);
+    expect(r1.ok && r2.ok).toBe(true);
+    if (!r1.ok || !r2.ok) return;
+    expect(r2.data.id).toBe(r1.data.id);
+
+    const filas = await db
+      .select({ id: expenses.id })
+      .from(expenses)
+      .where(and(eq(expenses.tenant_id, tenant), eq(expenses.descripcion, 'doble click')));
+    expect(filas).toHaveLength(1);
+
+    // Otra clave = otro gasto: dos gastos iguales a propósito son dos gastos.
+    const r3 = await registrarGastoAction(form, crypto.randomUUID());
+    expect(r3.ok).toBe(true);
+    if (r3.ok) expect(r3.data.id).not.toBe(r1.data.id);
+  });
+
+  it('sin clave válida no registra nada', async () => {
+    const res = await registrarGastoAction(
+      {
+        fecha: '2026-02-12',
+        categoria: 'servicios',
+        total: '10.00',
+        medio_pago: 'transferencia',
+        en_iva_compras: false,
+        comportamiento: 'mixto',
+      },
+      'x'
+    );
+    expect(res.ok).toBe(false);
   });
 
   it('el detalle se lee desde la pantalla, en el orden en que se cargó', async () => {
