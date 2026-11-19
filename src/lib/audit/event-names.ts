@@ -94,8 +94,8 @@ export const AUDIT_EVENT_NAMES = [
   'expense.attachment_removed',
 
   // Domain: order (4) — v2.4.0, pedidos con seña (ADR-0029, 2026-11-18).
-  // Aprobados por la delegación de la misión del 2026-11-18 ("asumí la
-  // dirección de producto"), PENDIENTES de ratificación del owner. Un pedido
+  // Agregados por la delegación de la misión del 2026-11-18 y RATIFICADOS por
+  // el owner el mismo día. Un pedido
   // mueve plata real en la caja: sin estos cuatro, una seña cobrada no
   // dejaría huella auditable. order.payment.received es el que hay que mirar
   // si el arqueo no cierra.
@@ -134,7 +134,7 @@ export function isAuditEventName(value: string): value is AuditEventName {
 /**
  * Total: 57 eventos auditables F0 = 43 hasta v2.0.3 + 6 de v2.1.0 (owner
  * 2026-09-14) + 2 de v2.2.0 (owner 2026-09-17) + 2 de v2.3.0 (owner
- * 2026-09-19) + 4 de v2.4.0 (pedidos, 2026-11-18, pendiente ratificar).
+ * 2026-09-19) + 4 de v2.4.0 (pedidos, ratificados por el owner 2026-11-18).
  *
  * Este desglose decía "49" y ya se había sumado la v2.2.0: un total declarado
  * que no cerraba con su propia lista, justo debajo de ella. Al agregar un
