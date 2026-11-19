@@ -125,6 +125,9 @@ describe('T-GASTO-03 — proveedores del período', () => {
         categoria,
         total,
         medio_pago: 'transferencia',
+        // Estos tests cargan gastos iguales a propósito para probar el agrupado;
+        // el aviso de posible duplicado tiene su propio test (T-GASTO-DUP-01).
+        confirmar_duplicado: true,
         ...(payee_name !== undefined ? { payee_name } : {}),
         ...(payee_doc !== undefined ? { payee_doc } : {}),
       })

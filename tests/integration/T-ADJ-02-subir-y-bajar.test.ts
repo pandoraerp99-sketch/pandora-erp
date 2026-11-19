@@ -111,6 +111,11 @@ describe('T-ADJ-02 — el comprobante sube, baja y no se va de comercio', () => 
       demo_status: 'trial',
     });
 
+  // Un número distinto por carga: cargar dos veces el MISMO comprobante es lo
+  // que ahora se rechaza (T-GASTO-DUP-01), y acá no es lo que se prueba.
+  let nroComprobante = 0;
+  const otroNumero = () => `0001-${String(99000 + ++nroComprobante).padStart(8, '0')}`;
+
   const gastoDeServicios = (tenantId: string) =>
     en(tenantId, () =>
       registerExpense({
@@ -121,7 +126,7 @@ describe('T-ADJ-02 — el comprobante sube, baja y no se va de comercio', () => 
         total: '12100',
         payee_name: 'Edenor',
         comprobante_tipo: 'B',
-        comprobante_numero: '0001-00099999',
+        comprobante_numero: otroNumero(),
         en_iva_compras: true,
         medio_pago: 'transferencia',
       })

@@ -174,6 +174,9 @@ describe('T-GASTO-ULT-01 — últimos gastos cargados', () => {
             total: '50.00',
             medio_pago: 'transferencia',
             tercero_id: tercero,
+            // Gastos iguales a propósito: lo que se prueba es la memoria, no el
+            // aviso de duplicado (T-GASTO-DUP-01).
+            confirmar_duplicado: true,
             ...extra,
           }),
         tid

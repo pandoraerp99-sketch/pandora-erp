@@ -118,6 +118,12 @@ export const CARGA_CSS = `
 @keyframes cgEntra{ from{ opacity:0; transform:translateY(4px); } to{ opacity:1; transform:none; } }
 @media (prefers-reduced-motion: reduce){ .cg-ok{ animation:none; } .reg-btn, .scan-btn{ transition:none; } }
 .cg-err{ margin:14px 0 0; }
+/* Posible duplicado: no es un error, es una pregunta. Ambar, como "hay que
+   mandar": algo para mirar, no algo roto. */
+.cg-duda{ margin-top:14px; padding:12px 14px; border-radius:13px; background:rgba(247,152,74,0.10); border:1px solid rgba(247,152,74,0.32); }
+.cg-duda p{ margin:0 0 10px; font-size:12.5px; line-height:1.5; color:#7a4a0e; font-weight:600; }
+.cg-duda-acts{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.scan-btn.primary{ background:#5f53f5; color:#fff; border-color:transparent; box-shadow:0 5px 14px rgba(107,95,255,0.30); }
 
 .reg-btn{ width:100%; margin-top:18px; min-height:48px; padding:14px; border-radius:14px; border:none; background:linear-gradient(140deg,#5f53f5,#6b5fff); color:#fff; font-size:14px; font-weight:700; font-family:inherit; box-shadow:0 7px 20px rgba(107,95,255,0.40); transition:transform 170ms, box-shadow 170ms; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; }
 .reg-btn:hover:not(:disabled){ transform:translateY(-1px); box-shadow:0 10px 26px rgba(107,95,255,0.5); }
@@ -185,4 +191,7 @@ html[data-theme="dark"] .reg-btn{ background:linear-gradient(140deg,#5f53f5,#6b5
 html[data-theme="dark"] .gsbar{ background:rgba(255,255,255,0.08); }
 html[data-theme="dark"] .gasto-row{ border-top-color:rgba(255,255,255,0.07); }
 html[data-theme="dark"] .gmonto{ color:#ff8b96; }
+html[data-theme="dark"] .cg-duda{ background:rgba(255,184,122,0.08); border-color:rgba(255,184,122,0.28); }
+html[data-theme="dark"] .cg-duda p{ color:#ffc79a; }
+html[data-theme="dark"] .scan-btn.primary{ background:#5f53f5; color:#fff; }
 `;

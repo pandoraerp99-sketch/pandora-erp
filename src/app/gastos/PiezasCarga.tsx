@@ -148,6 +148,101 @@ export function CategoriaYTipo({
   );
 }
 
+export interface Hecho {
+  total: string;
+  categoria: string;
+  medio: string;
+  /** 'ok', el error de la subida, o null si no se eligió archivo. */
+  adjunto: string | null;
+}
+
+const ICONO_OK = (
+  <svg
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.4"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M20 6 9 17l-5-5" />
+  </svg>
+);
+
+/**
+ * Lo que vuelve al registrar: la confirmación (con el aviso si el comprobante
+ * no subió), el error, o la pregunta de posible duplicado con sus dos botones.
+ */
+export function AvisosAlRegistrar({
+  hecho,
+  error,
+  duda,
+  onVerLibro,
+  onRevisar,
+  onConfirmar,
+}: {
+  hecho: Hecho | null;
+  error: string | null;
+  duda: string | null;
+  onVerLibro: () => void;
+  onRevisar: () => void;
+  onConfirmar: () => void;
+}) {
+  return (
+    <>
+      <div aria-live="polite">
+        {hecho !== null ? (
+          <div className="cg-ok">
+            <span className="cg-ok-ic">{ICONO_OK}</span>
+            <div className="cg-ok-tx">
+              <b>
+                Listo: gasto de {plata(hecho.total)} en {hecho.categoria}.
+              </b>{' '}
+              {hecho.medio === 'efectivo'
+                ? 'Se descontó de la caja.'
+                : hecho.medio === 'cuenta_corriente'
+                  ? 'Quedó como deuda con el proveedor.'
+                  : ''}
+              {hecho.adjunto === 'ok' ? ' El comprobante quedó adjunto.' : null}
+              {hecho.adjunto !== null && hecho.adjunto !== 'ok' ? (
+                <span className="cg-ok-warn">
+                  {' '}
+                  El gasto quedó guardado, pero el comprobante no subió ({hecho.adjunto}). Adjuntalo
+                  desde el clip de su fila en el libro.
+                </span>
+              ) : null}
+            </div>
+            <button type="button" className="cg-link" onClick={onVerLibro}>
+              Ver en el libro
+            </button>
+          </div>
+        ) : null}
+      </div>
+      {error !== null ? (
+        <p className="pm-warn red cg-err" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {duda !== null ? (
+        <div className="cg-duda" role="alert">
+          <p>{duda}</p>
+          <div className="cg-duda-acts">
+            <button type="button" className="scan-btn" onClick={onRevisar}>
+              No, revisar
+            </button>
+            <button type="button" className="scan-btn primary" onClick={onConfirmar}>
+              Sí, es otro gasto: registrarlo
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 /**
  * Lo que el gasto va a hacer, ANTES de registrarlo: en efectivo, cuánto queda
  * en la caja; a cuenta corriente, cuánto se le va a deber al proveedor; con

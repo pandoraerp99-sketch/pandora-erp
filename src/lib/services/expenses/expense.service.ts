@@ -59,6 +59,14 @@ import { csvArmar, csvNum, csvTxt } from '../reporting/csv.js';
 import { diaDelComercio, ZONA_COMERCIO } from '../../domain/fecha-comercio.js';
 import { exigirQueOpereElComercio } from '../../auth/autorizacion.js';
 import { withIdempotency } from '../../idempotency/idempotency.js';
+import { formatARS } from '../../money/format.js';
+import {
+  mismoComprobante,
+  mismoProveedor,
+  normalizarNumero,
+  tieneProveedor,
+  type DatosComprobante,
+} from '../../domain/comprobante-duplicado.js';
 import { createHash } from 'node:crypto';
 
 export class ExpenseError extends DomainError {
@@ -112,6 +120,12 @@ export interface NuevoGasto {
    * necesita y `products.cost` por sí solo no puede dar.
    */
   items?: LineaDeCompra[];
+  /**
+   * El comerciante confirmó que NO es un duplicado. Sólo saltea el AVISO de
+   * posible duplicado (gasto sin número, mismo proveedor, día y monto); el
+   * bloqueo por el mismo comprobante no se saltea nunca.
+   */
+  confirmar_duplicado?: boolean;
 }
 
 export interface LineaDeCompra {
@@ -414,7 +428,24 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
     userId
   );
 
+  // Lo que identifica al comprobante, para compararlo con los ya cargados.
+  const datosComprobante: DatosComprobante = {
+    tercero_id: terceroVinculado,
+    payee_doc: payeeDoc,
+    payee_name: payeeName,
+    comprobante_tipo: input.comprobante_tipo?.trim() || null,
+    comprobante_numero: comprobante,
+  };
+
   return db.transaction(async (tx) => {
+    // ANTES de escribir nada: si es una factura ya cargada, no se toca la caja
+    // ni el stock. Ver `controlarDuplicado`.
+    await controlarDuplicado(tx, tenantId, datosComprobante, {
+      fecha: input.fecha,
+      total,
+      confirmado: input.confirmar_duplicado === true,
+    });
+
     let cashMovementId: bigint | null = null;
 
     if (input.medio_pago === 'efectivo') {
@@ -1172,6 +1203,100 @@ export async function listExpenses(
       )
     )
     .orderBy(sql`fecha DESC, created_at DESC`);
+}
+
+/**
+ * La misma factura no se carga dos veces (pedido del owner, 2026-11-19).
+ *
+ * Dos controles, de distinta fuerza:
+ *
+ * 1. **Mismo comprobante → se rechaza siempre.** Mismo número (normalizado),
+ *    tipo y proveedor que un gasto VIGENTE (`mismoComprobante`). Un anulado no
+ *    cuenta: anular y volver a cargar es justo como se corrige un gasto mal
+ *    cargado. Para que dos cargas simultáneas no pasen las dos, se toma un
+ *    lock de transacción por comercio y número: la segunda espera a que la
+ *    primera termine y ve su fila.
+ *
+ * 2. **Sin número, mismo proveedor, día y monto → se avisa.** Puede ser otro
+ *    gasto igual (dos compras de $500 en la panadería), así que no se bloquea:
+ *    vuelve con el código `posible_duplicado` y el comerciante confirma.
+ *    Sin ninguna llave de proveedor no corre: no hay cómo decir que son el
+ *    mismo.
+ */
+async function controlarDuplicado(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  tenantId: string,
+  nuevo: DatosComprobante,
+  opts: { fecha: string; total: Decimal; confirmado: boolean }
+): Promise<void> {
+  const numero = normalizarNumero(nuevo.comprobante_numero);
+  const cols = {
+    id: expenses.id,
+    fecha: expenses.fecha,
+    total: expenses.total,
+    tercero_id: expenses.tercero_id,
+    payee_doc: expenses.payee_doc,
+    payee_name: expenses.payee_name,
+    comprobante_tipo: expenses.comprobante_tipo,
+    comprobante_numero: expenses.comprobante_numero,
+  };
+
+  if (numero !== null) {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}|gasto-comprobante|${numero}`}, 0))`
+    );
+    // Prefiltro barato: todo número con ese final (los ceros de adelante y el
+    // formato cambian, el final no). La comparación de verdad es la de abajo.
+    const final = numero.split('-').pop()!;
+    const candidatos = await tx
+      .select(cols)
+      .from(expenses)
+      .where(
+        and(
+          eq(expenses.tenant_id, tenantId),
+          sql`${expenses.comprobante_numero} LIKE ${'%' + final}`,
+          GASTO_VIGENTE
+        )
+      );
+    const igual = candidatos.find((c) => mismoComprobante(nuevo, c));
+    if (igual) {
+      throw new ExpenseError(
+        'comprobante_duplicado',
+        `Esa factura ya está cargada: ${[igual.comprobante_tipo, igual.comprobante_numero]
+          .filter(Boolean)
+          .join(' ')} de ${igual.payee_name ?? 'ese proveedor'}, del ${fechaLarga(igual.fecha)} ` +
+          `por ${formatARS(igual.total)}. Si estaba mal cargada, anulala en el libro y cargala de nuevo.`
+      );
+    }
+    return;
+  }
+
+  if (opts.confirmado || !tieneProveedor(nuevo)) return;
+  const mismoDia = await tx
+    .select(cols)
+    .from(expenses)
+    .where(
+      and(
+        eq(expenses.tenant_id, tenantId),
+        eq(expenses.fecha, opts.fecha),
+        eq(expenses.total, opts.total.toFixed(4)),
+        GASTO_VIGENTE
+      )
+    );
+  const parecido = mismoDia.find((c) => mismoProveedor(nuevo, c));
+  if (parecido) {
+    throw new ExpenseError(
+      'posible_duplicado',
+      `Ya hay un gasto de ${parecido.payee_name ?? 'ese proveedor'} del mismo día y por el mismo monto ` +
+        `(${formatARS(parecido.total)}). ¿Es otro gasto?`
+    );
+  }
+}
+
+/** 'AAAA-MM-DD' → '27/08/2026'. */
+function fechaLarga(iso: string): string {
+  const [a, m, d] = iso.split('-');
+  return `${d}/${m}/${a}`;
 }
 
 /**

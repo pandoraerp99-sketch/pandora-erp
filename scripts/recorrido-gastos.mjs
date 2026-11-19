@@ -244,6 +244,43 @@ if (cajaAntes === null) {
   await foto('07-libro.png');
 }
 
+// ── duplicados (por transferencia: no tocan la caja) ──
+{
+  await ir(`${BASE}/gastos`);
+  const marca = `Recorrido dup ${new Date().toISOString().slice(0, 19)}`;
+  const nombre = 'Proveedor del recorrido';
+  const esperarOk = async () => { let t = null; for (let k = 0; k < 60 && !t; k++) { await dormir(250); t = await texto('.cg-ok'); } return t; };
+  const cargarUno = async (nro, monto) => {
+    await escribir('#cgCat', 'servicios');
+    await escribir('#cgDesc', marca);
+    await escribir('#cgMedio', 'transferencia');
+    await escribir('#cgProv', '');
+    await escribir('input[aria-label="Nombre del beneficiario o proveedor"]', nombre);
+    await escribir('#cgTotal', monto);
+    if (nro !== null) {
+      if (!(await evaluar(`!!document.querySelector('#cgCompNro')`))) await clic(`document.querySelector('.cgfac-head')`);
+      await escribir('#cgCompNro', nro);
+    }
+    await clic(`document.querySelector('.reg-btn')`);
+  };
+  await cargarUno('0099-00000321', '4321');
+  check('la primera factura entra', /Listo/.test((await esperarOk()) || ''));
+  await cargarUno('99-321', '4321');
+  let err = null; for (let k = 0; k < 40 && !err; k++) { await dormir(250); err = await texto('.cg-err'); }
+  check('la misma factura escrita distinto se rechaza y dice cuál es', /ya está cargada.*Proveedor del recorrido/.test(err || ''), err);
+  await foto('10-factura-repetida.png', '.cg-err');
+
+  await ir(`${BASE}/gastos`);
+  await cargarUno(null, '777');
+  check('un gasto sin número entra', /Listo/.test((await esperarOk()) || ''));
+  await cargarUno(null, '777');
+  let duda = null; for (let k = 0; k < 40 && !duda; k++) { await dormir(250); duda = await texto('.cg-duda'); }
+  check('mismo proveedor, día y monto: pregunta si es otro gasto', /mismo día y por el mismo monto/.test(duda || ''), duda?.replace(/\n/g, ' | '));
+  await foto('11-posible-duplicado.png', '.cg-duda');
+  await clic(porTexto('Sí, es otro gasto'));
+  check('confirmando, entra igual', /Listo/.test((await esperarOk()) || ''));
+}
+
 // ── oscuro ──
 await evaluar(`localStorage.setItem('pandora-theme', 'dark')`);
 await ir(`${BASE}/gastos`);

@@ -119,6 +119,11 @@ describe('T-GASTOS-02 — Anular un gasto', () => {
     });
   });
 
+  // Un número distinto por carga: cargar dos veces el MISMO comprobante es lo
+  // que ahora se rechaza (T-GASTO-DUP-01), y acá no es lo que se prueba.
+  let nroComprobante = 0;
+  const otroNumero = () => `0001-${String(99000 + ++nroComprobante).padStart(8, '0')}`;
+
   /** Gasto NO efectivo: aísla la anulación de la lógica de caja. */
   async function gastoPorTransferencia() {
     return conCtx(() =>
@@ -130,7 +135,7 @@ describe('T-GASTOS-02 — Anular un gasto', () => {
         iva: '17355.37',
         tercero_id: proveedor,
         comprobante_tipo: 'A',
-        comprobante_numero: '0001-00099999',
+        comprobante_numero: otroNumero(),
         en_iva_compras: true,
         medio_pago: 'transferencia',
         descripcion: 'compra que se cargo mal',

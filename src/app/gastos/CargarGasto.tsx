@@ -36,7 +36,14 @@ import { normalizarMontoTipeado } from '@/lib/money/monto-tipeado';
 import type { MemoriaProveedor } from '@/lib/services/expenses/cost-behaviour.service';
 import { MEDIOS, catLabel, hoyLocal, plata } from './gastosFormato';
 import { adjuntarComprobanteAction, registrarGastoAction, type GastoFormInput } from './actions';
-import { CategoriaYTipo, DetalleMercaderia, ImpactoGasto, type BorradorLinea } from './PiezasCarga';
+import {
+  AvisosAlRegistrar,
+  CategoriaYTipo,
+  DetalleMercaderia,
+  ImpactoGasto,
+  type BorradorLinea,
+  type Hecho,
+} from './PiezasCarga';
 
 export interface ProveedorOpcion {
   id: string;
@@ -71,14 +78,6 @@ const MAX_BYTES = 15 * 1024 * 1024;
  */
 const TOLERANCIA = new Decimal('0.50');
 
-interface Hecho {
-  total: string;
-  categoria: string;
-  medio: string;
-  /** 'ok', el error de la subida, o null si no se eligió archivo. */
-  adjunto: string | null;
-}
-
 /**
  * Texto tipeado → Decimal, con la misma lectura que la caja y los pedidos
  * (`normalizarMontoTipeado`, T-MONEY-08): "38.500" son treinta y ocho mil
@@ -105,21 +104,6 @@ const ICONO_CLIP = (
     aria-hidden="true"
   >
     <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-  </svg>
-);
-const ICONO_OK = (
-  <svg
-    viewBox="0 0 24 24"
-    width="16"
-    height="16"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.4"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <path d="M20 6 9 17l-5-5" />
   </svg>
 );
 const FLECHA = (
@@ -173,6 +157,8 @@ export function CargarGasto({ proveedores, cajaEsperado, deudaHoy, memoria, onVe
   const archivoRef = useRef<HTMLInputElement>(null);
 
   const [error, setError] = useState<string | null>(null);
+  /** Aviso de posible duplicado (sin número, mismo proveedor, día y monto). */
+  const [duda, setDuda] = useState<string | null>(null);
   const [hecho, setHecho] = useState<Hecho | null>(null);
 
   // ── Clave de idempotencia ──
@@ -360,19 +346,28 @@ export function CargarGasto({ proveedores, cajaEsperado, deudaHoy, memoria, onVe
     if (archivoRef.current) archivoRef.current.value = '';
   };
 
-  const enviar = () => {
+  /**
+   * `confirmar`: el comerciante dijo "es otro gasto" ante el aviso de posible
+   * duplicado. Sólo saltea ese aviso; una factura ya cargada se rechaza igual.
+   */
+  const enviar = (confirmar = false) => {
     if (!puedeGuardar || dTotal === null || enviando.current) return;
-    const form = armarForm(dTotal);
+    const form: GastoFormInput = {
+      ...armarForm(dTotal),
+      ...(confirmar ? { confirmar_duplicado: true } : {}),
+    };
     const clave = claveDe(form);
     const elegido = archivo;
     enviando.current = true;
     setError(null);
+    setDuda(null);
     setHecho(null);
     startTransition(async () => {
       try {
         const res = await registrarGastoAction(form, clave);
         if (!res.ok) {
-          setError(res.error);
+          if (res.code === 'posible_duplicado') setDuda(res.error);
+          else setError(res.error);
           return;
         }
         // El comprobante va DESPUÉS: necesita el id del gasto. Si falla, el
@@ -744,46 +739,21 @@ export function CargarGasto({ proveedores, cajaEsperado, deudaHoy, memoria, onVe
         debeHoy={debeHoy}
       />
 
-      <div aria-live="polite">
-        {hecho !== null ? (
-          <div className="cg-ok">
-            <span className="cg-ok-ic">{ICONO_OK}</span>
-            <div className="cg-ok-tx">
-              <b>
-                Listo: gasto de {plata(hecho.total)} en {hecho.categoria}.
-              </b>{' '}
-              {hecho.medio === 'efectivo'
-                ? 'Se descontó de la caja.'
-                : hecho.medio === 'cuenta_corriente'
-                  ? 'Quedó como deuda con el proveedor.'
-                  : ''}
-              {hecho.adjunto === 'ok' ? ' El comprobante quedó adjunto.' : null}
-              {hecho.adjunto !== null && hecho.adjunto !== 'ok' ? (
-                <span className="cg-ok-warn">
-                  {' '}
-                  El gasto quedó guardado, pero el comprobante no subió ({hecho.adjunto}). Adjuntalo
-                  desde el clip de su fila en el libro.
-                </span>
-              ) : null}
-            </div>
-            <button type="button" className="cg-link" onClick={onVerLibro}>
-              Ver en el libro
-            </button>
-          </div>
-        ) : null}
-      </div>
-      {error !== null ? (
-        <p className="pm-warn red cg-err" role="alert">
-          {error}
-        </p>
-      ) : null}
+      <AvisosAlRegistrar
+        hecho={hecho}
+        error={error}
+        duda={duda}
+        onVerLibro={onVerLibro}
+        onRevisar={() => setDuda(null)}
+        onConfirmar={() => enviar(true)}
+      />
 
       <button
         type="button"
         className="reg-btn"
         disabled={!puedeGuardar}
         aria-describedby={motivoApagado !== null ? 'cgMotivo' : undefined}
-        onClick={enviar}
+        onClick={() => enviar()}
       >
         {FLECHA}
         {pending ? 'Registrando…' : esCtaCte ? 'Registrar la deuda' : 'Registrar gasto'}
