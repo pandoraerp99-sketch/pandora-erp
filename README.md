@@ -15,7 +15,8 @@ Next.js 16 (webpack) · React 19 · TypeScript strict · Supabase (Postgres + Au
 | Pantalla | Qué hace |
 |---|---|
 | `/pos` | Vende de punta a punta: carrito, cliente, cobro por medio de pago, stock y caja en la misma transacción. Idempotente contra doble click. |
-| `/caja` | Apertura, ingresos/egresos con motivo, cierre con arqueo y descuadre, corrección de medio de pago sin borrar nada. |
+| `/caja` | Apertura, ingresos/egresos con motivo, cierre con arqueo y descuadre, corrección de medio de pago sin borrar nada. Muestra también los cobros de pedidos; el esperado en pantalla es el mismo que calcula el cierre. Alivios de caja: quién lo hizo, pendientes y "Marcar retirados" (sólo la dueña). |
+| `/pedidos` | Encargos con seña (ADR-0029): alta con varias líneas (catálogo o libres), edición, estados, cobros a cuenta y "Cobrar saldo y entregar". Cada cobro entra por la caja abierta. Idempotente contra doble click. |
 | `/productos` | Catálogo, ajustes y merma con motivo, stock reconstruible desde el libro, import CSV. |
 | `/clientes` | Ficha, cuenta corriente (fiado) como libro: cobros totales/parciales, ajustes auditados, deudores. |
 | `/gastos` | Gastos por rubro, compras que mueven stock, proveedores con cuenta corriente, comprobantes adjuntos (PDF/foto). |
@@ -24,6 +25,7 @@ Next.js 16 (webpack) · React 19 · TypeScript strict · Supabase (Postgres + Au
 
 **No funciona todavía** (y la pantalla lo dice, no lo esconde):
 - **Factura electrónica (AFIP):** la cadena WSAA → WSFEv1 está escrita y testeada; falta el **certificado** y las definiciones A-2/A-11 de la contadora.
+- **Pedidos → venta:** entregar un pedido no lo convierte en venta todavía (no descuenta stock ni entra al CSV de ventas); devolver una seña al cancelar está bloqueado. Ver ADR-0029.
 - **Cobro con MercadoPago QR:** webhook, verificación y reconciliación existen; falta crear la orden desde el POS (el medio aparece deshabilitado con su motivo).
 
 **Roles:** `owner`, `admin` y `cashier` operan; `accountant` (la contadora) sólo lee. Lo hace cumplir el servidor en cada escritura (`src/lib/auth/autorizacion.ts`), no la interfaz.
@@ -77,6 +79,9 @@ Datos de demo (opcionales): `scripts/seed-dev-ventas.sql` y `node scripts/seed-d
 | `bash scripts/correr-integracion.sh T-ADJ` | Un grupo de tests de integración por prefijo. |
 | `bash scripts/verificar-tipos.sh <archivos>` | `tsc` + que los archivos no tengan CRLF. |
 | `bash scripts/smoke-prod.sh` | Compila para **producción** (en `.next-prod`, aparte del dev) y pide las rutas al server de producción, incluida la puerta de los crons. |
+| `node scripts/recorrido-pedidos.mjs <carpeta>` | Desde **Windows**, con el server de dev arriba: toma un pedido con seña (doble click en Guardar), recarga, muestra un error, cobra a cuenta, entrega y lo busca en `/caja`. Saca capturas de cada paso. Escribe en la base de **dev**. |
+| `node scripts/recorrido-alivios.mjs <carpeta>` | Desde **Windows**: registra alivios (doble click incluido), marca uno retirado y verifica tras recargar. Escribe en **dev**. |
+| `bash scripts/sembrar-pedidos-demo.sh` | Carga en **dev** los encargos que dibuja `pos-preview/pedidos.html`, para comparar la pantalla con la maqueta en el mismo estado. |
 | `bash scripts/probar-guardia-adjuntos.sh` | Rompe a propósito 9 garantías (policies, triggers, guardia de rol…) y exige que los tests se pongan rojos. Un test que nunca falló no prueba nada. |
 
 Capturas y contraste: `scripts/shot-pos.mjs` (corre desde **Windows**, con `RUTA`, `TEMA` y una acción) y `scripts/contraste-png.ps1` (mide contraste WCAG sobre los píxeles, no sobre el CSS).
@@ -100,7 +105,7 @@ Crear la cuenta en la nube, cargar secretos y publicar son decisiones del dueño
 ## Convenciones que el código hace cumplir
 
 - **Plata:** `Decimal` (decimal.js), nunca `Number`. Redondeo `HALF_EVEN`.
-- **Tablas que no se editan:** `audit_log`, `stock_movements`, `expenses`, `attachments`. Corregir es insertar una fila nueva que apunta a la vieja; un trigger rechaza el `UPDATE`/`DELETE`.
+- **Tablas que no se editan:** `audit_log`, `stock_movements`, `expenses`, `attachments`, `order_payments`, `cash_reliefs`, `cash_relief_pickups`. Corregir es insertar una fila nueva que apunta a la vieja; un trigger rechaza el `UPDATE`/`DELETE`.
 - **Multi-tenant:** toda consulta filtra por `tenant_id` dentro del `WHERE`. El tenant sale del contexto de la sesión, nunca de un parámetro.
 - **Autorización:** cada mutación del service layer empieza con `await exigirQueOpereElComercio();`. Una nueva se agrega a `scripts/insertar-guardia-de-rol.py` y a `tests/integration/T-ROL-01`.
 - **Fechas:** el día del comercio es `America/Argentina/Ushuaia`. El período de una pantalla se resuelve con la fecha de hoy, nunca con un borde que mande el cliente (hay un test que lo vigila).
