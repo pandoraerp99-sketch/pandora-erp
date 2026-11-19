@@ -17,7 +17,15 @@
 import { redirect } from 'next/navigation';
 import { getCurrentSession } from '@/lib/auth/session';
 import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
-import { getActiveCashSession } from '@/lib/cash/sessions';
+import { computeCashBreakdown, getActiveCashSession } from '@/lib/cash/sessions';
+import { db } from '@/lib/db/client';
+import { and, eq, lte, sql } from 'drizzle-orm';
+import { cash_sessions } from '@/lib/db/schema/cash_sessions';
+import { companies } from '@/lib/db/schema/companies';
+import { users } from '@/lib/db/schema/users';
+import { listOrderPaymentsForSession } from '@/lib/services/orders/order.service';
+import { listReliefsForSession, ROLES_QUE_RETIRAN } from '@/lib/cash/reliefs';
+import { leerRolEnElComercio } from '@/lib/auth/autorizacion';
 import { getCashSessionSummary } from '@/lib/cash/queries';
 import { listWithdrawalReasons } from '@/lib/cash/reasons';
 import { listTerceros } from '@/lib/cash/terceros';
@@ -47,11 +55,54 @@ export default async function CajaPage() {
     async () => {
       const cashSession = await getActiveCashSession(SALE_POINT);
       const summary = cashSession ? await getCashSessionSummary(cashSession.id) : null;
+      // El esperado sale de LA fórmula del cierre, no de una suma en pantalla.
+      const desglose = cashSession
+        ? await computeCashBreakdown(db, cashSession.id, cashSession.tenant_id, cashSession.initial_amount)
+        : null;
+      const cobrosPedidos = cashSession ? await listOrderPaymentsForSession(cashSession.id) : [];
+      const alivios = cashSession ? await listReliefsForSession(cashSession.id) : [];
+      // Barra de sesión (caja-editorial.html): "Sesión #00482", quién la abrió
+      // y "{comercio} · PV 0001". El número es el orden de la sesión dentro del
+      // comercio; no se guarda, se cuenta.
+      const numeroSesion = cashSession
+        ? Number(
+            (
+              await db
+                .select({ n: sql<number>`count(*)::int` })
+                .from(cash_sessions)
+                .where(
+                  and(
+                    eq(cash_sessions.tenant_id, cashSession.tenant_id),
+                    lte(cash_sessions.opened_at, cashSession.opened_at)
+                  )
+                )
+            )[0]?.n ?? 0
+          )
+        : null;
+      const [abrio] = cashSession
+        ? await db
+            .select({ nombre: sql<string>`COALESCE(${users.full_name}, ${users.email})` })
+            .from(users)
+            .where(eq(users.id, cashSession.opened_by))
+            .limit(1)
+        : [];
+      const [comercio] = await db
+        .select({ name: companies.name, pv: companies.afip_sale_point })
+        .from(companies)
+        .where(eq(companies.id, session.active_company_id ?? ''))
+        .limit(1);
+      const [yo] = await db
+        .select({ nombre: sql<string>`COALESCE(${users.full_name}, ${users.email})` })
+        .from(users)
+        .where(eq(users.id, session.user_id))
+        .limit(1);
+      // Dentro del callback TS pierde el narrowing del redirect de arriba.
+      const rol = await leerRolEnElComercio(session.active_company_id ?? "", session.user_id);
       const sales = await listTodaySales();
       const reasons = await listWithdrawalReasons();
       const empleados = await listTerceros('empleado');
       const proveedores = await listTerceros('proveedor');
-      return { cashSession, summary, sales, reasons, empleados, proveedores };
+      return { cashSession, summary, desglose, cobrosPedidos, alivios, rol, numeroSesion, abrio, comercio, yo, sales, reasons, empleados, proveedores };
     },
     { requireAuth: true }
   );
@@ -64,8 +115,13 @@ export default async function CajaPage() {
           ? data.cashSession.opened_at.toISOString()
           : null,
         initialAmount: data.cashSession.initial_amount,
-        totalDeposits: data.summary?.totals.total_deposits ?? '0',
-        totalWithdraws: data.summary?.totals.total_withdraws ?? '0',
+        totalDeposits: data.desglose?.deposits ?? '0',
+        totalWithdraws: data.desglose?.withdraws ?? '0',
+        cashSales: data.desglose?.cashSales ?? '0',
+        customerPayments: data.desglose?.customerPayments ?? '0',
+        orderPayments: data.desglose?.orderPayments ?? '0',
+        providerPayments: data.desglose?.providerPayments ?? '0',
+        expected: data.desglose?.expected ?? data.cashSession.initial_amount,
         expectedFromMovements:
           data.summary?.totals.expected_from_movements ??
           data.cashSession.initial_amount,
@@ -106,11 +162,31 @@ export default async function CajaPage() {
 
   return (
     <CajaClient
-      cashierName={session.email}
-      salePointLabel={`Caja ${SALE_POINT}`}
+      cashierName={data.yo?.nombre ?? session.email}
+      cajeroSesion={data.abrio?.nombre ?? null}
+      numeroSesion={data.numeroSesion}
+      salePointLabel={data.comercio ? `${data.comercio.name} · PV ${data.comercio.pv.padStart(4, '0')}` : `Caja ${SALE_POINT}`}
       session={sessionDto}
       movimientos={movimientos}
       movimientosManuales={manuales}
+      alivios={data.alivios.map((a) => ({
+        id: a.id,
+        amount: a.amount,
+        timeIso: a.created_at.toISOString(),
+        por: a.por,
+        pickedAtIso: a.picked_at ? a.picked_at.toISOString() : null,
+        pickedPor: a.picked_por,
+      }))}
+      puedeRetirarAlivios={ROLES_QUE_RETIRAN.includes(data.rol ?? '')}
+      cobrosPedidos={data.cobrosPedidos.map((c) => ({
+        id: `pedido-${c.id}`,
+        total: c.amount,
+        // La caja agrupa transferencia con QR ("QR / Transferencia") en el arqueo.
+        method: c.method === 'transferencia' ? 'mp_qr' : c.method,
+        customerName: c.customer_name,
+        finalizedAtIso: c.created_at.toISOString(),
+        pedido: { number: c.number, kind: c.kind },
+      }))}
       reasons={reasons}
       empleados={empleados}
       proveedores={proveedores}

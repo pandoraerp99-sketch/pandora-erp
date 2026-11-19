@@ -87,6 +87,9 @@ export const CAJA_CSS = `
 
 /* session bar */
   .session-bar { display:flex; align-items:center; gap:24px; padding:16px 20px; margin-bottom:18px; }
+/* La maqueta usa el interlineado del navegador; la app hereda 1,5 y la barra
+   medía 91px contra 80 (estilos computados, 2026-11-18). */
+.session-bar { line-height:normal; }
 
 .session-title { font-size:24px; font-weight:700; letter-spacing:-0.03em; color:var(--ink-0); }
 
@@ -168,6 +171,7 @@ export const CAJA_CSS = `
 .cash-num { font-family:var(--mono); font-size:52px; font-weight:600; letter-spacing:-0.02em; line-height:1; color:var(--ink-0); margin:6px 0 0; }
 
 .cash-sub { display:flex; gap:28px; margin-top:18px; }
+.mov-pedido { color:var(--ink-3); font-size:12px; }
 
 .cash-sub .k { font-size:11px; color:var(--ink-3); font-weight:500; }
 
@@ -660,6 +664,23 @@ export const CAJA_CSS = `
 .lx-note b{ color:var(--purple); }
 
 /* alivios de caja */
+/* Medido contra caja-editorial.html (estilos computados, 2026-11-18): la
+   maqueta usa el interlineado del navegador (normal) y el checkbox conserva
+   el margen nativo, que dentro de .ali-check (18px) lo deja en 13px. La app
+   hereda line-height 1,5 y el reset le saca el margen: filas 6px más altas
+   y checkbox de 17px. Se replica lo de la maqueta. */
+.ali-card{ line-height:normal; }
+.ali-check input{ margin:3px 3px 3px 4px; }
+/* Oscuro: las tres primeras son de caja-editorial.html; el avatar y el botón
+   llevan texto blanco sobre --purple, que en oscuro se aclara (2026-11-18). */
+html[data-theme="dark"] .alivio{ background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.1); }
+html[data-theme="dark"] .alivio.pend:hover{ background:rgba(255,255,255,0.09); }
+html[data-theme="dark"] .ali-sum, html[data-theme="dark"] .ali-chip.pend{ color:#ffb87a; }
+html[data-theme="dark"] .ali-chip.done{ color:#55dd9b; }
+html[data-theme="dark"] .ali-ok{ stroke:#55dd9b; }
+html[data-theme="dark"] .alivio-av{ background:linear-gradient(135deg,#5f53f5,#4f7bff); }
+html[data-theme="dark"] .alivio-btn{ background:#5f53f5; }
+
 .ali-add{ display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:600; color:var(--purple); background:none; border:none; cursor:pointer; }
 
 .ali-add:hover{ opacity:0.75; }
@@ -752,6 +773,10 @@ export const CAJA_CSS = `
 
 .ali-hist-row:first-child{ border-top:none; }
 
+/* Variante oscura (2026-11-18): texto blanco sobre el degradado de --purple, que en
+   oscuro se aclara. Lo destapó tema-oscuro-pantallas al dejar de revisar una regla
+   sí y una no. Mismo violeta que .cta / .btn-primary. */
+html[data-theme="dark"] .ali-hist-av{ background:linear-gradient(135deg,#5f53f5,#4f7bff); }
 .ali-hist-av{ width:28px; height:28px; border-radius:50%; background:linear-gradient(135deg,var(--purple),var(--blue)); color:#fff; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
 
 .ali-hist-tx{ flex:1; min-width:0; }
@@ -769,6 +794,10 @@ export const CAJA_CSS = `
 /* historial de cierres */
 .cl-cajero{ display:inline-flex; align-items:center; gap:8px; }
 
+/* Variante oscura (2026-11-18): texto blanco sobre el degradado de --purple, que en
+   oscuro se aclara. Lo destapó tema-oscuro-pantallas al dejar de revisar una regla
+   sí y una no. Mismo violeta que .cta / .btn-primary. */
+html[data-theme="dark"] .cl-ava{ background:linear-gradient(135deg,#5f53f5,#4f7bff); }
 .cl-ava{ width:22px; height:22px; border-radius:50%; background:linear-gradient(135deg,var(--purple),var(--blue)); color:#fff; font-size:9px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; }
 
 .cl-amber{ color:#b96c1a; }

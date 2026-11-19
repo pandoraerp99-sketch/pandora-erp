@@ -97,8 +97,11 @@ describe('T-CASH-09 — Schema verification smoke', () => {
 
       const byName = Object.fromEntries(rows.map((r) => [r.indexname, r.indexdef]));
 
-      // PK + 1 UNIQUE partial + 2 secundarios = 4
-      expect(rows).toHaveLength(4);
+      // PK + 1 UNIQUE partial + 2 secundarios + el UNIQUE (id, tenant_id) = 5.
+      // El último lo agregó la 0043 (pedidos): es lo que permite que
+      // order_payments apunte a la caja con una FK "mismo comercio".
+      expect(rows).toHaveLength(5);
+      expect(byName['cash_sessions_id_tenant_unico']).toMatch(/UNIQUE.*\(id, tenant_id\)/);
 
       expect(byName['cash_sessions_pkey']).toMatch(/USING btree \(id\)/);
 

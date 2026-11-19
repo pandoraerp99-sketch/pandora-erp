@@ -70,6 +70,7 @@ export interface PanelProps {
     cashSales: string;
     deposits: string;
     customerPayments: string;
+    orderPayments: string;
     withdraws: string;
     providerPayments: string;
     expected: string;
@@ -1284,6 +1285,12 @@ export function PanelClient({
                   <div className="kv">
                     <span className="k">Cobros de fiado</span>
                     <span className="v">{plata(caja.customerPayments)}</span>
+                  </div>
+                ) : null}
+                {Number(caja.orderPayments) > 0 ? (
+                  <div className="kv">
+                    <span className="k">Señas de pedidos</span>
+                    <span className="v">{plata(caja.orderPayments)}</span>
                   </div>
                 ) : null}
                 {Number(caja.deposits) > 0 ? (

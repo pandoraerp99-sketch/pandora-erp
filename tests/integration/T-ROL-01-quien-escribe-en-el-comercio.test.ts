@@ -42,6 +42,14 @@ import { registerCashMovement } from '@/lib/cash/movements';
 import { createTask, deleteTask } from '@/lib/services/tasks/task.service';
 import { recordStockMovement } from '@/lib/inventory/stock';
 import { settleSupplier } from '@/lib/services/expenses/supplier-account.service';
+import {
+  createOrder,
+  updateOrder,
+  changeOrderStatus,
+  registerOrderPayment,
+  deliverOrder,
+} from '@/lib/services/orders/order.service';
+import { registerRelief, markReliefsPickedUp } from '@/lib/cash/reliefs';
 
 describe('T-ROL-01 — quién escribe en el comercio', () => {
   const tenant = crypto.randomUUID();
@@ -125,6 +133,15 @@ describe('T-ROL-01 — quién escribe en el comercio', () => {
     ['registerCashMovement', () => registerCashMovement(vacio)],
     ['createTask', () => createTask(vacio)],
     ['deleteTask', () => deleteTask('')],
+    // Pedidos con seña (ADR-0029): mueven plata en la caja.
+    ['createOrder', () => createOrder(vacio, null, '')],
+    ['updateOrder', () => updateOrder('', vacio)],
+    ['changeOrderStatus', () => changeOrderStatus('', 'cancelado')],
+    ['registerOrderPayment', () => registerOrderPayment('', vacio, '')],
+    ['deliverOrder', () => deliverOrder('', null, '')],
+    // Alivios de caja (migration 0044).
+    ['registerRelief', () => registerRelief(vacio, '')],
+    ['markReliefsPickedUp', () => markReliefsPickedUp([])],
   ];
 
   describe('🔴 la contadora NO escribe, y el rechazo llega antes que la validación', () => {

@@ -133,7 +133,19 @@ export function computeMovementTotals(
     if (m.type === 'deposit') depositsInt += amountInt;
     else if (m.type === 'withdraw') withdrawsInt += amountInt;
     else if (m.type === 'provider_payment') providerPaymentsInt += amountInt;
-    // Default: type desconocido → ignorar (defense — CHECK constraint debería prevenirlo)
+    // Cobro de cuenta corriente (ADR-0027): no es un movimiento manual y este
+    // resumen no lo suma. El esperado COMPLETO sale de computeCashBreakdown,
+    // que es lo que muestra /caja desde el 2026-11-18.
+    else if (m.type === 'customer_payment') continue;
+    else {
+      // FAIL-LOUD (2026-11-18), igual que computeCashBreakdown. Antes decía
+      // "type desconocido → ignorar": con un tipo nuevo, el cierre lo contaba
+      // y este resumen no, y los dos números dejaban de coincidir en silencio.
+      throw new CashValidationError(
+        'unknown_movement_type',
+        'computeMovementTotals: tipo de movimiento desconocido "' + m.type + '"'
+      );
+    }
   }
 
   const initialInt = Math.round(parseFloat(initial_amount) * SCALE);

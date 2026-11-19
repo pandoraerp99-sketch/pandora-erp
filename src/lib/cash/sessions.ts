@@ -30,6 +30,7 @@
  * - `cash_session.closed_with_difference` (warning) — al cerrar con descuadre
  */
 import { and, eq, isNull, sql } from 'drizzle-orm';
+import Decimal from 'decimal.js';
 import { db } from '../db/client.js';
 import {
   cash_sessions,
@@ -38,6 +39,7 @@ import {
 } from '../db/schema/cash_sessions.js';
 import { cash_movements } from '../db/schema/cash_movements.js';
 import { sale_payments } from '../db/schema/sale_payments.js';
+import { order_payments } from '../db/schema/orders.js';
 import { DESCUADRE_HIGH_THRESHOLD_ARS } from '../db/schema/_common.js';
 import { requireTracingContext } from '../tracing/context.js';
 import type { TracingContext } from '../tracing/context.js';
@@ -739,9 +741,11 @@ export interface CashBreakdown {
   deposits: string;
   /** Cobros de cuenta corriente en efectivo (ADR-0027): entran al cajón. */
   customerPayments: string;
+  /** Señas y cobros de pedidos en efectivo (ADR-0029): entran al cajón. */
+  orderPayments: string;
   withdraws: string;
   providerPayments: string;
-  /** initial + cashSales + deposits + customerPayments − withdraws − providerPayments */
+  /** initial + cashSales + deposits + customerPayments + orderPayments − withdraws − providerPayments */
   expected: string;
 }
 
@@ -751,14 +755,26 @@ export async function computeCashBreakdown(
   tenant_id: string,
   initial_amount: string
 ): Promise<CashBreakdown> {
-  const SCALE = 10000;
-  const initialInt = Math.round(parseFloat(initial_amount) * SCALE);
-  if (!Number.isFinite(initialInt)) {
-    throw new CashValidationError(
-      'invalid_expected_amount',
-      `computeExpectedAmountFromActivity: initial_amount no parseable "${initial_amount}"`
-    );
-  }
+  // Decimal y no `parseFloat` × 10000 (2026-11-18): esta es la cuenta de lo
+  // que el cajero tiene que tener en el cajón, y pasaba por Number. Daba bien
+  // en todos los casos probados, pero la regla del proyecto (CLAUDE.md §9)
+  // no se negocia en el camino de la plata.
+  const aDecimal = (raw: string | null | undefined, que: string): Decimal => {
+    let d: Decimal | null = null;
+    try {
+      d = new Decimal(raw ?? '0');
+    } catch {
+      d = null;
+    }
+    if (d === null || !d.isFinite()) {
+      throw new CashValidationError(
+        'invalid_expected_amount',
+        `computeExpectedAmountFromActivity: ${que} no parseable "${String(raw)}"`
+      );
+    }
+    return d;
+  };
+  const initial = aDecimal(initial_amount, 'initial_amount');
 
   // SUM sale_payments con method=efectivo (otros methods no afectan caja).
   // tenant_id filter es defense-in-depth (cash_session_id ya es por scope).
@@ -779,9 +795,27 @@ export async function computeCashBreakdown(
         sql`NOT EXISTS (SELECT 1 FROM sale_payments c WHERE c.corrects_id = ${sale_payments.id})`
       )
     );
-  const cashSalesInt = Math.round(parseFloat(cashSaleRows[0]?.total ?? '0') * SCALE);
+  const cashSales = aDecimal(cashSaleRows[0]?.total, 'ventas en efectivo');
 
-  // SUM cash_movements agrupado por type. 1 query con GROUP BY (3 rows max).
+  // Cobros de PEDIDOS en efectivo (ADR-0029). Viven en su propia tabla, como
+  // sale_payments, y no como cash_movements: un cobro de pedido está atado a
+  // su pedido, no es un movimiento suelto del cajón. Los otros medios entran
+  // por la caja (el arqueo por medio los ve) pero no al cajón.
+  const orderRows = await tx
+    .select({
+      total: sql<string>`COALESCE(SUM(${order_payments.amount}), 0)`,
+    })
+    .from(order_payments)
+    .where(
+      and(
+        eq(order_payments.tenant_id, tenant_id),
+        eq(order_payments.cash_session_id, session_id),
+        eq(order_payments.method, 'efectivo')
+      )
+    );
+  const orderPayments = aDecimal(orderRows[0]?.total, 'cobros de pedidos');
+
+  // SUM cash_movements agrupado por type. 1 query con GROUP BY (pocas filas).
   const movementRows = await tx
     .select({
       type: cash_movements.type,
@@ -791,20 +825,19 @@ export async function computeCashBreakdown(
     .where(eq(cash_movements.cash_session_id, session_id))
     .groupBy(cash_movements.type);
 
-  let depositsInt = 0;
-  let withdrawsInt = 0;
-  let providerPaymentsInt = 0;
+  let deposits = new Decimal(0);
+  let withdraws = new Decimal(0);
+  let providerPayments = new Decimal(0);
   // Cobro de cuenta corriente EN EFECTIVO (ADR-0027): plata que ENTRA al cajon,
   // igual que un deposito. Los cobros por transferencia o tarjeta no generan
   // movimiento de caja, asi que no llegan hasta aca.
-  let customerPaymentsInt = 0;
+  let customerPayments = new Decimal(0);
   for (const row of movementRows) {
-    const amountInt = Math.round(parseFloat(row.total) * SCALE);
-    if (!Number.isFinite(amountInt)) continue;
-    if (row.type === 'deposit') depositsInt = amountInt;
-    else if (row.type === 'withdraw') withdrawsInt = amountInt;
-    else if (row.type === 'provider_payment') providerPaymentsInt = amountInt;
-    else if (row.type === 'customer_payment') customerPaymentsInt = amountInt;
+    const monto = aDecimal(row.total, `movimientos ${row.type}`);
+    if (row.type === 'deposit') deposits = monto;
+    else if (row.type === 'withdraw') withdraws = monto;
+    else if (row.type === 'provider_payment') providerPayments = monto;
+    else if (row.type === 'customer_payment') customerPayments = monto;
     else {
       // FAIL-LOUD (2026-09-05). Antes decia "type fuera del enum: ignorado".
       // Ignorar un tipo desconocido es un bug de PLATA esperando: alguien
@@ -823,23 +856,24 @@ export async function computeCashBreakdown(
     }
   }
 
-  const expectedInt =
-    initialInt +
-    cashSalesInt +
-    depositsInt +
-    customerPaymentsInt -
-    withdrawsInt -
-    providerPaymentsInt;
+  const expected = initial
+    .plus(cashSales)
+    .plus(deposits)
+    .plus(customerPayments)
+    .plus(orderPayments)
+    .minus(withdraws)
+    .minus(providerPayments);
 
-  const desescalar = (n: number) => (n / SCALE).toFixed(4);
+  const f = (d: Decimal) => d.toFixed(4);
   return {
-    initial: desescalar(initialInt),
-    cashSales: desescalar(cashSalesInt),
-    deposits: desescalar(depositsInt),
-    customerPayments: desescalar(customerPaymentsInt),
-    withdraws: desescalar(withdrawsInt),
-    providerPayments: desescalar(providerPaymentsInt),
-    expected: desescalar(expectedInt),
+    initial: f(initial),
+    cashSales: f(cashSales),
+    deposits: f(deposits),
+    customerPayments: f(customerPayments),
+    orderPayments: f(orderPayments),
+    withdraws: f(withdraws),
+    providerPayments: f(providerPayments),
+    expected: f(expected),
   };
 }
 

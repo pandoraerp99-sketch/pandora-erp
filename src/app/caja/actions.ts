@@ -17,6 +17,7 @@ import { requireSessionWithCompany } from '@/lib/auth/session';
 import { DomainError, ValidationError } from '@/lib/multi_tenant/errors';
 import { openCashSession, closeCashSession } from '@/lib/cash/sessions';
 import { registerCashMovement } from '@/lib/cash/movements';
+import { markReliefsPickedUp, registerRelief } from '@/lib/cash/reliefs';
 import { reclassifySalePaymentMethod } from '@/lib/cash/reclassify';
 import {
   createWithdrawalReason,
@@ -224,4 +225,29 @@ export async function deactivateTerceroAction(input: {
     const session = await requireSessionWithCompany();
     return deactivateTercero({ id: input.id }, session.app_role);
   });
+}
+
+/**
+ * Alivio de caja (migration 0044): el retiro y su marca de alivio en una
+ * transacción. La clave de idempotencia la genera el modal al abrirse: un
+ * doble click no saca dos veces la plata.
+ */
+export async function registrarAlivioAction(input: {
+  sessionId: string;
+  amount: string;
+  note: string | null;
+  idempotencyKey: string;
+}): Promise<ActionResult<{ relief_id: string }>> {
+  return runAction(async () => {
+    const r = await registerRelief(
+      { cash_session_id: input.sessionId, amount: input.amount, note: input.note },
+      input.idempotencyKey
+    );
+    return { relief_id: r.relief_id };
+  });
+}
+
+/** "Marcar retirados": sólo la dueña (lo decide el service). */
+export async function marcarRetiradosAction(ids: string[]): Promise<ActionResult<{ marcados: number }>> {
+  return runAction(() => markReliefsPickedUp(Array.isArray(ids) ? ids.map(String) : []));
 }

@@ -36,6 +36,8 @@ import type {
 import {
   openSessionAction,
   registerMovementAction,
+  registrarAlivioAction,
+  marcarRetiradosAction,
   closeSessionAction,
   reclassifyPaymentAction,
   createReasonAction,
@@ -43,6 +45,7 @@ import {
   createTerceroAction,
   deactivateTerceroAction,
 } from './actions';
+import Decimal from 'decimal.js';
 import { AppShell } from '@/components/shell/AppShell';
 import { CAJA_CSS } from './cajaCss';
 
@@ -54,6 +57,17 @@ export interface CajaSessionDTO {
   totalDeposits: string;
   totalWithdraws: string;
   expectedFromMovements: string;
+  /**
+   * Las partes del esperado, de `computeCashBreakdown` (la MISMA fórmula que
+   * el cierre). Hasta el 2026-11-18 la pantalla sumaba por su cuenta y no
+   * contaba ni los cobros de fiado ni los pagos a proveedor en efectivo: la
+   * pantalla y el cierre podían dar números distintos.
+   */
+  cashSales: string;
+  customerPayments: string;
+  orderPayments: string;
+  providerPayments: string;
+  expected: string;
 }
 export interface CajaMovimientoDTO {
   id: string;
@@ -61,6 +75,17 @@ export interface CajaMovimientoDTO {
   method: string | null;
   customerName: string | null;
   finalizedAtIso: string | null;
+  /** Presente si la fila es un cobro de PEDIDO (ADR-0029) y no una venta. */
+  pedido?: { number: number; kind: string } | null;
+}
+/** Un alivio de caja (migration 0044). */
+export interface CajaAlivioDTO {
+  id: string;
+  amount: string;
+  timeIso: string;
+  por: string | null;
+  pickedAtIso: string | null;
+  pickedPor: string | null;
 }
 export interface CajaMovManualDTO {
   id: string;
@@ -83,10 +108,19 @@ export interface CajaTerceroDTO {
 }
 interface CajaClientProps {
   cashierName: string;
+  /** Quién abrió la sesión: es el "Cajero" de la barra (caja-editorial.html). */
+  cajeroSesion: string | null;
+  /** Orden de la sesión en el comercio: "Sesión #00482". */
+  numeroSesion: number | null;
   salePointLabel: string;
   session: CajaSessionDTO | null;
   movimientos: CajaMovimientoDTO[];
   movimientosManuales: CajaMovManualDTO[];
+  /** Cobros de pedidos de esta sesión (ADR-0029). */
+  alivios: CajaAlivioDTO[];
+  /** Sólo la dueña marca un alivio como retirado (regla del owner, 2026-11-18). */
+  puedeRetirarAlivios: boolean;
+  cobrosPedidos: CajaMovimientoDTO[];
   reasons: CajaReasonDTO[];
   empleados: CajaTerceroDTO[];
   proveedores: CajaTerceroDTO[];
@@ -170,17 +204,17 @@ const hora = (iso: string | null) => {
         timeZone: TZ,
       });
 };
-const fechaLarga = (iso: string | null) => {
+/** "Sábado 21 de junio, 2026" — el formato de la barra de caja-editorial.html. */
+const fechaSesion = (iso: string | null) => {
   const d = iso ? new Date(iso) : new Date();
   if (Number.isNaN(d.getTime())) return '';
-  const s = d.toLocaleDateString('es-AR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    timeZone: TZ,
-  });
-  return s.charAt(0).toUpperCase() + s.slice(1);
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: TZ })
+      .formatToParts(d)
+      .map((x) => [x.type, x.value])
+  ) as Record<string, string>;
+  const dia = (p.weekday ?? '').charAt(0).toUpperCase() + (p.weekday ?? '').slice(1);
+  return `${dia} ${p.day} de ${p.month}, ${p.year}`;
 };
 const inits = (name: string) => {
   const p = name.replace(/@.*/, '').split(/[.\s_-]+/).filter(Boolean);
@@ -197,10 +231,15 @@ function Icon({ html, cls }: { html: string; cls?: string }) {
 
 export function CajaClient({
   cashierName,
+  cajeroSesion,
+  numeroSesion,
   salePointLabel,
   session,
   movimientos,
   movimientosManuales,
+  cobrosPedidos,
+  alivios,
+  puedeRetirarAlivios,
   reasons,
   empleados,
   proveedores,
@@ -208,6 +247,7 @@ export function CajaClient({
 }: CajaClientProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [claveAlivio, setClaveAlivio] = useState('');
   const [feedback, setFeedback] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
 
   // Modo claro/oscuro (mockup: data-theme en <html> + persistencia).
@@ -269,21 +309,56 @@ export function CajaClient({
   const ventasHoy = movimientos.reduce((a, m) => a + Math.round(parseFloat(m.total || '0')), 0);
   const tickets = movimientos.length;
   const ticketProm = tickets > 0 ? Math.round(ventasHoy / tickets) : 0;
-  const ventasEfectivo = movimientos.filter((m) => m.method === 'efectivo').reduce((a, m) => a + parseFloat(m.total || '0'), 0);
-  const ingEgr = session ? parseFloat(session.totalDeposits || '0') - parseFloat(session.totalWithdraws || '0') : 0;
-  const efectivoEsperado = session ? parseFloat(session.initialAmount || '0') + ventasEfectivo + ingEgr : 0;
-  const efDiff = countedAmount.trim() !== '' ? Math.round(parseFloat(countedAmount) || 0) - Math.round(efectivoEsperado) : null;
+  // El cajón sale del desglose del SERVIDOR (computeCashBreakdown), en
+  // Decimal. Number sólo al final, para mostrar.
+  const dec = (s: string | null | undefined): Decimal => {
+    try {
+      const d = new Decimal((s ?? '').trim() === '' ? '0' : (s as string).trim().replace(',', '.'));
+      return d.isFinite() ? d : new Decimal(0);
+    } catch {
+      return new Decimal(0);
+    }
+  };
+  const ventasEfectivo = session ? dec(session.cashSales).toNumber() : 0;
+  const ingEgr = session
+    ? dec(session.totalDeposits)
+        .plus(dec(session.customerPayments))
+        .minus(dec(session.totalWithdraws))
+        .minus(dec(session.providerPayments))
+        .toNumber()
+    : 0;
+  const cobrosPedidosEf = session ? dec(session.orderPayments).toNumber() : 0;
+  const esperadoD = session ? dec(session.expected) : new Decimal(0);
+  const efectivoEsperado = esperadoD.toNumber();
+  const efDiff =
+    countedAmount.trim() !== ''
+      ? dec(countedAmount).minus(esperadoD).toDecimalPlaces(0, Decimal.ROUND_HALF_EVEN).toNumber()
+      : null;
 
-  const ingresosMan = movimientosManuales.filter((m) => m.type === 'deposit');
-  const egresosMan = movimientosManuales.filter((m) => m.type !== 'deposit');
+  // Un cobro de cuenta corriente (customer_payment) es plata que ENTRA al
+  // cajón. Hasta el 2026-11-18 caía en "Egresos" con signo negativo porque el
+  // filtro era "todo lo que no es deposit". Se clasifica por lista explícita.
+  const ENTRAN = ['deposit', 'customer_payment'];
+  const ingresosMan = movimientosManuales.filter((m) => ENTRAN.includes(m.type));
+  const egresosMan = movimientosManuales.filter((m) => !ENTRAN.includes(m.type));
   const ingresosSum = ingresosMan.reduce((a, m) => a + parseFloat(m.amount || '0'), 0);
   const egresosSum = egresosMan.reduce((a, m) => a + parseFloat(m.amount || '0'), 0);
   const denomTotal = DENOMS.reduce((a, d) => a + d * (parseInt(denomCounts[d] || '0', 10) || 0), 0);
 
+  // Ventas + cobros de pedidos (ADR-0029), lo más nuevo arriba. Un cobro de
+  // pedido por transferencia va al grupo "QR / Transferencia" del arqueo.
+  const todosMov = useMemo(
+    () =>
+      [...movimientos, ...cobrosPedidos].sort((a, b) =>
+        (b.finalizedAtIso ?? '').localeCompare(a.finalizedAtIso ?? '')
+      ),
+    [movimientos, cobrosPedidos]
+  );
+
   const breakdown = useMemo(() => {
     const acc: Record<string, { amount: number; count: number }> = {};
-    for (const m of movimientos) {
-      const k = m.method ?? 'sin';
+    for (const m of todosMov) {
+      const k = m.method === 'transferencia' ? 'mp_qr' : (m.method ?? 'sin');
       acc[k] = acc[k] ?? { amount: 0, count: 0 };
       acc[k]!.amount += parseFloat(m.total || '0');
       acc[k]!.count += 1;
@@ -292,7 +367,7 @@ export function CajaClient({
     return order
       .filter((k) => acc[k])
       .map((k) => ({ key: k, ...medioMeta(k === 'sin' ? null : k), amount: acc[k]!.amount, count: acc[k]!.count }));
-  }, [movimientos]);
+  }, [todosMov]);
 
   /**
    * Medios del ARQUEO — siempre los cuatro, tuvieran ventas o no.
@@ -312,6 +387,9 @@ export function CajaClient({
     });
   }, [breakdown]);
 
+  const totalPorMedio = breakdown.reduce((a, b) => a + b.amount, 0);
+  const hayPedidos = cobrosPedidos.length > 0;
+
   const donut = useMemo(() => {
     const C = 2 * Math.PI * 62;
     const total = breakdown.reduce((a, b) => a + b.amount, 0) || 1;
@@ -328,12 +406,12 @@ export function CajaClient({
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return movimientos.filter((m) => {
+    return todosMov.filter((m) => {
       if (q && !(m.customerName ?? 'consumidor final').toLowerCase().includes(q)) return false;
       if (medioSel.size > 0 && !medioSel.has(m.method ?? 'sin')) return false;
       return true;
     });
-  }, [movimientos, search, medioSel]);
+  }, [todosMov, search, medioSel]);
   const filtersActive = search.trim() !== '' || medioSel.size > 0;
   const toggleMedio = (k: string) =>
     setMedioSel((p) => {
@@ -359,6 +437,7 @@ export function CajaClient({
   }
 
   function openMov(mode: MovMode) {
+    if (mode === 'alivio') setClaveAlivio(crypto.randomUUID());
     setMovMode(mode);
     setMovAmount('');
     setMovNote('');
@@ -402,8 +481,45 @@ export function CajaClient({
   async function submitMov() {
     const payload = buildMovPayload();
     if (!payload) return;
+    if (movMode === 'alivio') {
+      const ok = await run(
+        () =>
+          registrarAlivioAction({
+            sessionId: payload.sessionId,
+            amount: payload.amount,
+            note: movNote.trim() || null,
+            idempotencyKey: claveAlivio,
+          }),
+        'Alivio registrado.'
+      );
+      if (ok) setMovMode(null);
+      return;
+    }
     const ok = await run(() => registerMovementAction(payload), 'Movimiento registrado.');
     if (ok) setMovMode(null);
+  }
+
+  // ── Alivios de caja (tarjeta de caja-editorial.html) ──
+  const [aliviosSel, setAliviosSel] = useState<Set<string>>(new Set());
+  const aliviosPend = alivios.filter((a) => a.pickedAtIso === null);
+  const aliviosPendTotal = aliviosPend.reduce((acc, a) => acc.plus(dec(a.amount)), new Decimal(0));
+  const aliviosSelTotal = aliviosPend
+    .filter((a) => aliviosSel.has(a.id))
+    .reduce((acc, a) => acc.plus(dec(a.amount)), new Decimal(0));
+  const aliviosSelCount = aliviosPend.filter((a) => aliviosSel.has(a.id)).length;
+  function toggleAlivio(id: string) {
+    setAliviosSel((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
+  async function marcarRetirados() {
+    const ids = aliviosPend.filter((a) => aliviosSel.has(a.id)).map((a) => a.id);
+    if (ids.length === 0) return;
+    const ok = await run(() => marcarRetiradosAction(ids), ids.length === 1 ? 'Alivio retirado.' : 'Alivios retirados.');
+    if (ok) setAliviosSel(new Set());
   }
   async function submitOpen() {
     const ok = await run(() => openSessionAction({ initialAmount: openAmount.trim() }), 'Caja abierta.');
@@ -523,7 +639,7 @@ export function CajaClient({
         <div className="session-bar glass-strong">
           <div>
             <div className="session-title">Caja</div>
-            <div className="session-sub">{session ? `Sesión abierta · ${fechaLarga(session.openedAtIso)}` : 'Caja cerrada'}</div>
+            <div className="session-sub">{session ? `Sesión #${String(numeroSesion ?? 0).padStart(5, '0')} · ${fechaSesion(session.openedAtIso)}` : 'Caja cerrada'}</div>
           </div>
           <div className="session-glance">
             <div className="sg"><span className="sg-k">Ventas hoy</span><span className="sg-v tnum">{money(ventasHoy)}</span></div>
@@ -535,7 +651,7 @@ export function CajaClient({
           <div className="session-meta">
             <div className="meta-cell">
               <span className="meta-k">Cajero</span>
-              <span className="meta-v"><span className="mini-ava">{inits(cashierName)}</span>{cashierName.replace(/@.*/, '')}</span>
+              <span className="meta-v"><span className="mini-ava">{inits(cajeroSesion ?? cashierName)}</span>{(cajeroSesion ?? cashierName).replace(/@.*/, '')}</span>
             </div>
             <div className="meta-cell">
               <span className="meta-k">Punto de venta</span>
@@ -581,6 +697,9 @@ export function CajaClient({
                       <div><div className="k">Fondo inicial</div><div className="v tnum">{money(session.initialAmount)}</div></div>
                       <div><div className="k">Ventas en efectivo</div><div className="v tnum">{money(ventasEfectivo)}</div></div>
                       <div><div className="k">Ingresos − Egresos</div><div className="v tnum">{(ingEgr < 0 ? '−' : ingEgr > 0 ? '+' : '') + money(Math.abs(ingEgr))}</div></div>
+                      {cobrosPedidosEf > 0 ? (
+                        <div><div className="k">Señas de pedidos</div><div className="v tnum">+{money(cobrosPedidosEf)}</div></div>
+                      ) : null}
                     </div>
                     <div className="cash-actions">
                       <button className="btn" disabled={busy} onClick={() => openMov('ingreso')}><Icon html={IC.plus} />Ingreso</button>
@@ -617,14 +736,14 @@ export function CajaClient({
                           ))}
                         </g>
                       </svg>
-                      <div className="donut-center"><span className="big tnum">{money(ventasHoy)}</span><span className="lbl">total</span></div>
+                      <div className="donut-center"><span className="big tnum">{money(totalPorMedio)}</span><span className="lbl">total</span></div>
                     </div>
                     <div className="pay-list">
                       {breakdown.map((b) => (
                         <div key={b.key} className="pay-row">
                           <span className="pay-dot" style={{ background: b.color }} />
-                          <div><div className="pay-name">{b.label}</div><div className="pay-tick">{b.count} tickets</div></div>
-                          <div><div className="pay-amt tnum">{money(b.amount)}</div><div className="pay-pct">{ventasHoy > 0 ? Math.round((b.amount / ventasHoy) * 100) : 0}%</div></div>
+                          <div><div className="pay-name">{b.label}</div><div className="pay-tick">{b.count} {hayPedidos ? (b.count === 1 ? 'cobro' : 'cobros') : 'tickets'}</div></div>
+                          <div><div className="pay-amt tnum">{money(b.amount)}</div><div className="pay-pct">{totalPorMedio > 0 ? Math.round((b.amount / totalPorMedio) * 100) : 0}%</div></div>
                         </div>
                       ))}
                     </div>
@@ -677,10 +796,55 @@ export function CajaClient({
                 </section>
               )}
 
+              {/* Alivios de caja — caja-editorial.html. Pendientes de cualquier caja
+                  (la plata sigue en el sobre hasta que alguien la retira) y los
+                  retirados de esta. Sólo la dueña marca "retirado". */}
+              <section className="glass ali-card" style={{ padding: '22px 24px' }}>
+                <div className="card-title">
+                  <h3><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--purple)' }}><rect x="3" y="9" width="18" height="11" rx="2" /><path d="M12 3v8" /><path d="m8 7 4 4 4-4" /></svg>Alivios de caja</h3>
+                  <button className="ali-add" disabled={busy} onClick={() => openMov('alivio')}><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>Nuevo alivio</button>
+                </div>
+                <div className="ali-bar"><span><span className="ali-sum">{aliviosPend.length} pendiente{aliviosPend.length !== 1 ? 's' : ''} · {money(aliviosPendTotal.toNumber())}</span> a retirar por la dueña</span></div>
+                {alivios.length === 0 ? (
+                  <div className="mov-empty">Todavía no hay alivios. Registrá uno con “Nuevo alivio”.</div>
+                ) : (
+                  <div className="alivios">
+                    {alivios.map((a) => {
+                      const hecho = a.pickedAtIso !== null;
+                      const ini = iniciales(a.por);
+                      const sub = horaAlivio(a.timeIso) + (hecho ? ` · retirado por ${primerNombre(a.pickedPor)} ${hora(a.pickedAtIso)}` : '');
+                      const contenido = (
+                        <>
+                          <span className="ali-check">
+                            {hecho ? (
+                              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#1a8e5a" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="ali-ok"><path d="M20 6 9 17l-5-5" /></svg>
+                            ) : (
+                              <input type="checkbox" checked={aliviosSel.has(a.id)} disabled={!puedeRetirarAlivios || busy} onChange={() => toggleAlivio(a.id)} aria-label={`Marcar el alivio de ${money(dec(a.amount).toNumber())} como retirado`} />
+                            )}
+                          </span>
+                          <span className="alivio-av">{ini}</span>
+                          <div className="alivio-tx"><div className="alivio-name">{a.por ?? '—'}</div><div className="alivio-sub">{sub}</div></div>
+                          <span className="alivio-monto tnum">{money(dec(a.amount).toNumber())}</span>
+                          <span className={`ali-chip ${hecho ? 'done' : 'pend'}`}>{hecho ? 'Retirado' : 'Pendiente'}</span>
+                        </>
+                      );
+                      return hecho ? (
+                        <div key={a.id} className="alivio done">{contenido}</div>
+                      ) : (
+                        <label key={a.id} className="alivio pend" title={puedeRetirarAlivios ? undefined : 'Sólo la dueña marca un alivio como retirado'}>{contenido}</label>
+                      );
+                    })}
+                  </div>
+                )}
+                <button className="alivio-btn" disabled={busy || aliviosSelCount === 0 || !puedeRetirarAlivios} onClick={marcarRetirados}>
+                  Marcar retirados ({aliviosSelCount}){aliviosSelTotal.gt(0) ? ` · ${money(aliviosSelTotal.toNumber())}` : ''}
+                </button>
+              </section>
+
               <section className="glass" style={{ padding: '22px 24px' }}>
                 <div className="card-title">
                   <h3>Últimos movimientos</h3>
-                  <span className="upper-mini">{filtered.length}{filtersActive ? ` / ${movimientos.length}` : ''} ventas</span>
+                  <span className="upper-mini">{filtered.length}{filtersActive ? ` / ${todosMov.length}` : ''} {cobrosPedidos.length > 0 ? 'movimientos' : 'ventas'}</span>
                 </div>
                 <div className="mov-filters">
                   {MEDIO_FILTERS.map((k) => (
@@ -691,7 +855,7 @@ export function CajaClient({
                   {filtersActive && <button className="mov-fchip" onClick={() => { setSearch(''); setMedioSel(new Set()); }}>Limpiar</button>}
                 </div>
                 {filtered.length === 0 ? (
-                  <div className="mov-empty">{movimientos.length === 0 ? 'Todavía no hay ventas hoy.' : 'Ninguna venta coincide.'}</div>
+                  <div className="mov-empty">{todosMov.length === 0 ? 'Todavía no hay ventas hoy.' : 'Ningún movimiento coincide.'}</div>
                 ) : (
                   <div className="mov-scroll">
                     <table className="tbl">
@@ -706,13 +870,22 @@ export function CajaClient({
                             <Fragment key={m.id}>
                               <tr>
                                 <td className="hora">{hora(m.finalizedAtIso)}</td>
-                                <td>{m.customerName || 'Consumidor final'}</td>
+                                <td>
+                                  {m.customerName || 'Consumidor final'}
+                                  {m.pedido ? (
+                                    <span className="mov-pedido"> · Pedido #{String(m.pedido.number).padStart(4, '0')} · {m.pedido.kind === 'sena' ? 'Seña' : m.pedido.kind === 'saldo' ? 'Saldo' : 'A cuenta'}</span>
+                                  ) : null}
+                                </td>
                                 <td><span className="medio-chip"><span className="medio-sw" style={{ background: md.color }} />{md.label}</span></td>
                                 <td className="r amt c-green">{money(m.total)}</td>
                                 <td className="r">
-                                  <button className="denom-btn" style={{ margin: 0 }} disabled={busy} onClick={() => { setReclassSaleId(editing ? null : m.id); setReclassMethod(null); setReclassReason(''); }}>
-                                    {editing ? 'Cerrar' : 'Cambiar'}
-                                  </button>
+                                  {m.pedido ? (
+                                    <a className="denom-btn" style={{ margin: 0, display: 'inline-block', textDecoration: 'none' }} href="/pedidos">Ver</a>
+                                  ) : (
+                                    <button className="denom-btn" style={{ margin: 0 }} disabled={busy} onClick={() => { setReclassSaleId(editing ? null : m.id); setReclassMethod(null); setReclassReason(''); }}>
+                                      {editing ? 'Cerrar' : 'Cambiar'}
+                                    </button>
+                                  )}
                                 </td>
                               </tr>
                               {editing && (
@@ -743,11 +916,6 @@ export function CajaClient({
                     </table>
                   </div>
                 )}
-              </section>
-
-              <section className="glass" style={{ padding: '22px 24px' }}>
-                <div className="card-title"><h3>Alivios de caja</h3><span className="upper-mini">Retiros a caja fuerte</span></div>
-                <div className="mov-empty">Sin alivios pendientes. Registrá un Alivio desde la card de Efectivo.</div>
               </section>
 
               <section className="glass" style={{ padding: '22px 24px' }}>
@@ -1016,4 +1184,31 @@ export function CajaClient({
       )}
     </AppShell>
   );
+}
+
+/** "MG" para "Mateo Giordano"; con un email, las dos primeras letras. */
+function iniciales(nombre: string | null): string {
+  if (!nombre) return '—';
+  const base = nombre.includes('@') ? nombre.split('@')[0]! : nombre;
+  const partes = base.trim().split(/\s+/).map((p) => p.replace(/^[^\p{L}\p{N}]+/u, '')).filter(Boolean);
+  const a = partes[0]?.[0] ?? '?';
+  const b = partes.length > 1 ? (partes[1]?.[0] ?? '') : (partes[0]?.[1] ?? '');
+  return (a + b).toUpperCase();
+}
+
+function primerNombre(nombre: string | null): string {
+  if (!nombre) return '—';
+  const base = nombre.includes('@') ? nombre.split('@')[0]! : nombre;
+  return base.trim().split(/\s+/)[0] ?? base;
+}
+
+/** "12:30" si es de hoy; "17/11 12:30" si quedó de una caja anterior. */
+function horaAlivio(iso: string): string {
+  const zona = 'America/Argentina/Ushuaia';
+  const dia = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: zona }).format(d);
+  const d = new Date(iso);
+  const hhmm = new Intl.DateTimeFormat('es-AR', { timeZone: zona, hour: '2-digit', minute: '2-digit', hour12: false }).format(d);
+  if (dia(d) === dia(new Date())) return hhmm;
+  const [, m, dd] = dia(d).split('-');
+  return `${dd}/${m} ${hhmm}`;
 }
