@@ -29,6 +29,10 @@ import {
 import { contarAdjuntosPorGasto, contarContratosPorTercero } from '@/lib/services/expenses/attachment.service';
 import { listTerceros } from '@/lib/cash/terceros';
 import { getActiveCashSession } from '@/lib/cash/sessions';
+import {
+  clasificacionesExplicitas,
+  getFijosVariablesPorMes,
+} from '@/lib/services/expenses/cost-behaviour.service';
 import { GastosClient, type GastoDTO } from './GastosClient';
 
 /** El primer día del período y el primer día del SIGUIENTE, como 'AAAA-MM-DD'. */
@@ -139,6 +143,18 @@ export default async function GastosPage({
     { requireAuth: true }
   );
 
+  // Fijo / variable / mixto (0045): la clasificación explícita de cada gasto
+  // listado, y el resumen de los últimos 6 meses (independiente del período
+  // elegido arriba: es una tendencia, no un corte).
+  const [clasificacion, fijosVariables] = await withServerActionTracing(
+    () =>
+      Promise.all([
+        clasificacionesExplicitas(gastos.map((g) => g.id)),
+        getFijosVariablesPorMes(6),
+      ]),
+    { requireAuth: true }
+  );
+
   // DTO explícito, no la fila de Drizzle: `cash_movement_id` es un BigInt y
   // React no lo puede serializar hacia el cliente. Además la pantalla no
   // necesita el id — sólo si salió o no del cajón.
@@ -159,6 +175,7 @@ export default async function GastosPage({
     salio_de_caja: g.cash_movement_id !== null,
     renglones: renglones[g.id] ?? 0,
     adjuntos: adjuntos[g.id] ?? 0,
+    comportamiento: clasificacion.get(g.id) ?? null,
     created_at: g.created_at.toISOString(),
   }));
 
@@ -176,6 +193,7 @@ export default async function GastosPage({
         anulado_el: a.anulado_el,
       }))}
       resumen={resumen}
+      fijosVariables={fijosVariables}
       porCategoria={porCategoria}
       porProveedor={porProveedor}
       contratosPorProveedor={contratosPorProveedor}

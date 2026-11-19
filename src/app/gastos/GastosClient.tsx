@@ -23,6 +23,14 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Decimal from 'decimal.js';
+import {
+  COMPORTAMIENTO_POR_CATEGORIA,
+  comportamientoEfectivo,
+  seClasifica,
+  type Comportamiento,
+} from '@/lib/domain/comportamiento-costo';
+import { ClasificarModal, FijosVariablesCard, PastillaFV, SelectorFV } from './FijosVariables';
+import type { MesFijosVariables } from '@/lib/services/expenses/cost-behaviour.service';
 import { AppShell } from '@/components/shell/AppShell';
 import { diaDelComercio } from '@/lib/domain/fecha-comercio';
 import { GASTOS_CSS } from './gastosCss';
@@ -38,6 +46,7 @@ import {
   pagarProveedorAction,
   registrarGastoAction,
   type GastoFormInput,
+  clasificarGastoAction,
   type LineaDTO,
   type ProductoBuscadoDTO,
 } from './actions';
@@ -64,6 +73,8 @@ export interface GastoDTO {
   salio_de_caja: boolean;
   /** Renglones del detalle. 0 = no hay nada que mostrar. */
   renglones: number;
+  /** Fijo / variable / mixto elegido a mano (0045). `null` = vale el de la categoría. */
+  comportamiento: string | null;
   /**
    * Comprobantes cargados. Cuenta FICHAS, no archivos verificados en el
    * bucket: si el archivo no está, lo dice el modal al abrirlo.
@@ -156,6 +167,8 @@ interface Props {
   gastos: GastoDTO[];
   anulados: GastoAnuladoDTO[];
   resumen: ResumenGastosDTO;
+  /** Últimos 6 meses: fijo / variable / mixto / sin clasificar (0045). */
+  fijosVariables: MesFijosVariables[];
   porCategoria: TotalCategoriaDTO[];
   porProveedor: ProveedorPeriodoDTO[];
   /** Cuántos contratos tiene cada proveedor con ficha (ítem 12, slice 3). */
@@ -270,6 +283,7 @@ export function GastosClient({
   gastos,
   anulados,
   resumen,
+  fijosVariables,
   porCategoria,
   porProveedor,
   contratosPorProveedor,
@@ -291,6 +305,22 @@ export function GastosClient({
   const [viendo, setViendo] = useState<GastoDTO | null>(null);
   /** Gasto que se está por anular. */
   const [anulando, setAnulando] = useState<GastoDTO | null>(null);
+  // Gasto al que se le está cambiando fijo / variable / mixto (0045).
+  const [clasificando, setClasificando] = useState<GastoDTO | null>(null);
+  const clasificar = (c: Comportamiento) => {
+    if (clasificando === null) return;
+    const id = clasificando.id;
+    setError(null);
+    startTransition(async () => {
+      const res = await clasificarGastoAction(id, c);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setClasificando(null);
+      router.refresh();
+    });
+  };
   /** Proveedor al que se le está por pagar. */
   const [pagando, setPagando] = useState<AcreedorDTO | null>(null);
   /** Gasto cuyos comprobantes se están mirando. */
@@ -642,6 +672,18 @@ export function GastosClient({
                         ]
                           .filter(Boolean)
                           .join(' · ')}
+                        {seClasifica(g.categoria) ? (
+                          <>
+                            {' · '}
+                            <PastillaFV
+                              valor={comportamientoEfectivo(g.categoria, g.comportamiento)}
+                              onClick={() => {
+                                setError(null);
+                                setClasificando(g);
+                              }}
+                            />
+                          </>
+                        ) : null}
                       </div>
                     </div>
                     <span className={`gcat ${catClase(g.categoria)}`}>
@@ -714,6 +756,8 @@ export function GastosClient({
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
+          <FijosVariablesCard meses={fijosVariables} />
+
           <div className="card glass">
             <div className="card-title">
               <h3>Por categoría</h3>
@@ -973,6 +1017,19 @@ export function GastosClient({
           onCambio={(cantidad) =>
             setAdjuntos((prev) => ({ ...prev, [comprobantesDe.id]: cantidad }))
           }
+        />
+      ) : null}
+
+      {clasificando !== null ? (
+        <ClasificarModal
+          gasto={clasificando}
+          pending={pending}
+          error={error}
+          onCancelar={() => {
+            setClasificando(null);
+            setError(null);
+          }}
+          onElegir={clasificar}
         />
       ) : null}
 
@@ -1817,6 +1874,17 @@ function GastoModal({
 
   // ── El detalle ──
   const esMercaderia = categoria === 'mercaderia';
+  // Fijo / variable / mixto (0045). Arranca en el de la categoría y se
+  // vuelve a poner al cambiarla; si la categoría no tiene uno (impuestos,
+  // otros), hay que elegir.
+  const [comportamiento, setComportamiento] = useState<Comportamiento | null>(
+    COMPORTAMIENTO_POR_CATEGORIA.servicios
+  );
+  const elegirCategoria = (c: string) => {
+    setCategoria(c);
+    setComportamiento(COMPORTAMIENTO_POR_CATEGORIA[c as keyof typeof COMPORTAMIENTO_POR_CATEGORIA] ?? null);
+  };
+  const faltaComportamiento = !esMercaderia && comportamiento === null;
 
   const cambiarLinea = (i: number, cambio: Partial<BorradorLinea>) =>
     setLineas((prev) => prev.map((l, j) => (j === i ? { ...l, ...cambio } : l)));
@@ -1863,6 +1931,7 @@ function GastoModal({
     !faltaProveedor &&
     !lineasIncompletas &&
     !detalleNoCierra &&
+    !faltaComportamiento &&
     !pending;
 
   /** Completa el IVA al 21% desde el total, que es el caso común. */
@@ -1893,6 +1962,7 @@ function GastoModal({
         ? { comprobante_tipo: compTipo, comprobante_numero: compNumero.trim() }
         : {}),
       en_iva_compras: enIvaCompras,
+      ...(!esMercaderia && comportamiento !== null ? { comportamiento } : {}),
       ...(descripcion.trim() !== '' ? { descripcion: descripcion.trim() } : {}),
       // Sólo viajan si hay: `items: []` y sin `items` son lo mismo para el
       // service, pero mandar un array vacío en una categoría que no es
@@ -1948,7 +2018,7 @@ function GastoModal({
             <select
               id="gCat"
               value={categoria}
-              onChange={(e) => setCategoria(e.target.value)}
+              onChange={(e) => elegirCategoria(e.target.value)}
             >
               {CATEGORIAS.map((c) => (
                 <option key={c.valor} value={c.valor}>
@@ -1958,6 +2028,20 @@ function GastoModal({
             </select>
           </div>
         </div>
+
+        {!esMercaderia ? (
+          <div className="pm-fld">
+            <label id="gFvLbl">
+              ¿Es fijo o variable?{' '}
+              <span className="fv-ayuda">
+                {comportamiento === null
+                  ? 'Esta categoría no tiene uno por defecto: elegí.'
+                  : '¿Sube si vendés más? Variable. ¿No cambia? Fijo. ¿Las dos cosas, como la luz? Mixto.'}
+              </span>
+            </label>
+            <SelectorFV valor={comportamiento} onElegir={setComportamiento} etiquetaId="gFvLbl" />
+          </div>
+        ) : null}
 
         {/* Con `cuenta_corriente` esto deja de ser "a quién se le pagó": no se
             pagó nada todavía. Y el proveedor pasa a ser OBLIGATORIO y de la

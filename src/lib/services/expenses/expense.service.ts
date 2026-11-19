@@ -51,6 +51,8 @@ import {
 import { withinTolerance } from '../../money/decimal.js';
 import { requireTracingContext } from '../../tracing/context.js';
 import { writeAuditLog } from '../../audit/audit-writer.js';
+import { expense_cost_behaviour } from '../../db/schema/expense_cost_behaviour.js';
+import { COMPORTAMIENTOS, seClasifica } from '../../domain/comportamiento-costo.js';
 import { CrossTenantAccessError, DomainError } from '../../multi_tenant/errors.js';
 import { logger } from '../../observability/logger.js';
 import { csvArmar, csvNum, csvTxt } from '../reporting/csv.js';
@@ -95,6 +97,11 @@ export interface NuevoGasto {
   en_iva_compras?: boolean;
   /** Obligatorio si `medio_pago='efectivo'`: sale del cajón. */
   cash_session_id?: string;
+  /**
+   * Fijo / variable / mixto (migration 0045). Opcional: sin él vale el de la
+   * categoría. La mercadería no se clasifica (es compra, no gasto del mes).
+   */
+  comportamiento?: string;
   /**
    * Detalle de la mercadería que entró. **Sólo para `categoria='mercaderia'`.**
    *
@@ -236,6 +243,18 @@ async function vincularProveedorPorCuit(
 export async function registerExpense(input: NuevoGasto): Promise<Expense> {
   await exigirQueOpereElComercio();
   const { tenantId, userId } = ctx();
+
+  if (input.comportamiento !== undefined && input.comportamiento !== null) {
+    if (!(COMPORTAMIENTOS as readonly string[]).includes(input.comportamiento)) {
+      throw new ExpenseError('comportamiento_invalido', 'Elegí fijo, variable o mixto');
+    }
+    if (!seClasifica(input.categoria)) {
+      throw new ExpenseError(
+        'comportamiento_no_aplica',
+        'La mercadería no se clasifica como fijo o variable: es una compra que va al stock'
+      );
+    }
+  }
 
   if (!EXPENSE_CATEGORIES.includes(input.categoria)) {
     throw new ExpenseError('categoria_invalida', 'Esa categoría no existe');
@@ -553,6 +572,17 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
 
     await recalcularCostoUltimaCompra(tx, tenantId, [...tocados]);
 
+    // Fijo / variable / mixto, si se eligió (0045). Misma transacción: un
+    // gasto no queda sin la clasificación que se le dio al cargarlo.
+    if (input.comportamiento && userId) {
+      await tx.insert(expense_cost_behaviour).values({
+        tenant_id: tenantId,
+        expense_id: fila.id,
+        comportamiento: input.comportamiento,
+        created_by: userId,
+      });
+    }
+
     // EVENT-TAXONOMY v2.1.0. En la MISMA transacción: si el evento no se
     // escribe, el gasto tampoco (CLAUDE.md §15.2). Sólo ids e importes; el
     // nombre y el CUIT del proveedor ya viven en la fila de `expenses`.
@@ -571,6 +601,7 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
           tercero_id: fila.tercero_id,
           comprobante_tipo: fila.comprobante_tipo,
           comprobante_numero: fila.comprobante_numero,
+          comportamiento: input.comportamiento ?? null,
           cash_movement_id: cashMovementId === null ? null : String(cashMovementId),
           items: items.map((l) => ({
             product_id: l.product_id,

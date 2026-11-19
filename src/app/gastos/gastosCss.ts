@@ -376,4 +376,67 @@ html[data-theme="dark"] .cmp-vig input{ background:rgba(255,255,255,0.07);
 .gclip.con{ color:var(--purple); }
 .gclip b{ font-size:10px; font-family:var(--mono); font-weight:700; }
 html[data-theme="dark"] .gclip:hover{ background:rgba(124,113,255,0.20); }
+
+/* ── Fijo / variable / mixto (0045) ─────────────────────────────────────
+   Cuatro colores con significado fijo en toda la pantalla: fijo violeta,
+   variable turquesa, mixto naranja, sin clasificar gris. El texto acompaña
+   siempre al color (pastilla con palabra, tabla con montos). Clases y no
+   colores inline: un color inline no tiene variante oscura. */
+.fv-fijo{ fill:#6b5fff; } .fv-variable{ fill:#0e8f9e; } .fv-mixto{ fill:#f7984a; } .fv-sin{ fill:#a8b0c5; }
+.fv-chart{ width:100%; height:auto; display:block; margin:2px 0 10px; }
+.fv-val{ font-family:var(--mono); font-size:10px; font-weight:600; fill:var(--ink-2); }
+/* Medido sobre píxeles (2026-11-18): con --ink-3 los meses daban 2,86:1 en
+   claro y 3,95:1 en oscuro. */
+.fv-mes{ font-size:10.5px; fill:var(--ink-2); text-transform:capitalize; }
+.fv-mes.hoy{ fill:var(--ink-1); font-weight:700; }
+.fv-eje{ stroke:rgba(13,20,36,0.10); stroke-width:1; }
+.fv-tabla{ display:flex; flex-direction:column; }
+.fv-fila{ display:grid; grid-template-columns:1fr auto 44px; gap:10px; align-items:center; padding:6px 0;
+  border-top:1px solid rgba(13,20,36,0.06); font-size:12.5px; color:var(--ink-1); }
+.fv-fila.cab{ border-top:none; padding-top:0; font-size:10px; text-transform:uppercase; letter-spacing:0.06em;
+  font-family:var(--mono); color:var(--ink-3); }
+.fv-fila.cab span:first-child{ text-transform:capitalize; letter-spacing:0; font-family:inherit; font-size:12px; font-weight:600; color:var(--ink-2); }
+.fv-fila .m{ font-family:var(--mono); font-weight:600; text-align:right; }
+.fv-fila .p{ font-family:var(--mono); color:var(--ink-3); text-align:right; }
+.fv-fila.tot{ font-weight:700; }
+.fv-dot{ display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:8px; vertical-align:middle; }
+.fv-dot.fijo{ background:#6b5fff; } .fv-dot.variable{ background:#0e8f9e; } .fv-dot.mixto{ background:#f7984a; } .fv-dot.sin{ background:#a8b0c5; }
+
+/* Pastilla de la fila: botón chico, se toca para reclasificar. */
+.gfv{ display:inline-flex; align-items:center; font-size:10.5px; font-weight:700; padding:1px 7px; border-radius:6px;
+  border:none; cursor:pointer; vertical-align:baseline; line-height:1.5; }
+.gfv.fijo{ background:rgba(107,95,255,0.12); color:#4b3fd4; }
+.gfv.variable{ background:rgba(14,143,158,0.12); color:#085c66; }
+.gfv.mixto{ background:rgba(247,152,74,0.16); color:#80450c; }
+.gfv.sin{ background:rgba(13,20,36,0.06); color:var(--ink-2); outline:1px dashed rgba(13,20,36,0.25); outline-offset:-1px; }
+.gfv:hover{ filter:brightness(0.95); }
+.gfv:focus-visible{ outline:2px solid var(--purple); outline-offset:1px; }
+
+/* Selector del alta y del modal. */
+.fv-seg{ display:flex; gap:6px; }
+.fv-seg button{ flex:1; display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:9px 10px;
+  border-radius:10px; border:1px solid rgba(13,20,36,0.12); background:#fff; font-size:13px; font-weight:600;
+  color:var(--ink-2); cursor:pointer; transition:all 140ms; }
+.fv-seg button .d{ width:8px; height:8px; border-radius:3px; }
+.fv-seg button.fijo .d{ background:#6b5fff; } .fv-seg button.variable .d{ background:#0e8f9e; } .fv-seg button.mixto .d{ background:#f7984a; }
+.fv-seg button.on{ border-color:var(--purple); color:var(--ink); box-shadow:0 0 0 3px rgba(107,95,255,0.14); }
+.fv-seg button:focus-visible{ outline:2px solid var(--purple); outline-offset:2px; }
+.fv-seg button:disabled{ opacity:.55; cursor:not-allowed; }
+.fv-ayuda{ font-size:11px; font-weight:400; color:var(--ink-3); }
+
+html[data-theme="dark"] .fv-fijo{ fill:#8da2ff; } html[data-theme="dark"] .fv-variable{ fill:#5fc8ff; }
+html[data-theme="dark"] .fv-mixto{ fill:#ffb87a; } html[data-theme="dark"] .fv-sin{ fill:#7581a8; }
+html[data-theme="dark"] .fv-dot.fijo{ background:#8da2ff; } html[data-theme="dark"] .fv-dot.variable{ background:#5fc8ff; }
+html[data-theme="dark"] .fv-dot.mixto{ background:#ffb87a; } html[data-theme="dark"] .fv-dot.sin{ background:#7581a8; }
+html[data-theme="dark"] .fv-eje{ stroke:rgba(255,255,255,0.12); }
+html[data-theme="dark"] .fv-mes{ fill:#9aa6cc; }
+html[data-theme="dark"] .fv-fila{ border-top-color:rgba(255,255,255,0.08); }
+html[data-theme="dark"] .gfv.fijo{ background:rgba(141,162,255,0.16); color:#b3c0ff; }
+html[data-theme="dark"] .gfv.variable{ background:rgba(95,200,255,0.14); color:#8fdcff; }
+html[data-theme="dark"] .gfv.mixto{ background:rgba(255,184,122,0.16); color:#ffc79a; }
+html[data-theme="dark"] .gfv.sin{ background:rgba(255,255,255,0.06); outline-color:rgba(255,255,255,0.25); }
+html[data-theme="dark"] .fv-seg button{ background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.14); }
+html[data-theme="dark"] .fv-seg button.fijo .d{ background:#8da2ff; } html[data-theme="dark"] .fv-seg button.variable .d{ background:#5fc8ff; }
+html[data-theme="dark"] .fv-seg button.mixto .d{ background:#ffb87a; }
+html[data-theme="dark"] .fv-seg button.on{ border-color:#8da2ff; box-shadow:0 0 0 3px rgba(141,162,255,0.18); }
 `;

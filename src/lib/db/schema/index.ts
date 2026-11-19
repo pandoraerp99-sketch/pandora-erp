@@ -26,3 +26,4 @@ export * from './idempotency_log.js';
 export * from './holidays.js';
 export * from './orders.js';
 export * from './cash_reliefs.js';
+export * from './expense_cost_behaviour.js';

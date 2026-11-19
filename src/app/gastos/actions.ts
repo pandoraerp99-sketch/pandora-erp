@@ -4,6 +4,7 @@
  * Server Actions de Gastos. Mismo patrón que /clientes: tracing + envelope,
  * cero lógica de negocio (eso vive en expense.service.ts).
  */
+import { clasificarGasto } from '@/lib/services/expenses/cost-behaviour.service';
 import { revalidatePath } from 'next/cache';
 import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
 import { DomainError } from '@/lib/multi_tenant/errors';
@@ -514,5 +515,17 @@ export async function quitarComprobanteAction(
     await quitarComprobante({ attachment_id: attachmentId, motivo });
     revalidatePath('/gastos');
     return null;
+  });
+}
+
+/** Fijo / variable / mixto de un gasto ya cargado (0045). Agrega una fila. */
+export async function clasificarGastoAction(
+  expenseId: string,
+  comportamiento: string
+): Promise<ActionResult<{ cambiado: boolean }>> {
+  return runAction(async () => {
+    const r = await clasificarGasto(expenseId, comportamiento);
+    revalidatePath('/gastos');
+    return r;
   });
 }

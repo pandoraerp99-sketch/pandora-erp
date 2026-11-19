@@ -50,6 +50,7 @@ import {
   deliverOrder,
 } from '@/lib/services/orders/order.service';
 import { registerRelief, markReliefsPickedUp } from '@/lib/cash/reliefs';
+import { clasificarGasto } from '@/lib/services/expenses/cost-behaviour.service';
 
 describe('T-ROL-01 — quién escribe en el comercio', () => {
   const tenant = crypto.randomUUID();
@@ -142,6 +143,8 @@ describe('T-ROL-01 — quién escribe en el comercio', () => {
     // Alivios de caja (migration 0044).
     ['registerRelief', () => registerRelief(vacio, '')],
     ['markReliefsPickedUp', () => markReliefsPickedUp([])],
+    // Fijo / variable / mixto (migration 0045).
+    ['clasificarGasto', () => clasificarGasto('', 'fijo')],
   ];
 
   describe('🔴 la contadora NO escribe, y el rechazo llega antes que la validación', () => {
