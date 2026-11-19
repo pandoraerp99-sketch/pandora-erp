@@ -6,7 +6,7 @@ import {
 } from '@/lib/audit/event-names';
 
 describe('Catalogo canonico audit event names (EVENT-TAXONOMY §5 v2.3.0)', () => {
-  it('total 53 eventos auditables F0', () => {
+  it('total 57 eventos auditables F0', () => {
     // 51 + los dos de ADJUNTOS del comprobante (v2.3.0, ítem 12 del pedido de
     // la contadora, aprobados por el owner el 2026-09-19).
     //
@@ -15,8 +15,8 @@ describe('Catalogo canonico audit event names (EVENT-TAXONOMY §5 v2.3.0)', () =
     // derivado, y por sí solo acompañaría cualquier agregado en silencio. El
     // comentario anterior decía que ese número iba "a mano"; de la constante
     // no era cierto.
-    expect(TOTAL_AUDIT_EVENTS_F0).toBe(53);
-    expect(AUDIT_EVENT_NAMES).toHaveLength(53);
+    expect(TOTAL_AUDIT_EVENTS_F0).toBe(57);
+    expect(AUDIT_EVENT_NAMES).toHaveLength(57);
   });
 
   it('v2.3.0: adjuntos del comprobante (aprobados por el owner 2026-09-19)', () => {
@@ -25,6 +25,13 @@ describe('Catalogo canonico audit event names (EVENT-TAXONOMY §5 v2.3.0)', () =
     // de un gasto y no puede pasar sin huella.
     expect(isAuditEventName('expense.attachment_added')).toBe(true);
     expect(isAuditEventName('expense.attachment_removed')).toBe(true);
+    // v2.4.0 — pedidos con seña (ADR-0029)
+    expect(isAuditEventName('order.created')).toBe(true);
+    expect(isAuditEventName('order.updated')).toBe(true);
+    expect(isAuditEventName('order.status_changed')).toBe(true);
+    expect(isAuditEventName('order.payment.received')).toBe(true);
+    // Una venta y un pedido NO comparten eventos: 'order.completed' no existe.
+    expect(isAuditEventName('order.completed')).toBe(false);
   });
 
   it('v2.2.0: el otro lado del mostrador (aprobados por el owner 2026-09-17)', () => {
@@ -115,6 +122,9 @@ describe('Catalogo canonico audit event names (EVENT-TAXONOMY §5 v2.3.0)', () =
       // mostrador, y leer los dos pares juntos es lo que hace obvio que uno
       // sea el espejo del otro.
       'supplier',
+      // v2.4.0 (ADR-0029). Pedidos con seña: no son ventas (no mueven stock ni
+      // emiten comprobante), así que no van bajo sale.*.
+      'order',
       'subscription',
       'system',
       'security',

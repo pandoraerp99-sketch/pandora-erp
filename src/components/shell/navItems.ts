@@ -70,4 +70,7 @@ export const IMPLEMENTED_ROUTES = new Set([
   '/clientes',
   '/contador',
   '/gastos',
+  // ADR-0029 (2026-11-18). /senas sigue sin construir: es una vista filtrada
+  // del mismo libro y va en la tanda siguiente.
+  '/pedidos',
 ]);
