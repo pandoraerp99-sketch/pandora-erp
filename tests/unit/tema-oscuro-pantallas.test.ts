@@ -12,6 +12,7 @@ import { OSCURO_CTA, OSCURO_GESTION, OSCURO_MODAL, OSCURO_NUCLEO } from '../../s
 import { PANEL_CSS } from '../../src/app/panel/panelCss';
 import { CLIENTES_CSS } from '../../src/app/clientes/clientesCss';
 import { CONTADOR_CSS } from '../../src/app/contador/contadorCss';
+import { PEDIDOS_CSS } from '../../src/app/pedidos/pedidosCss';
 import { GASTOS_CSS } from '../../src/app/gastos/gastosCss';
 import { PRODUCTOS_CSS } from '../../src/app/productos/productosCss';
 import { CAJA_CSS } from '../../src/app/caja/cajaCss';
@@ -80,6 +81,8 @@ describe('botón con degradado de --purple y texto blanco', () => {
     caja: CAJA_CSS,
     pos: POS_CSS,
     panel: PANEL_CSS,
+    // /pedidos (2026-11-18): tiene su bloque oscuro propio, no OSCURO_GESTION.
+    pedidos: PEDIDOS_CSS,
     ...PANTALLAS,
   } as const;
 
@@ -103,7 +106,12 @@ describe('botón con degradado de --purple y texto blanco', () => {
   for (const [nombre, css] of Object.entries(MODULOS)) {
     it(`${nombre}: cada degradado de --purple con texto blanco tiene variante oscura`, () => {
       const sinVariante: string[] = [];
-      for (const [, selector, cuerpo] of css.matchAll(/(?:^|\})\s*([^{}@]+?)\{([^{}]*)\}/g)) {
+      // La llave de cierre de la regla anterior se MIRA (lookbehind), no se
+      // consume. La versión anterior la consumía: cada match se comía el "}"
+      // que el siguiente necesitaba, y el test revisaba una regla sí y una no.
+      // Se descubrió el 2026-11-18 al agregar una regla a cajaCss: cambió la
+      // paridad y aparecieron dos avatares que nunca se habían revisado.
+      for (const [, selector, cuerpo] of css.matchAll(/(?:^|(?<=\}))\s*([^{}@]+?)\{([^{}]*)\}/g)) {
         const sel = (selector ?? '').trim();
         const cuerpoTexto = cuerpo ?? '';
         if (!sel || sel.includes('data-theme')) continue;
@@ -138,6 +146,7 @@ describe('sin color de texto/ícono escrito a mano en style inline', () => {
     'app/gastos',
     'app/productos',
     'app/contador',
+    'app/pedidos',
     'app/panel',
     'app/caja',
     'app/pos',

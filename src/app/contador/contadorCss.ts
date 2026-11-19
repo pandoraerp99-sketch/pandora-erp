@@ -186,6 +186,10 @@ body{ font-family:'Inter',ui-sans-serif,system-ui,sans-serif; -webkit-font-smoot
 .rep-export{ display:flex; gap:9px; }
 .rx{ display:inline-flex; align-items:center; gap:7px; padding:10px 15px; border-radius:12px; font-size:12.5px; font-weight:600; color:var(--ink-1); background:rgba(255,255,255,0.72); border:1px solid rgba(255,255,255,0.9); box-shadow:var(--glass-hi); cursor:pointer; transition:all 160ms; }
 .rx:hover{ transform:translateY(-1px); } .rx svg{ width:15px; height:15px; }
+/* Variante oscura (2026-11-18): texto blanco sobre el degradado de --purple, que en
+   oscuro se aclara. Lo destapó tema-oscuro-pantallas al dejar de revisar una regla
+   sí y una no. Mismo violeta que .cta / .btn-primary. */
+html[data-theme="dark"] .rx.full{ background:linear-gradient(140deg,#5f53f5,#6b5fff); }
 .rx.full{ width:100%; justify-content:center; margin-top:16px; background:linear-gradient(140deg,var(--purple),var(--purple-2)); color:#fff; border:none; box-shadow:0 5px 14px rgba(107,95,255,0.34); }
 .rep-body{ display:flex; flex-direction:column; gap:16px; } .g2{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; }
 .emp-bar{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
@@ -244,6 +248,10 @@ body{ font-family:'Inter',ui-sans-serif,system-ui,sans-serif; -webkit-font-smoot
 .ctbl th{ text-align:left; font-size:9.5px; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.06em; font-family:var(--mono); font-weight:500; padding:0 0 11px; border-bottom:1px solid rgba(13,20,36,0.07); }
 .ctbl th.r, .ctbl td.r{ text-align:right; } .ctbl td{ padding:11px 0; border-top:1px solid rgba(13,20,36,0.05); vertical-align:middle; font-size:13px; }
 .ctbl .mono{ font-family:var(--mono); font-size:12.5px; }
+/* Variante oscura (2026-11-18): texto blanco sobre el degradado de --purple, que en
+   oscuro se aclara. Lo destapó tema-oscuro-pantallas al dejar de revisar una regla
+   sí y una no. Mismo violeta que .cta / .btn-primary. */
+html[data-theme="dark"] .cj-av{ background:linear-gradient(135deg,#5f53f5,#4f7bff); }
 .cj-cell{ display:inline-flex; align-items:center; gap:9px; } .cj-av{ width:26px; height:26px; border-radius:50%; background:linear-gradient(135deg,var(--purple),var(--blue)); color:#fff; font-size:9.5px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; }
 .cc-cargo{ color:var(--ink-3); font-size:12px; }
 .recat-bar{ height:9px; border-radius:999px; background:rgba(13,20,36,0.06); overflow:hidden; margin:10px 0 10px; } .recat-bar i{ display:block; height:100%; border-radius:999px; background:linear-gradient(90deg,var(--orange),#ec5d6a); }

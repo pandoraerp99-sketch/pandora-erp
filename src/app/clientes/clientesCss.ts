@@ -188,6 +188,10 @@ body{ font-family:'Inter',ui-sans-serif,system-ui,sans-serif; -webkit-font-smoot
 .cli-sub{ font-size:12.5px; color:var(--ink-3); margin-top:4px; }
 .cli-actions{ display:flex; gap:9px; }
 .hbtn{ display:inline-flex; align-items:center; gap:7px; padding:9px 14px; border-radius:12px; font-size:12.5px; font-weight:600; color:var(--ink-1); background:rgba(255,255,255,0.72); border:1px solid rgba(255,255,255,0.9); box-shadow:var(--glass-hi); cursor:pointer; transition:all 160ms; } .hbtn svg{ width:15px; height:15px; } .hbtn:hover{ transform:translateY(-1px); }
+/* Variante oscura (2026-11-18): texto blanco sobre el degradado de --purple, que en
+   oscuro se aclara. Lo destapó tema-oscuro-pantallas al dejar de revisar una regla
+   sí y una no. Mismo violeta que .cta / .btn-primary. */
+html[data-theme="dark"] .hbtn.primary{ background:linear-gradient(140deg,#5f53f5,#6b5fff); }
 .hbtn.primary{ background:linear-gradient(140deg,var(--purple),var(--purple-2)); color:#fff; border:none; box-shadow:0 5px 14px rgba(107,95,255,0.34); }
 .kpi-strip{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin-bottom:15px; }
 .kpi{ padding:15px 17px !important; }

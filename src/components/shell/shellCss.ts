@@ -320,6 +320,10 @@ body{
 .pm:hover{ color:var(--ink); background:rgba(255,255,255,0.9); transform:translateY(-1px); }
 .pm.sel{ color:var(--purple); background:rgba(107,95,255,0.1); border-color:rgba(107,95,255,0.3); }
 .pm svg{ width:16px; height:16px; }
+/* Variante oscura (2026-11-18): texto blanco sobre el degradado de --purple, que en
+   oscuro se aclara. Lo destapó tema-oscuro-pantallas al dejar de revisar una regla
+   sí y una no. Mismo violeta que .cta / .btn-primary. */
+html[data-theme="dark"] .cobrar{ background:linear-gradient(140deg,#5f53f5,#6b5fff); }
 .cobrar{ width:100%; display:flex; align-items:center; justify-content:center; gap:9px; padding:14px; border-radius:13px;
   background:linear-gradient(140deg,var(--purple) 0%,var(--purple-2) 100%); color:#fff; font-size:14.5px; font-weight:800; letter-spacing:-0.02em;
   box-shadow:0 7px 20px rgba(107,95,255,0.42), 0 2px 6px rgba(107,95,255,0.28); transition:transform 170ms cubic-bezier(.2,.8,.2,1), box-shadow 170ms; }
@@ -357,6 +361,10 @@ body{
 .seg{ display:inline-flex; padding:4px; gap:2px; border-radius:11px; background:rgba(255,255,255,0.6); border:1px solid rgba(255,255,255,0.85); box-shadow:var(--glass-hi); }
 .seg button{ padding:9px 18px; border-radius:8px; font-size:13px; font-weight:600; color:var(--ink-2); transition:all 150ms; }
 .seg button.on{ background:var(--ink); color:#fff; }
+/* Variante oscura (2026-11-18): texto blanco sobre el degradado de --purple, que en
+   oscuro se aclara. Lo destapó tema-oscuro-pantallas al dejar de revisar una regla
+   sí y una no. Mismo violeta que .cta / .btn-primary. */
+html[data-theme="dark"] .padron-btn{ background:linear-gradient(140deg,#5f53f5,#6b5fff); }
 .padron-btn{ height:44px; flex:0 0 auto; padding:0 16px; border-radius:12px; font-size:13px; font-weight:600; color:#fff;
   background:linear-gradient(140deg,var(--purple),var(--purple-2)); box-shadow:0 4px 12px rgba(107,95,255,0.35); display:flex; align-items:center; gap:7px; }
 .padron-btn svg{ width:15px; height:15px; }
