@@ -76,7 +76,43 @@ export const CARGA_CSS = `
 .cg-link{ font:inherit; font-weight:700; color:#4b3fd6; text-decoration:underline; background:none; border:none; padding:0; cursor:pointer; }
 .cg-link:disabled{ opacity:.5; cursor:not-allowed; }
 .cg-link:focus-visible{ outline:2px solid var(--purple); outline-offset:2px; border-radius:3px; }
-.cg-det{ margin:18px 0 0; }
+/* ── Compra de mercaderia (CompraMercaderia): articulos, impacto y "Coincide" ── */
+.cm{ margin-top:18px; padding:16px; border-radius:14px; border:1px solid rgba(255,255,255,0.85); background:rgba(255,255,255,0.45); }
+.cm-h{ margin:0 0 12px; }
+.cm-t{ display:block; font-size:13px; font-weight:700; color:var(--ink); }
+.cm-s{ display:block; font-size:11.5px; color:var(--ink-2); margin-top:3px; line-height:1.45; }
+.cm-tab{ display:flex; flex-direction:column; margin:0 0 12px; }
+.cm-th, .cm-fila{ display:grid; grid-template-columns:minmax(0,1fr) 76px 112px 112px 30px; gap:8px; align-items:center; }
+.cm-th{ padding:0 0 6px; font-size:10px; font-family:var(--mono); text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-2); font-weight:600; }
+.cm-th .r{ text-align:right; }
+.cm-tr{ padding:9px 0; border-top:1px solid rgba(13,20,36,0.07); }
+.cm-nom{ font-size:13px; font-weight:600; color:var(--ink-1); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cm-in{ height:36px; padding:0 10px; border-radius:9px; border:1px solid rgba(13,20,36,0.12); background:rgba(255,255,255,0.8); font-family:var(--mono); font-size:12.5px; text-align:right; color:var(--ink); width:100%; }
+.cm-in:focus{ outline:none; border-color:rgba(107,95,255,0.55); box-shadow:0 0 0 3px rgba(107,95,255,0.16); }
+.cm-sub{ font-family:var(--mono); font-size:12.5px; font-weight:600; text-align:right; color:var(--ink-1); font-variant-numeric:tabular-nums; }
+.cm-x{ width:30px; height:30px; border:none; border-radius:8px; background:rgba(13,20,36,0.05); color:var(--ink-2); font-size:16px; cursor:pointer; }
+.cm-x:hover{ background:rgba(192,56,74,0.12); color:#a72c3a; }
+.cm-x:focus-visible{ outline:2px solid var(--purple); outline-offset:1px; }
+.cm-imp{ display:flex; flex-wrap:wrap; gap:6px; margin-top:7px; }
+.cm-chip{ font-size:11.5px; font-weight:600; padding:3px 9px; border-radius:7px; background:rgba(13,20,36,0.05); color:var(--ink-2); font-variant-numeric:tabular-nums; }
+.cm-chip.mal{ background:rgba(239,93,106,0.10); color:#a72c3a; }
+.cm-chip.bien{ background:rgba(52,199,125,0.12); color:#116b40; }
+.cm-resumen{ margin:10px 0 0; font-size:12px; color:var(--ink-2); line-height:1.5; }
+.cm-resumen b{ color:var(--ink); }
+.cm-resumen b.cm-ojo{ color:#a72c3a; }
+/* "Coincide": la tarjeta del mockup, alimentada por la MISMA cuenta que el boton. */
+.cm-rec{ margin-top:12px; padding:12px 14px; border-radius:12px; border:1px solid rgba(255,255,255,0.85); background:rgba(255,255,255,0.6); }
+.cm-rec.ok{ background:rgba(52,199,125,0.08); border-color:rgba(52,199,125,0.28); }
+.cm-rec.mal{ background:rgba(239,93,106,0.07); border-color:rgba(239,93,106,0.28); }
+.cm-rec-fila{ display:flex; justify-content:space-between; font-size:12.5px; color:var(--ink-2); padding:2px 0; }
+.cm-rec-fila b{ font-family:var(--mono); font-weight:600; color:var(--ink-1); }
+.cm-rec-res{ display:flex; justify-content:space-between; align-items:center; margin-top:6px; padding-top:8px; border-top:1px solid rgba(13,20,36,0.08); }
+.cm-rec-k{ font-size:13px; font-weight:700; color:var(--ink-1); }
+.cm-rec-res b{ font-family:var(--mono); font-size:15px; font-weight:700; color:var(--ink); }
+.cm-rec.ok .cm-rec-k, .cm-rec.ok .cm-rec-res b{ color:#116b40; }
+.cm-rec.mal .cm-rec-k, .cm-rec.mal .cm-rec-res b{ color:#a72c3a; }
+.cm-rec-ayuda{ margin:8px 0 0; font-size:11.5px; color:var(--ink-2); line-height:1.45; }
+@media (max-width:760px){ .cm-th{ display:none; } .cm-fila{ grid-template-columns:minmax(0,1fr) 64px 92px 30px; } .cm-sub{ display:none; } }
 
 /* Comprobante adjunto. */
 .gdrop{ display:flex; align-items:center; gap:14px; margin-top:18px; padding:15px 16px; border-radius:14px; border:1.5px dashed rgba(107,95,255,0.35); background:linear-gradient(135deg, rgba(107,95,255,0.05), rgba(91,140,255,0.04)); }
@@ -191,6 +227,21 @@ html[data-theme="dark"] .reg-btn{ background:linear-gradient(140deg,#5f53f5,#6b5
 html[data-theme="dark"] .gsbar{ background:rgba(255,255,255,0.08); }
 html[data-theme="dark"] .gasto-row{ border-top-color:rgba(255,255,255,0.07); }
 html[data-theme="dark"] .gmonto{ color:#ff8b96; }
+html[data-theme="dark"] .cm{ background:rgba(255,255,255,0.04); border-color:rgba(255,255,255,0.12); }
+html[data-theme="dark"] .cm-tr{ border-top-color:rgba(255,255,255,0.08); }
+html[data-theme="dark"] .cm-in{ background:rgba(255,255,255,0.07); border-color:rgba(255,255,255,0.14); color:var(--ink); color-scheme:dark; }
+html[data-theme="dark"] .cm-x{ background:rgba(255,255,255,0.07); }
+html[data-theme="dark"] .cm-x:hover{ color:#ff8b96; }
+html[data-theme="dark"] .cm-chip{ background:rgba(255,255,255,0.07); }
+html[data-theme="dark"] .cm-chip.mal{ background:rgba(255,139,150,0.12); color:#ff9aa4; }
+html[data-theme="dark"] .cm-chip.bien{ background:rgba(63,214,139,0.12); color:#7fe0ae; }
+html[data-theme="dark"] .cm-resumen b.cm-ojo{ color:#ff9aa4; }
+html[data-theme="dark"] .cm-rec{ background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.12); }
+html[data-theme="dark"] .cm-rec.ok{ background:rgba(63,214,139,0.08); border-color:rgba(63,214,139,0.26); }
+html[data-theme="dark"] .cm-rec.mal{ background:rgba(255,139,150,0.08); border-color:rgba(255,139,150,0.28); }
+html[data-theme="dark"] .cm-rec-res{ border-top-color:rgba(255,255,255,0.10); }
+html[data-theme="dark"] .cm-rec.ok .cm-rec-k, html[data-theme="dark"] .cm-rec.ok .cm-rec-res b{ color:#7fe0ae; }
+html[data-theme="dark"] .cm-rec.mal .cm-rec-k, html[data-theme="dark"] .cm-rec.mal .cm-rec-res b{ color:#ff9aa4; }
 html[data-theme="dark"] .cg-duda{ background:rgba(255,184,122,0.08); border-color:rgba(255,184,122,0.28); }
 html[data-theme="dark"] .cg-duda p{ color:#ffc79a; }
 html[data-theme="dark"] .scan-btn.primary{ background:#5f53f5; color:#fff; }

@@ -13,7 +13,7 @@
  *
  * Todo con Decimal: es plata (CLAUDE.md §9.8, prohibido Number en ese camino).
  */
-import { and, eq, gte, lt, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, lt, sql } from 'drizzle-orm';
 import Decimal from 'decimal.js';
 import { db } from '../../db/client.js';
 import {
@@ -1331,6 +1331,41 @@ export async function registerExpenseOnce(
     }
   );
   return { id: result.id, replayed };
+}
+
+/**
+ * Fecha de la última compra VIGENTE de cada producto ('AAAA-MM-DD').
+ *
+ * La usa la carga de mercadería para anticipar si la factura que se está
+ * cargando va a cambiar el costo del producto: `products.cost` queda en el de
+ * la compra de fecha más nueva (`recalcularCostoUltimaCompra`), así que una
+ * factura más vieja que la última compra suma stock pero no toca el costo.
+ * Un producto que nunca se compró no aparece en el resultado.
+ */
+export async function ultimaCompraPorProducto(
+  productIds: string[]
+): Promise<Record<string, string>> {
+  const { tenantId } = ctx();
+  if (productIds.length === 0) return {};
+  const filas = await db
+    .select({
+      product_id: expense_items.product_id,
+      fecha: sql<string>`max(${expenses.fecha})::text`,
+    })
+    .from(expense_items)
+    .innerJoin(
+      expenses,
+      and(eq(expenses.id, expense_items.expense_id), eq(expenses.tenant_id, expense_items.tenant_id))
+    )
+    .where(
+      and(
+        eq(expense_items.tenant_id, tenantId),
+        inArray(expense_items.product_id, productIds),
+        GASTO_VIGENTE
+      )
+    )
+    .groupBy(expense_items.product_id);
+  return Object.fromEntries(filas.map((f) => [f.product_id, f.fecha]));
 }
 
 /**

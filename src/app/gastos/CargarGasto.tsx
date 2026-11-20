@@ -36,14 +36,8 @@ import { normalizarMontoTipeado } from '@/lib/money/monto-tipeado';
 import type { MemoriaProveedor } from '@/lib/services/expenses/cost-behaviour.service';
 import { MEDIOS, catLabel, hoyLocal, plata } from './gastosFormato';
 import { adjuntarComprobanteAction, registrarGastoAction, type GastoFormInput } from './actions';
-import {
-  AvisosAlRegistrar,
-  CategoriaYTipo,
-  DetalleMercaderia,
-  ImpactoGasto,
-  type BorradorLinea,
-  type Hecho,
-} from './PiezasCarga';
+import { AvisosAlRegistrar, CategoriaYTipo, ImpactoGasto, type Hecho } from './PiezasCarga';
+import { CompraMercaderia, type BorradorLinea } from './CompraMercaderia';
 
 export interface ProveedorOpcion {
   id: string;
@@ -674,9 +668,10 @@ export function CargarGasto({ proveedores, cajaEsperado, deudaHoy, memoria, onVe
       {/* ── El detalle: sólo mercadería. Una línea es un LOTE: entra al stock
           y deja registrado a qué costo. ── */}
       {esMercaderia ? (
-        <DetalleMercaderia
+        <CompraMercaderia
           lineas={lineas}
           setLineas={setLineas}
+          fechaCompra={fecha}
           discrimina={discrimina}
           sumaDetalle={sumaDetalle}
           baseDetalle={baseDetalle}

@@ -17,6 +17,7 @@ import {
   getProveedoresDelPeriodo,
   listExpenses,
   registerExpenseOnce,
+  ultimaCompraPorProducto,
   ExpenseError,
   type NuevoGasto,
 } from '@/lib/services/expenses/expense.service';
@@ -250,6 +251,11 @@ export interface ProductoBuscadoDTO {
   name: string;
   sku: string | null;
   cost: string | null;
+  /** Precio de venta, SIN IVA (el IVA se suma al vender): base del margen. */
+  price: string;
+  stock_current: string;
+  /** Fecha de la última compra vigente; `null` si nunca se compró. */
+  ultima_compra: string | null;
 }
 
 /** Buscar productos para el detalle de una compra. Mismo gesto que el POS. */
@@ -259,6 +265,9 @@ export async function buscarProductosAction(
   return runAction(async () => {
     if (query.trim().length === 0) return [];
     const encontrados = await searchProducts({ query: query.trim(), limit: 8 });
+    // Para anticipar el impacto de la compra (stock, costo y margen) sin otra
+    // ida y vuelta al servidor por cada renglón.
+    const ultima = await ultimaCompraPorProducto(encontrados.map((p) => p.id));
     return encontrados.map((p) => ({
       id: p.id,
       name: p.name,
@@ -267,6 +276,9 @@ export async function buscarProductosAction(
       // línea: el proveedor casi siempre repite precio, y si aumentó, se ve
       // contra qué.
       cost: p.cost,
+      price: p.price,
+      stock_current: p.stock_current,
+      ultima_compra: ultima[p.id] ?? null,
     }));
   });
 }

@@ -25,6 +25,7 @@
  */
 import { useMemo, useState, useTransition } from 'react';
 import Decimal from 'decimal.js';
+import { margenSobrePrecio } from '@/lib/domain/impacto-compra';
 import { AppShell } from '@/components/shell/AppShell';
 import { PRODUCTOS_CSS } from './productosCss';
 import {
@@ -101,12 +102,14 @@ function estadoDe(p: ProductoDTO): Estado {
   return { clase: 'ok', label: 'OK' };
 }
 
-/** Margen sobre precio de venta. `null` si no hay costo cargado. */
+/**
+ * Margen sobre precio de venta (sin IVA). `null` si no hay costo cargado.
+ * La cuenta vive en `domain/impacto-compra`: la misma que muestra la carga de
+ * mercadería al anticipar el margen nuevo, para que las dos pantallas digan lo
+ * mismo del mismo producto.
+ */
 function margenDe(p: ProductoDTO): Decimal | null {
-  if (p.cost === null) return null;
-  const precio = new Decimal(p.price);
-  if (precio.lte(0)) return null;
-  return precio.minus(p.cost).dividedBy(precio).times(100);
+  return margenSobrePrecio(p.price, p.cost);
 }
 
 export function ProductosClient({ productos, cashierName, salePointLabel }: Props) {
