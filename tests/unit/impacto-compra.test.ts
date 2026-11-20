@@ -1,6 +1,7 @@
 import Decimal from 'decimal.js';
 import { describe, expect, it } from 'vitest';
 import {
+  fletePorUnidad,
   impactoDeCompra,
   margenSobrePrecio,
   type RenglonCompra,
@@ -93,5 +94,45 @@ describe('impactoDeCompra', () => {
     );
     expect(m.size).toBe(2);
     expect(m.get('tijera')!.stockDespues.toString()).toBe('22');
+  });
+});
+
+describe('fletePorUnidad (misma fórmula que el servidor)', () => {
+  const r = (qty: string, costo: string) => ({ qty: d(qty), costo: d(costo) });
+
+  it('reparte por valor: 10 × $1.000 y 5 × $2.000 con $2.000 de flete', () => {
+    const [a, b] = fletePorUnidad([r('10', '1000'), r('5', '2000')], d('2000'));
+    expect(a!.toString()).toBe('100');
+    expect(b!.toString()).toBe('200');
+  });
+
+  it('las partes suman EXACTO el flete, aunque no den redondo', () => {
+    const rs = [r('3', '1000'), r('7', '333.33'), r('1', '0.01')];
+    const partes = fletePorUnidad(rs, d('1000'));
+    const total = rs.reduce((acc, x, i) => acc.plus(x.qty.times(partes[i]!)), d('0'));
+    expect(total.toDecimalPlaces(10).toString()).toBe('1000');
+  });
+
+  it('un renglón incompleto no recibe parte ni entra en la suma', () => {
+    const [a, b] = fletePorUnidad([r('10', '1000'), { qty: null, costo: d('5') }], d('500'));
+    expect(a!.toString()).toBe('50');
+    expect(b).toBeNull();
+  });
+
+  it('sin flete, o sin artículos con valor, no hay parte', () => {
+    expect(fletePorUnidad([r('10', '1000')], null)).toEqual([null]);
+    expect(fletePorUnidad([r('10', '0')], d('500'))).toEqual([null]);
+  });
+
+  it('el impacto suma el flete al costo nuevo y lo informa', () => {
+    const i = uno([renglon({ costo: d('1000'), flete: d('100') })]);
+    expect(i.costoDespues!.toString()).toBe('1100');
+    expect(i.fleteUnitario!.toString()).toBe('100');
+  });
+
+  it('una factura más vieja no cambia el costo, aunque traiga flete', () => {
+    const i = uno([renglon({ costo: d('1000'), flete: d('100') })], '2026-09-01');
+    expect(i.motivo).toBe('compra_mas_nueva');
+    expect(i.costoDespues!.toString()).toBe('920');
   });
 });

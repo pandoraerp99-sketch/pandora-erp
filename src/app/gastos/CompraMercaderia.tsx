@@ -28,10 +28,10 @@ import {
   type SetStateAction,
 } from 'react';
 import Decimal from 'decimal.js';
-import { impactoDeCompra, type ImpactoProducto } from '@/lib/domain/impacto-compra';
+import { fletePorUnidad, impactoDeCompra, type ImpactoProducto } from '@/lib/domain/impacto-compra';
 import { normalizarMontoTipeado } from '@/lib/money/monto-tipeado';
 import { plata } from './gastosFormato';
-import { buscarProductosAction, type ProductoBuscadoDTO } from './actions';
+import { buscarProductosAction, type FleteFormInput, type ProductoBuscadoDTO } from './actions';
 
 /**
  * Un renglón mientras se está cargando. Guarda `productId` porque una línea
@@ -51,6 +51,75 @@ export interface BorradorLinea {
   ultimaCompra: string | null;
 }
 
+/** El flete que vino con la compra (0046), mientras se carga. */
+export interface BorradorFlete {
+  activo: boolean;
+  terceroId: string;
+  numero: string;
+  total: string;
+  /** IVA discriminado en la factura del flete; vacío si no tiene. */
+  iva: string;
+  medio: FleteFormInput['medio_pago'];
+  enIvaCompras: boolean;
+}
+
+/**
+ * Flete vacío, con el expreso ya elegido si hay un proveedor que lo parezca:
+ * el comercio trabaja con uno solo, y elegirlo cada vez es un paso de más.
+ */
+export function fleteInicial(proveedores: Array<{ id: string; name: string }>): BorradorFlete {
+  const expreso = proveedores.find((p) => /expreso|transporte|flete|log[ií]stica/i.test(p.name));
+  return {
+    activo: false,
+    terceroId: expreso?.id ?? '',
+    numero: '',
+    total: '',
+    iva: '',
+    medio: 'cuenta_corriente',
+    enIvaCompras: true,
+  };
+}
+
+/**
+ * ¿El flete está completo? Devuelve lo que falta (en palabras, para el botón
+ * apagado), el NETO que se reparte y lo que viaja al servidor.
+ */
+export function revisarFlete(
+  f: BorradorFlete,
+  hayArticulos: boolean
+): { falta: string | null; neto: Decimal | null; payload: FleteFormInput | null } {
+  if (!f.activo) return { falta: null, neto: null, payload: null };
+  const total = dec(f.total);
+  const iva = f.iva.trim() === '' ? new Decimal(0) : dec(f.iva);
+  const neto = total !== null && iva !== null && iva.lt(total) ? total.minus(iva) : null;
+  const falta = !hayArticulos
+    ? 'Cargá los artículos: el flete se reparte entre ellos.'
+    : f.terceroId === ''
+      ? 'Elegí el proveedor del flete.'
+      : total === null || total.lte(0)
+        ? 'Falta el monto del flete.'
+        : neto === null
+          ? 'Revisá el IVA del flete.'
+          : f.enIvaCompras && f.numero.trim() === ''
+            ? 'Falta el número de la factura del flete.'
+            : null;
+  return {
+    falta,
+    neto,
+    payload:
+      falta === null && total !== null && iva !== null
+        ? {
+            tercero_id: f.terceroId,
+            comprobante_numero: f.numero.trim(),
+            total: total.toFixed(2),
+            ...(iva.gt(0) ? { iva: iva.toFixed(2) } : {}),
+            medio_pago: f.medio,
+            en_iva_compras: f.enIvaCompras,
+          }
+        : null,
+  };
+}
+
 const dec = (v: string): Decimal | null => {
   const n = normalizarMontoTipeado(v);
   return n === null ? null : new Decimal(n);
@@ -63,6 +132,9 @@ const pct = (d: Decimal) => `${d.toFixed(1).replace('.', ',')}%`;
 const fecha = (iso: string) => iso.split('-').reverse().join('/');
 
 export function CompraMercaderia({
+  proveedores,
+  flete,
+  setFlete,
   lineas,
   setLineas,
   fechaCompra,
@@ -73,6 +145,9 @@ export function CompraMercaderia({
   lineasIncompletas,
   subtotalDe,
 }: {
+  proveedores: Array<{ id: string; name: string }>;
+  flete: BorradorFlete;
+  setFlete: Dispatch<SetStateAction<BorradorFlete>>;
   lineas: BorradorLinea[];
   setLineas: Dispatch<SetStateAction<BorradorLinea[]>>;
   fechaCompra: string;
@@ -83,22 +158,25 @@ export function CompraMercaderia({
   lineasIncompletas: boolean;
   subtotalDe: (l: BorradorLinea) => Decimal | null;
 }) {
-  const impacto = useMemo(
-    () =>
-      impactoDeCompra(
-        lineas.map((l) => ({
-          productId: l.productId,
-          qty: dec(l.qty),
-          costo: dec(l.costo),
-          precio: l.precio,
-          stock: l.stock,
-          costoActual: l.costoActual,
-          ultimaCompra: l.ultimaCompra,
-        })),
-        fechaCompra
-      ),
-    [lineas, fechaCompra]
-  );
+  // La parte del flete de cada renglón: la misma cuenta que hace el servidor.
+  const fleteNeto = revisarFlete(flete, true).neto;
+  const impacto = useMemo(() => {
+    const valores = lineas.map((l) => ({ qty: dec(l.qty), costo: dec(l.costo) }));
+    const partes = fletePorUnidad(valores, fleteNeto);
+    return impactoDeCompra(
+      lineas.map((l, i) => ({
+        productId: l.productId,
+        qty: valores[i]!.qty,
+        costo: valores[i]!.costo,
+        flete: partes[i] ?? null,
+        precio: l.precio,
+        stock: l.stock,
+        costoActual: l.costoActual,
+        ultimaCompra: l.ultimaCompra,
+      })),
+      fechaCompra
+    );
+  }, [lineas, fechaCompra, fleteNeto]);
 
   const cambiar = (i: number, cambio: Partial<BorradorLinea>) =>
     setLineas((prev) => prev.map((x, j) => (j === i ? { ...x, ...cambio } : x)));
@@ -194,6 +272,8 @@ export function CompraMercaderia({
         }
       />
 
+      <BloqueFlete proveedores={proveedores} flete={flete} setFlete={setFlete} />
+
       {lineas.length > 0 ? (
         <>
           <Conciliacion
@@ -288,9 +368,136 @@ function ImpactoRenglon({ imp }: { imp: ImpactoProducto }) {
         Stock {cant(imp.stockAntes)} → {cant(imp.stockDespues)}
       </span>
       {costo}
+      {imp.fleteUnitario !== null && imp.motivo === 'cambia' ? (
+        <span className="cm-chip">incluye flete {plata(imp.fleteUnitario.toFixed(2))} c/u</span>
+      ) : null}
       {margen}
       {imp.repetido ? (
         <span className="cm-chip">Está en más de un renglón: vale el costo del último</span>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * "Vino con flete": la factura del expreso, que llega junto con la de la
+ * mercadería. Se registra junto con la compra y su costo (sin IVA) se reparte
+ * entre los artículos por valor (decisión del owner, 2026-11-19).
+ */
+function BloqueFlete({
+  proveedores,
+  flete,
+  setFlete,
+}: {
+  proveedores: Array<{ id: string; name: string }>;
+  flete: BorradorFlete;
+  setFlete: Dispatch<SetStateAction<BorradorFlete>>;
+}) {
+  const cambiar = (c: Partial<BorradorFlete>) => setFlete((f) => ({ ...f, ...c }));
+  const prov = proveedores.find((p) => p.id === flete.terceroId);
+  return (
+    <div className={`cm-flete${flete.activo ? ' on' : ''}`}>
+      <label className="pm-check cg-check" htmlFor="cmFlete">
+        <input
+          id="cmFlete"
+          type="checkbox"
+          checked={flete.activo}
+          onChange={(e) => cambiar({ activo: e.target.checked })}
+        />
+        <span>
+          <span className="t">Vino con flete</span>
+          <span className="s">
+            La factura del expreso se registra junto con esta compra, y su costo sin IVA se suma al
+            de los artículos, repartido según su valor.
+          </span>
+        </span>
+      </label>
+      {flete.activo ? (
+        <>
+          <div className="fgrid3">
+            <div className="field">
+              <label htmlFor="cmFleteProv">Expreso / transporte</label>
+              <select
+                id="cmFleteProv"
+                className="fselect"
+                value={flete.terceroId}
+                onChange={(e) => cambiar({ terceroId: e.target.value })}
+              >
+                <option value="">Elegí el proveedor…</option>
+                {proveedores.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="cmFleteNro">Número de su factura</label>
+              <input
+                id="cmFleteNro"
+                className="finput mono"
+                value={flete.numero}
+                onChange={(e) => cambiar({ numero: e.target.value })}
+                placeholder="0101-00229412"
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="cmFleteTotal">Monto del flete</label>
+              <input
+                id="cmFleteTotal"
+                className="finput mono"
+                inputMode="decimal"
+                value={flete.total}
+                onChange={(e) => cambiar({ total: e.target.value })}
+                placeholder="0,00"
+              />
+            </div>
+          </div>
+          <div className="fgrid3 cg-gap-s">
+            <div className="field">
+              <label htmlFor="cmFleteIva">IVA discriminado (si tiene)</label>
+              <input
+                id="cmFleteIva"
+                className="finput mono"
+                inputMode="decimal"
+                value={flete.iva}
+                onChange={(e) => cambiar({ iva: e.target.value })}
+                placeholder="0,00"
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="cmFleteMedio">Cómo se paga</label>
+              <select
+                id="cmFleteMedio"
+                className="fselect"
+                value={flete.medio}
+                onChange={(e) => cambiar({ medio: e.target.value as BorradorFlete['medio'] })}
+              >
+                <option value="cuenta_corriente">Cuenta corriente</option>
+                <option value="transferencia">Transferencia</option>
+                <option value="debito">Débito</option>
+                <option value="credito">Crédito</option>
+              </select>
+            </div>
+            <label className="pm-check cm-flete-arca" htmlFor="cmFleteArca">
+              <input
+                id="cmFleteArca"
+                type="checkbox"
+                checked={flete.enIvaCompras}
+                onChange={(e) => cambiar({ enIvaCompras: e.target.checked })}
+              />
+              <span>
+                <span className="t">Entra al IVA compras</span>
+              </span>
+            </label>
+          </div>
+          <p className="cm-s cm-flete-pie">
+            {flete.medio === 'cuenta_corriente'
+              ? `Queda como deuda con ${prov?.name ?? 'el expreso'}, igual que si la cargaras aparte.`
+              : 'Se registra como pagado.'}{' '}
+            Si después anulás esta compra, el flete queda cargado: la deuda con el expreso sigue.
+          </p>
+        </>
       ) : null}
     </div>
   );

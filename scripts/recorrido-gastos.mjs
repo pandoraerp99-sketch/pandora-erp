@@ -200,9 +200,9 @@ await foto('03-factura.png', '.cgfac');
 
 // ── mercadería ──
 await escribir('#cgCat', 'mercaderia');
-check('mercadería: aparece el detalle', (await evaluar(`!!document.querySelector('.cg .det')`)) === true);
+check('mercadería: aparece el detalle', (await evaluar(`!!document.querySelector('.cg .cm')`)) === true);
 check('mercadería: no se pregunta fijo/variable', (await evaluar(`!!document.querySelector('#cgTipo')`)) === false);
-await foto('04-mercaderia.png', '.cg .det');
+await foto('04-mercaderia.png', '.cg .cm');
 
 // ── registrar de verdad: efectivo, doble click, con comprobante ──
 await ir(`${BASE}/gastos`);

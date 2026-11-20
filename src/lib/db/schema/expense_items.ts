@@ -113,3 +113,43 @@ export const expense_items = pgTable(
 
 export type ExpenseItem = typeof expense_items.$inferSelect;
 export type NewExpenseItem = typeof expense_items.$inferInsert;
+
+/**
+ * Costo unitario de un renglón de compra CON SU PARTE DEL FLETE (0046).
+ *
+ * Para usar con las tablas sin alias `expense_items` y `expenses`, igual que
+ * `GASTO_VIGENTE_SQL`. Es la fórmula única: la usan el costo actual del
+ * producto (`recalcularCostoUltimaCompra`) y el inventario valorizado, y la
+ * vista previa de la carga hace la misma cuenta en `domain/impacto-compra`.
+ *
+ * El flete se reparte POR VALOR: a cada renglón le toca
+ *     flete × (qty × costo) / Σ(qty × costo de la compra)
+ * y por unidad eso es  flete × costo / Σ.  Sin redondear en el camino: las
+ * partes suman exactamente el flete. Un renglón a costo 0 (bonificado) no
+ * lleva flete.
+ *
+ * El flete es su NETO si la factura discrimina IVA (el IVA se recupera, no es
+ * costo; misma regla que la mercadería) y su total si no. Sólo cuentan los
+ * fletes VIGENTES: uno anulado deja de sumar.
+ */
+export const COSTO_UNITARIO_CON_FLETE_SQL = sql`(
+  expense_items.unit_cost + COALESCE(
+    (
+      SELECT sum(CASE WHEN f.neto > 0 OR f.iva > 0 THEN f.neto ELSE f.total END)
+        FROM expenses f
+       WHERE f.flete_de_compra_id = expense_items.expense_id
+         AND f.tenant_id = expense_items.tenant_id
+         AND f.total > 0
+         AND NOT EXISTS (SELECT 1 FROM expenses fc WHERE fc.corrects_id = f.id)
+    ) * expense_items.unit_cost / NULLIF(
+      (
+        SELECT sum(i2.qty * i2.unit_cost)
+          FROM expense_items i2
+         WHERE i2.expense_id = expense_items.expense_id
+           AND i2.tenant_id = expense_items.tenant_id
+      ),
+      0
+    ),
+    0
+  )
+)`;

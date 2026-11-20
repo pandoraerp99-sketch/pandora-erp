@@ -27,7 +27,11 @@ import {
   type ExpenseCategory,
   type ExpensePaymentMethod,
 } from '../../db/schema/expenses.js';
-import { expense_items, type ExpenseItem } from '../../db/schema/expense_items.js';
+import {
+  COSTO_UNITARIO_CON_FLETE_SQL,
+  expense_items,
+  type ExpenseItem,
+} from '../../db/schema/expense_items.js';
 import {
   cantidadAcreedoresSql,
   deudaAProveedoresSql,
@@ -126,7 +130,16 @@ export interface NuevoGasto {
    * bloqueo por el mismo comprobante no se saltea nunca.
    */
   confirmar_duplicado?: boolean;
+  /**
+   * Este gasto es el FLETE de esa compra de mercadería (migration 0046): su
+   * costo se reparte entre los artículos de la compra. Sólo para
+   * `categoria='mercaderia'` y sin detalle propio. Ver
+   * `registrarCompraConFleteOnce`, que registra los dos juntos.
+   */
+  flete_de_compra_id?: string;
 }
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export interface LineaDeCompra {
   product_id: string;
@@ -256,7 +269,7 @@ async function vincularProveedorPorCuit(
   }
 }
 
-export async function registerExpense(input: NuevoGasto): Promise<Expense> {
+export async function registerExpense(input: NuevoGasto, txExterno?: Tx): Promise<Expense> {
   await exigirQueOpereElComercio();
   const { tenantId, userId } = ctx();
 
@@ -326,6 +339,18 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
       'cta_cte_needs_tercero',
       'Un gasto a cuenta corriente necesita el proveedor elegido de la lista: es a quién se le debe'
     );
+  }
+
+  // ── El flete de una compra (0046) ──
+  // Es costo de la mercadería: va como mercadería y sin detalle propio (su
+  // costo se reparte entre los artículos de la compra a la que apunta).
+  if (input.flete_de_compra_id !== undefined) {
+    if (input.categoria !== 'mercaderia' || (input.items ?? []).length > 0) {
+      throw new ExpenseError(
+        'flete_invalido',
+        'El flete de una compra va como mercadería y sin artículos propios'
+      );
+    }
   }
 
   // ── Las líneas de mercadería ──
@@ -437,7 +462,10 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
     comprobante_numero: comprobante,
   };
 
-  return db.transaction(async (tx) => {
+  // Con `txExterno` corre como savepoint de esa transacción: así la compra y
+  // su flete se registran juntos o ninguno (`registrarCompraConFleteOnce`).
+  const base = txExterno ?? db;
+  return base.transaction(async (tx) => {
     // ANTES de escribir nada: si es una factura ya cargada, no se toca la caja
     // ni el stock. Ver `controlarDuplicado`.
     await controlarDuplicado(tx, tenantId, datosComprobante, {
@@ -445,6 +473,13 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
       total,
       confirmado: input.confirmar_duplicado === true,
     });
+
+    // La compra del flete se valida ADENTRO de la transacción: cuando se
+    // registran juntas, la compra todavía no está confirmada y sólo esta
+    // transacción la ve.
+    if (input.flete_de_compra_id !== undefined) {
+      await validarCompraDelFlete(tx, tenantId, input.flete_de_compra_id);
+    }
 
     let cashMovementId: bigint | null = null;
 
@@ -508,6 +543,7 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
         en_iva_compras: input.en_iva_compras ?? false,
         medio_pago: input.medio_pago,
         cash_movement_id: cashMovementId,
+        flete_de_compra_id: input.flete_de_compra_id ?? null,
         created_by: userId,
       })
       .returning();
@@ -605,6 +641,15 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
 
     await recalcularCostoUltimaCompra(tx, tenantId, [...tocados]);
 
+    // Un flete cambia el costo de los artículos de SU compra.
+    if (input.flete_de_compra_id !== undefined) {
+      await recalcularCostoUltimaCompra(
+        tx,
+        tenantId,
+        await productosDeLaCompra(tx, tenantId, input.flete_de_compra_id)
+      );
+    }
+
     // Fijo / variable / mixto, si se eligió (0045). Misma transacción: un
     // gasto no queda sin la clasificación que se le dio al cargarlo.
     if (input.comportamiento && userId) {
@@ -635,6 +680,7 @@ export async function registerExpense(input: NuevoGasto): Promise<Expense> {
           comprobante_tipo: fila.comprobante_tipo,
           comprobante_numero: fila.comprobante_numero,
           comportamiento: input.comportamiento ?? null,
+          flete_de_compra_id: input.flete_de_compra_id ?? null,
           cash_movement_id: cashMovementId === null ? null : String(cashMovementId),
           items: items.map((l) => ({
             product_id: l.product_id,
@@ -704,7 +750,7 @@ async function recalcularCostoUltimaCompra(
   const ultimas = await tx.execute<{ product_id: string; unit_cost: string }>(sql`
     SELECT DISTINCT ON (expense_items.product_id)
            expense_items.product_id,
-           expense_items.unit_cost::text AS unit_cost
+           (${COSTO_UNITARIO_CON_FLETE_SQL})::text AS unit_cost
       FROM expense_items
       JOIN expenses ON expenses.id = expense_items.expense_id
      WHERE expense_items.tenant_id = ${tenantId}
@@ -1004,6 +1050,17 @@ export async function annulExpense(input: AnulacionGasto): Promise<Expense> {
       [...new Set(lineas.map((l) => l.product_id))]
     );
 
+    // Anular un FLETE saca su parte del costo de los artículos de su compra.
+    // (Anular la COMPRA no toca el flete: sigue siendo una deuda real con el
+    // expreso. Decisión del owner, 2026-11-19.)
+    if (original.flete_de_compra_id !== null) {
+      await recalcularCostoUltimaCompra(
+        tx,
+        tenantId,
+        await productosDeLaCompra(tx, tenantId, original.flete_de_compra_id)
+      );
+    }
+
     // EVENT-TAXONOMY v2.1.0 — warning: deshace un hecho ya registrado (devuelve
     // plata, saca stock). Es la operación que la contadora o un inspector van a
     // preguntar, y la fila `ANULADO: <motivo>` dice qué pero no quién ni cuándo.
@@ -1297,6 +1354,73 @@ async function controlarDuplicado(
 function fechaLarga(iso: string): string {
   const [a, m, d] = iso.split('-');
   return `${d}/${m}/${a}`;
+}
+
+/** Productos de los artículos de una compra (para recalcular su costo). */
+async function productosDeLaCompra(tx: Tx, tenantId: string, compraId: string): Promise<string[]> {
+  const filas = await tx
+    .selectDistinct({ product_id: expense_items.product_id })
+    .from(expense_items)
+    .where(and(eq(expense_items.tenant_id, tenantId), eq(expense_items.expense_id, compraId)));
+  return filas.map((f) => f.product_id);
+}
+
+/**
+ * La compra a la que apunta un flete tiene que ser de ESTE comercio, estar
+ * vigente, ser mercadería y tener artículos: sin artículos no hay entre qué
+ * repartir el flete. (La FK compuesta ya impide otro comercio; esto da el
+ * mensaje entendible y cubre "vigente" y "con artículos", que la FK no ve.)
+ */
+async function validarCompraDelFlete(tx: Tx, tenantId: string, compraId: string): Promise<void> {
+  const [compra] = await tx
+    .select({ id: expenses.id, categoria: expenses.categoria })
+    .from(expenses)
+    .where(and(eq(expenses.tenant_id, tenantId), eq(expenses.id, compraId), GASTO_VIGENTE))
+    .limit(1);
+  if (!compra || compra.categoria !== 'mercaderia') {
+    throw new ExpenseError('flete_sin_compra', 'El flete tiene que ser de una compra de mercadería vigente');
+  }
+  if ((await productosDeLaCompra(tx, tenantId, compraId)).length === 0) {
+    throw new ExpenseError(
+      'flete_sin_articulos',
+      'Para repartir el flete, la compra tiene que tener sus artículos cargados'
+    );
+  }
+}
+
+/**
+ * Registrar una compra de mercadería y su flete JUNTOS, una sola vez por clave.
+ *
+ * Las dos facturas llegan juntas (la del proveedor y la del expreso), y van
+ * juntas: si una falla —el flete repetido, una caja cerrada—, no queda
+ * ninguna. Cada una pasa por `registerExpense` completo (validaciones,
+ * duplicados, cuenta corriente, auditoría) dentro de la misma transacción.
+ */
+export async function registrarCompraConFleteOnce(
+  compra: NuevoGasto,
+  flete: NuevoGasto,
+  idempotencyKey: string
+): Promise<{ id: string; flete_id: string; replayed: boolean }> {
+  const { tenantId } = ctx();
+  const { result, replayed } = await withIdempotency<{ id: string; flete_id: string }>(
+    {
+      tenantId,
+      key: idempotencyKey,
+      operation: 'expense.register_con_flete',
+      requestHash: createHash('sha256').update(JSON.stringify({ compra, flete })).digest('hex'),
+      releaseOnError: true,
+    },
+    () =>
+      db.transaction(async (tx) => {
+        const c = await registerExpense(compra, tx);
+        const f = await registerExpense(
+          { ...flete, categoria: 'mercaderia', flete_de_compra_id: c.id },
+          tx
+        );
+        return { id: c.id, flete_id: f.id };
+      })
+  );
+  return { ...result, replayed };
 }
 
 /**

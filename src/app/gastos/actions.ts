@@ -4,6 +4,7 @@
  * Server Actions de Gastos. Mismo patrón que /clientes: tracing + envelope,
  * cero lógica de negocio (eso vive en expense.service.ts).
  */
+import Decimal from 'decimal.js';
 import { clasificarGasto } from '@/lib/services/expenses/cost-behaviour.service';
 import { revalidatePath } from 'next/cache';
 import { withServerActionTracing } from '@/lib/tracing/server-action-tracing';
@@ -17,6 +18,7 @@ import {
   getProveedoresDelPeriodo,
   listExpenses,
   registerExpenseOnce,
+  registrarCompraConFleteOnce,
   ultimaCompraPorProducto,
   ExpenseError,
   type NuevoGasto,
@@ -77,6 +79,61 @@ const SALE_POINT = 1;
 export type GastoFormInput = Omit<NuevoGasto, 'cash_session_id'>;
 
 /**
+ * La factura del flete que vino con una compra de mercadería (0046). La fecha
+ * y la categoría salen de la compra; el vínculo lo pone el service.
+ *
+ * Sin efectivo: el flete se le paga al expreso por cuenta corriente o por
+ * banco, y un efectivo acá sería una segunda salida de caja que el recuadro
+ * de impacto no muestra.
+ */
+export interface FleteFormInput {
+  tercero_id: string;
+  comprobante_numero: string;
+  total: string;
+  /** IVA discriminado en la factura del flete; vacío o '0' si no tiene. */
+  iva?: string;
+  medio_pago: 'cuenta_corriente' | 'transferencia' | 'debito' | 'credito';
+  en_iva_compras: boolean;
+}
+
+const MEDIOS_FLETE: readonly string[] = ['cuenta_corriente', 'transferencia', 'debito', 'credito'];
+
+/** El flete como gasto: misma fecha que la compra, mercadería, neto sin IVA. */
+function fleteComoGasto(compra: GastoFormInput, f: FleteFormInput): NuevoGasto {
+  if (!MEDIOS_FLETE.includes(f.medio_pago)) {
+    throw new ExpenseError(
+      'flete_medio',
+      'El flete va por cuenta corriente, transferencia o tarjeta. Si lo pagaste en efectivo, cargalo como un gasto aparte.'
+    );
+  }
+  let total: Decimal;
+  let iva: Decimal;
+  try {
+    total = new Decimal(f.total);
+    iva = new Decimal(f.iva?.trim() ? f.iva : '0');
+  } catch {
+    throw new ExpenseError('flete_monto', 'El monto del flete no es un número');
+  }
+  if (!total.isFinite() || total.lte(0) || !iva.isFinite() || iva.lt(0) || iva.gte(total)) {
+    throw new ExpenseError('flete_monto', 'Revisá el monto y el IVA del flete');
+  }
+  return {
+    fecha: compra.fecha,
+    categoria: 'mercaderia',
+    total: total.toFixed(2),
+    ...(iva.gt(0) ? { neto: total.minus(iva).toFixed(2), iva: iva.toFixed(2) } : {}),
+    medio_pago: f.medio_pago,
+    tercero_id: f.tercero_id,
+    comprobante_tipo: 'Factura',
+    comprobante_numero: f.comprobante_numero.trim(),
+    en_iva_compras: f.en_iva_compras,
+    descripcion: compra.comprobante_numero
+      ? `Flete de la compra ${compra.comprobante_numero}`
+      : 'Flete de una compra de mercadería',
+  };
+}
+
+/**
  * Registrar un gasto.
  *
  * El `cash_session_id` lo resuelve el SERVIDOR con la caja abierta del punto de
@@ -93,7 +150,8 @@ export type GastoFormInput = Omit<NuevoGasto, 'cash_session_id'>;
  */
 export async function registrarGastoAction(
   input: GastoFormInput,
-  clave: string
+  clave: string,
+  flete?: FleteFormInput
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(async () => {
     if (typeof clave !== 'string' || clave.length < 8 || clave.length > 100) {
@@ -111,13 +169,15 @@ export async function registrarGastoAction(
       cashSessionId = sesion.id;
     }
 
-    const { id } = await registerExpenseOnce(
-      {
-        ...input,
-        ...(cashSessionId !== undefined ? { cash_session_id: cashSessionId } : {}),
-      },
-      clave
-    );
+    const compra: NuevoGasto = {
+      ...input,
+      ...(cashSessionId !== undefined ? { cash_session_id: cashSessionId } : {}),
+    };
+    // Con flete, la compra y la factura del expreso van juntas o ninguna.
+    const { id } =
+      flete === undefined
+        ? await registerExpenseOnce(compra, clave)
+        : await registrarCompraConFleteOnce(compra, fleteComoGasto(input, flete), clave);
 
     revalidatePath('/gastos');
     // El panel de la contadora lee el IVA crédito de acá: si no se revalida,

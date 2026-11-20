@@ -116,6 +116,18 @@ export const expenses = pgTable(
      */
     corrects_id: uuid('corrects_id'),
 
+    /**
+     * Compra de mercadería de la que este gasto es el FLETE (migration 0046).
+     *
+     * El flete es costo de adquisición (decisión del owner, 2026-11-19; A-33
+     * pendiente con la contadora): se reparte entre los artículos de esa
+     * compra por valor. Acá se guarda sólo la relación; la parte de cada
+     * artículo se calcula al leer (`COSTO_UNITARIO_CON_FLETE_SQL`), así que
+     * anular el flete o la compra corrige el costo sin reescribir nada.
+     * FK compuesta con tenant_id: no puede apuntar a otro comercio.
+     */
+    flete_de_compra_id: uuid('flete_de_compra_id'),
+
     created_by: uuid('created_by').references(() => users.id, {
       onDelete: 'restrict',
     }),

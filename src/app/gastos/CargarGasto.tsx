@@ -37,7 +37,13 @@ import type { MemoriaProveedor } from '@/lib/services/expenses/cost-behaviour.se
 import { MEDIOS, catLabel, hoyLocal, plata } from './gastosFormato';
 import { adjuntarComprobanteAction, registrarGastoAction, type GastoFormInput } from './actions';
 import { AvisosAlRegistrar, CategoriaYTipo, ImpactoGasto, type Hecho } from './PiezasCarga';
-import { CompraMercaderia, type BorradorLinea } from './CompraMercaderia';
+import {
+  CompraMercaderia,
+  fleteInicial,
+  revisarFlete,
+  type BorradorFlete,
+  type BorradorLinea,
+} from './CompraMercaderia';
 
 export interface ProveedorOpcion {
   id: string;
@@ -146,6 +152,7 @@ export function CargarGasto({ proveedores, cajaEsperado, deudaHoy, memoria, onVe
   const [iva, setIva] = useState('');
 
   const [lineas, setLineas] = useState<BorradorLinea[]>([]);
+  const [flete, setFlete] = useState<BorradorFlete>(() => fleteInicial(proveedores));
   const [archivo, setArchivo] = useState<File | null>(null);
   const [archivoError, setArchivoError] = useState<string | null>(null);
   const archivoRef = useRef<HTMLInputElement>(null);
@@ -209,6 +216,10 @@ export function CargarGasto({ proveedores, cajaEsperado, deudaHoy, memoria, onVe
     baseDetalle !== null &&
     sumaDetalle.minus(baseDetalle).abs().gt(TOLERANCIA);
 
+  // El flete (0046): sólo con mercadería; si está marcado, tiene que estar completo.
+  const fleteRev = esMercaderia ? revisarFlete(flete, lineas.length > 0) : null;
+  const faltaFlete = fleteRev?.falta ?? null;
+
   const puedeGuardar =
     !totalInvalido &&
     !noCierra &&
@@ -219,6 +230,7 @@ export function CargarGasto({ proveedores, cajaEsperado, deudaHoy, memoria, onVe
     !lineasIncompletas &&
     !detalleNoCierra &&
     !faltaComportamiento &&
+    faltaFlete === null &&
     !pending;
 
   // Lo que falta, en palabras: un botón apagado sin explicación es un misterio.
@@ -236,7 +248,7 @@ export function CargarGasto({ proveedores, cajaEsperado, deudaHoy, memoria, onVe
               ? 'Revisá el neto y el IVA de la factura.'
               : lineasIncompletas || detalleNoCierra
                 ? 'Revisá el detalle de la mercadería.'
-                : null;
+                : faltaFlete;
 
   const tipoDeCategoria = (c: string): Comportamiento | null =>
     COMPORTAMIENTO_POR_CATEGORIA[c as keyof typeof COMPORTAMIENTO_POR_CATEGORIA] ?? null;
@@ -335,6 +347,7 @@ export function CargarGasto({ proveedores, cajaEsperado, deudaHoy, memoria, onVe
     setNeto('');
     setIva('');
     setLineas([]);
+    setFlete(fleteInicial(proveedores));
     setArchivo(null);
     setArchivoError(null);
     if (archivoRef.current) archivoRef.current.value = '';
@@ -350,7 +363,8 @@ export function CargarGasto({ proveedores, cajaEsperado, deudaHoy, memoria, onVe
       ...armarForm(dTotal),
       ...(confirmar ? { confirmar_duplicado: true } : {}),
     };
-    const clave = claveDe(form);
+    const fletePayload = fleteRev?.payload ?? undefined;
+    const clave = claveDe([form, fletePayload ?? null]);
     const elegido = archivo;
     enviando.current = true;
     setError(null);
@@ -358,7 +372,7 @@ export function CargarGasto({ proveedores, cajaEsperado, deudaHoy, memoria, onVe
     setHecho(null);
     startTransition(async () => {
       try {
-        const res = await registrarGastoAction(form, clave);
+        const res = await registrarGastoAction(form, clave, fletePayload);
         if (!res.ok) {
           if (res.code === 'posible_duplicado') setDuda(res.error);
           else setError(res.error);
@@ -384,6 +398,7 @@ export function CargarGasto({ proveedores, cajaEsperado, deudaHoy, memoria, onVe
           categoria: catLabel(form.categoria),
           medio: form.medio_pago,
           adjunto,
+          flete: fletePayload?.total ?? null,
         });
         limpiar();
         setGeneracion((g) => g + 1);
@@ -669,6 +684,9 @@ export function CargarGasto({ proveedores, cajaEsperado, deudaHoy, memoria, onVe
           y deja registrado a qué costo. ── */}
       {esMercaderia ? (
         <CompraMercaderia
+          proveedores={proveedores}
+          flete={flete}
+          setFlete={setFlete}
           lineas={lineas}
           setLineas={setLineas}
           fechaCompra={fecha}

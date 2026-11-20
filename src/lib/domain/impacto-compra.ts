@@ -40,6 +40,8 @@ export interface RenglonCompra {
   qty: Decimal | null;
   /** Costo unitario neto del renglón; `null` si todavía no se escribió bien. */
   costo: Decimal | null;
+  /** Parte del flete por unidad (`fletePorUnidad`); `null` o ausente si no hay flete. */
+  flete?: Decimal | null;
   /** Precio de venta actual del producto (sin IVA). */
   precio: string;
   stock: string;
@@ -69,6 +71,29 @@ export interface ImpactoProducto {
   margenDespues: Decimal | null;
   /** El producto aparece en más de un renglón de esta compra. */
   repetido: boolean;
+  /** Flete por unidad que suma el renglón que fija el costo; `null` sin flete. */
+  fleteUnitario: Decimal | null;
+}
+
+/**
+ * La parte del flete POR UNIDAD de cada renglón (migration 0046).
+ *
+ * Misma fórmula que `COSTO_UNITARIO_CON_FLETE_SQL`, que es la que usa el
+ * servidor: a cada renglón le toca  flete × costo / Σ(qty × costo)  por unidad,
+ * sin redondear en el camino, así que Σ(qty × parte) es exactamente el flete.
+ * Un renglón todavía incompleto no entra en Σ ni recibe parte; uno a costo 0
+ * (bonificado) entra en Σ con 0 y no recibe nada.
+ */
+export function fletePorUnidad(
+  renglones: Array<{ qty: Decimal | null; costo: Decimal | null }>,
+  fleteNeto: Decimal | null
+): Array<Decimal | null> {
+  const completos = renglones.filter((r) => r.qty !== null && r.costo !== null);
+  const suma = completos.reduce((acc, r) => acc.plus(r.qty!.times(r.costo!)), new Decimal(0));
+  if (fleteNeto === null || fleteNeto.lte(0) || suma.lte(0)) return renglones.map(() => null);
+  return renglones.map((r) =>
+    r.qty === null || r.costo === null ? null : fleteNeto.times(r.costo).dividedBy(suma)
+  );
 }
 
 /**
@@ -95,7 +120,10 @@ export function impactoDeCompra(
 
     // El del renglón de más abajo con costo escrito: es el que gana el empate.
     const ultimoConCosto = [...lista].reverse().find((r) => r.costo !== null);
-    const costoCompra = ultimoConCosto?.costo ?? null;
+    // Con su parte del flete: es lo que el servidor deja como costo.
+    const fleteUnitario = ultimoConCosto?.flete ?? null;
+    const costoCompra =
+      ultimoConCosto?.costo == null ? null : ultimoConCosto.costo.plus(fleteUnitario ?? 0);
 
     let motivo: MotivoCosto;
     if (costoCompra === null) motivo = 'sin_costo';
@@ -119,6 +147,7 @@ export function impactoDeCompra(
       margenAntes: margenSobrePrecio(base.precio, costoAntes),
       margenDespues: margenSobrePrecio(base.precio, costoDespues),
       repetido: lista.length > 1,
+      fleteUnitario,
     });
   }
   return out;

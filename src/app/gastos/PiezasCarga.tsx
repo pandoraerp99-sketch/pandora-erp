@@ -141,6 +141,8 @@ export interface Hecho {
   medio: string;
   /** 'ok', el error de la subida, o null si no se eligió archivo. */
   adjunto: string | null;
+  /** Monto del flete registrado junto con la compra, o null. */
+  flete: string | null;
 }
 
 const ICONO_OK = (
@@ -193,6 +195,9 @@ export function AvisosAlRegistrar({
                 : hecho.medio === 'cuenta_corriente'
                   ? 'Quedó como deuda con el proveedor.'
                   : ''}
+              {hecho.flete !== null
+                ? ` También el flete de ${plata(hecho.flete)}, repartido en el costo de los artículos.`
+                : null}
               {hecho.adjunto === 'ok' ? ' El comprobante quedó adjunto.' : null}
               {hecho.adjunto !== null && hecho.adjunto !== 'ok' ? (
                 <span className="cg-ok-warn">

@@ -26,6 +26,7 @@
  * La aritmética vive en `domain/inventario.ts` (pura, testeada aparte). Acá
  * sólo se lee y se arma.
  */
+import { COSTO_UNITARIO_CON_FLETE_SQL } from '../../db/schema/expense_items.js';
 import { sql } from 'drizzle-orm';
 import Decimal from 'decimal.js';
 import { db } from '../../db/client.js';
@@ -224,7 +225,8 @@ export async function getInventarioAlCierre(
     SELECT expense_items.product_id::text AS product_id,
            expenses.fecha::text           AS fecha,
            expense_items.qty::text        AS qty,
-           expense_items.unit_cost::text  AS unit_cost,
+           -- Con su parte del flete (0046): costo de adquisición.
+           (${COSTO_UNITARIO_CON_FLETE_SQL})::text AS unit_cost,
            COALESCE(
              NULLIF(TRIM(COALESCE(expenses.comprobante_tipo, '') || ' ' ||
                          COALESCE(expenses.comprobante_numero, '')), ''),
